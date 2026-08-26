@@ -195,33 +195,50 @@ class MetricGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: columns,
+    // Height from content and text scale, not from an aspect ratio. With
+    // childAspectRatio the tile height follows the device width, so a narrow
+    // phone or a large system font size overflowed the card.
+    final scale = MediaQuery.textScalerOf(context);
+    final extent = AppSpacing.md * 2 +
+        scale.scale(AppTypography.overline.fontSize!) * 1.3 +
+        AppSpacing.xs +
+        scale.scale(AppTypography.metricSm.fontSize!) * 1.3;
+
+    return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: AppSpacing.md,
-      crossAxisSpacing: AppSpacing.md,
-      childAspectRatio: 2.2,
-      children: [
-        for (final m in metrics)
-          AppCard(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(m.label.toUpperCase(), style: AppTypography.overline),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  m.value,
-                  style: AppTypography.metricSm.copyWith(color: m.color),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
+      itemCount: metrics.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columns,
+        mainAxisSpacing: AppSpacing.md,
+        crossAxisSpacing: AppSpacing.md,
+        mainAxisExtent: extent,
+      ),
+      itemBuilder: (context, i) {
+        final m = metrics[i];
+        return AppCard(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                m.label.toUpperCase(),
+                style: AppTypography.overline,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                m.value,
+                style: AppTypography.metricSm.copyWith(color: m.color),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
-      ],
+        );
+      },
     );
   }
 }

@@ -158,7 +158,7 @@ treatments.
 
 ## Tests
 
-182 tests, all passing.
+240 tests, all passing.
 
 | Suite                        | What it protects                                        |
 | ---------------------------- | -------------------------------------------------------- |
@@ -173,6 +173,7 @@ treatments.
 | `demo_data_coverage_test`    | **No screen opens empty for any role** — see below        |
 | `demo_data_coverage_test`    | Per-role checks for MR / ASM / RSM / NSM / Admin           |
 | `demo_login_test`            | Every ID on the login panel actually signs in              |
+| `screen_smoke_test` (stress) | **All 57 screens at 320pt and 1.3× text** — catches clipping |
 
 `demo_data_coverage_test` exists because this build is shown to clients, and
 the fastest way to make finished work look broken is a screen that opens empty.
@@ -181,6 +182,12 @@ on Home, expenses, travel, leave, orders, targets, tasks and attendance — and
 that every chat thread has history, every filter chip has rows, and the
 notification bell has something unread. A thin seed now fails CI instead of
 surfacing live in a demo. It has already caught one real bug.
+
+The stress group is the one that earns its keep. It pumps every screen at the
+two conditions that actually break layouts — a 320pt phone and the largest text
+size the app allows — and it found 22 broken screens the first time it ran.
+Clipped labels and overflowing rows are invisible until someone opens the app on
+a small phone or with large system fonts, which is exactly when a demo happens.
 
 The smoke suite exists because unit tests cannot catch a layout error: a widget
 that throws during layout in release renders *nothing* and takes the rest of the

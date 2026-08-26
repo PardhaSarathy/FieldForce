@@ -264,17 +264,33 @@ class _AttendanceCalendar extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
-        GridView.count(
-          crossAxisCount: 7,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: AppSpacing.xs,
-          crossAxisSpacing: AppSpacing.xs,
-          children: [
-            for (var i = 0; i < leadingBlanks; i++) const SizedBox.shrink(),
-            for (var day = 1; day <= daysInMonth; day++)
-              _DayCell(day: day, record: byDay[day]),
-          ],
+        // Fixed cell height derived from the text scale. A seven-column grid
+        // has its width dictated by the screen, so letting the aspect ratio
+        // set the height clipped the day number at large font sizes.
+        Builder(
+          builder: (context) {
+            final scale = MediaQuery.textScalerOf(context);
+            final extent =
+                scale.scale(AppTypography.bodySm.fontSize!) * 1.35 + 12;
+            final cells = leadingBlanks + daysInMonth;
+
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: cells,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 7,
+                mainAxisSpacing: AppSpacing.xs,
+                crossAxisSpacing: AppSpacing.xs,
+                mainAxisExtent: extent,
+              ),
+              itemBuilder: (context, i) {
+                if (i < leadingBlanks) return const SizedBox.shrink();
+                final day = i - leadingBlanks + 1;
+                return _DayCell(day: day, record: byDay[day]);
+              },
+            );
+          },
         ),
       ],
     );
@@ -298,8 +314,15 @@ class _DayCell extends StatelessWidget {
         color: color?.withValues(alpha: 0.12) ?? Colors.transparent,
         borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
-      child: Column(
+      // A calendar cell is a fixed box in a seven-column grid: its width comes
+      // from the screen and cannot grow. Scaling the content down is the only
+      // behaviour that survives every combination of narrow screen and large
+      // system font, so the cell is fitted rather than sized by arithmetic.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             '$day',
@@ -313,6 +336,7 @@ class _DayCell extends StatelessWidget {
             StatusDot(color: color, size: 5),
           ],
         ],
+        ),
       ),
     );
   }
@@ -624,10 +648,12 @@ class _NewLeaveScreenState extends ConsumerState<NewLeaveScreen> {
                   const Icon(Icons.info_outline,
                       size: AppSizes.iconMd, color: AppColors.brand),
                   const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    '$_days day${_days == 1 ? '' : 's'} of ${_type.label}',
-                    style: AppTypography.titleSm
-                        .copyWith(color: AppColors.brandDark),
+                  Expanded(
+                    child: Text(
+                      '$_days day${_days == 1 ? '' : 's'} of ${_type.label}',
+                      style: AppTypography.titleSm
+                          .copyWith(color: AppColors.brandDark),
+                    ),
                   ),
                 ],
               ),

@@ -65,29 +65,51 @@ class AdminDashboardScreen extends ConsumerWidget {
         ),
         children: [
           const SectionHeader(title: 'System'),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: AppSpacing.md,
-            crossAxisSpacing: AppSpacing.md,
-            childAspectRatio: 1.9,
-            children: [
-              for (final c in counts)
-                AppCard(
-                  onTap: () => context.push(c.route),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(c.icon, size: 20, color: AppColors.brand),
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(c.value, style: AppTypography.metricSm),
-                      Text(c.label, style: AppTypography.caption),
-                    ],
-                  ),
+          // Height from content and text scale rather than an aspect ratio,
+          // which ties tile height to device width and clips at large fonts.
+          Builder(
+            builder: (context) {
+              final scale = MediaQuery.textScalerOf(context);
+              final extent = AppSpacing.cardPadding * 2 +
+                  20 +
+                  AppSpacing.sm +
+                  scale.scale(AppTypography.metricSm.fontSize!) * 1.3 +
+                  scale.scale(AppTypography.caption.fontSize!) * 1.35;
+
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: counts.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: AppSpacing.md,
+                  crossAxisSpacing: AppSpacing.md,
+                  mainAxisExtent: extent,
                 ),
-            ],
+                itemBuilder: (context, i) {
+                  final c = counts[i];
+                  return AppCard(
+                    onTap: () => context.push(c.route),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(c.icon, size: 20, color: AppColors.brand),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(c.value,
+                            style: AppTypography.metricSm,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                        Text(c.label,
+                            style: AppTypography.caption,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
           ),
 
           const SizedBox(height: AppSpacing.section),

@@ -143,14 +143,14 @@ class AppShell extends ConsumerWidget {
           Expanded(child: navigationShell),
         ],
       ),
-      floatingActionButton: session.isAdmin
-          ? null
-          : _QuickAddButton(isManager: session.isManager),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      // No floatingActionButton: a docked FAB floats above the bar and overlaps
+      // whatever is behind it. The action now sits inside the bar itself, level
+      // with the tabs.
       bottomNavigationBar: _BottomBar(
         destinations: destinations,
         currentIndex: navigationShell.currentIndex,
         showCentreGap: !session.isAdmin,
+        isManager: session.isManager,
         onTap: (index) => navigationShell.goBranch(
           index,
           initialLocation: index == navigationShell.currentIndex,
@@ -166,12 +166,14 @@ class _BottomBar extends StatelessWidget {
     required this.currentIndex,
     required this.onTap,
     required this.showCentreGap,
+    this.isManager = false,
   });
 
   final List<NavDestination> destinations;
   final int currentIndex;
   final ValueChanged<int> onTap;
   final bool showCentreGap;
+  final bool isManager;
 
   @override
   Widget build(BuildContext context) {
@@ -187,8 +189,10 @@ class _BottomBar extends StatelessWidget {
           child: Row(
             children: [
               for (var i = 0; i < destinations.length; i++) ...[
-                // Reserve room for the docked action button between tabs 2 & 3.
-                if (showCentreGap && i == 2) const SizedBox(width: 64),
+                // The action button sits between tabs 2 and 3, in the bar
+                // rather than floating over it.
+                if (showCentreGap && i == 2)
+                  _QuickAddButton(isManager: isManager),
                 Expanded(
                   child: _NavItem(
                     destination: destinations[i],
@@ -255,6 +259,7 @@ class _NavItem extends StatelessWidget {
 /// The docked "+" opens a sheet of the actions a user can start from anywhere.
 /// Contents are role-aware so a manager is offered assignment actions rather
 /// than visit logging.
+/// The central action, rendered as part of the bar.
 class _QuickAddButton extends StatelessWidget {
   const _QuickAddButton({required this.isManager});
 
@@ -262,10 +267,24 @@ class _QuickAddButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FloatingActionButton(
-      onPressed: () => _showQuickActions(context, isManager: isManager),
-      tooltip: 'Quick actions',
-      child: const Icon(Icons.add, size: 26),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      child: Tooltip(
+        message: 'Quick actions',
+        child: Material(
+          color: AppColors.brand,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          child: InkWell(
+            onTap: () => _showQuickActions(context, isManager: isManager),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            child: const SizedBox(
+              width: 52,
+              height: 44,
+              child: Icon(Icons.add, size: 24, color: AppColors.textOnBrand),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

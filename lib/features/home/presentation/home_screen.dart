@@ -782,13 +782,13 @@ class _QuickActionsGrid extends StatelessWidget {
   const _QuickActionsGrid();
 
   static const _actions = [
-    _QuickAction(Icons.event_note_outlined, 'My Day Plan', Routes.dayPlan,
+    _QuickAction(Icons.event_note_outlined, 'Day Plan', Routes.dayPlan,
         _ActionTone.plan),
-    _QuickAction(Icons.timeline_outlined, 'My Activity', Routes.activity,
+    _QuickAction(Icons.timeline_outlined, 'Activity', Routes.activity,
         _ActionTone.plan),
     _QuickAction(Icons.person_add_alt_outlined, 'Add Client', Routes.newClient,
         _ActionTone.client),
-    _QuickAction(Icons.people_outline, 'Clients Data', Routes.clients,
+    _QuickAction(Icons.people_outline, 'Clients', Routes.clients,
         _ActionTone.client),
     _QuickAction(Icons.chat_bubble_outline, 'Chat', Routes.chat,
         _ActionTone.coordinate),
@@ -812,19 +812,36 @@ class _QuickActionsGrid extends StatelessWidget {
             // two once there is width for it.
             final columns = constraints.maxWidth >= AppBreakpoints.expanded ? 8 : 4;
 
-            return GridView.count(
-              crossAxisCount: columns,
+            // Fixed height, not an aspect ratio. With childAspectRatio the
+            // tile height follows the device width, so on a narrow phone the
+            // tile shrank below what the label needed and the second line was
+            // clipped mid-glyph. This derives the height from the content and
+            // the user's text scale instead, so it is correct on every device.
+            final scale = MediaQuery.textScalerOf(context);
+            const iconChip = 40.0;
+            const rule = 2.0;
+            final twoLines = scale.scale(AppTypography.caption.fontSize!) *
+                1.25 *
+                2;
+            final extent = AppSpacing.md * 2 + // card padding
+                iconChip +
+                AppSpacing.sm +
+                twoLines +
+                AppSpacing.xs +
+                rule;
+
+            return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: AppSpacing.md,
-              crossAxisSpacing: AppSpacing.md,
-              // Tall enough for a two-line label plus the accent rule at
-              // 320pt, where each tile is only ~63pt wide.
-              childAspectRatio: 0.76,
-              children: [
-                for (final action in _actions)
-                  _QuickActionTile(action: action),
-              ],
+              itemCount: _actions.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisSpacing: AppSpacing.md,
+                crossAxisSpacing: AppSpacing.md,
+                mainAxisExtent: extent,
+              ),
+              itemBuilder: (context, i) =>
+                  _QuickActionTile(action: _actions[i]),
             );
           },
         ),

@@ -414,13 +414,25 @@ class _CalendarGrid extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
+        // See the note on the attendance calendar: a seven-column grid cannot
+        // take its height from an aspect ratio without clipping at large text
+        // sizes.
         GridView.count(
           crossAxisCount: 7,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: AppSpacing.xs,
           crossAxisSpacing: AppSpacing.xs,
-          childAspectRatio: 0.92,
+          childAspectRatio: 1 /
+              ((MediaQuery.textScalerOf(context)
+                          .scale(AppTypography.bodySm.fontSize!) *
+                      1.35 +
+                  14) /
+                  ((MediaQuery.sizeOf(context).width -
+                          AppSpacing.screenH * 2 -
+                          AppSpacing.cardPadding * 2 -
+                          AppSpacing.xs * 6) /
+                      7)),
           children: [
             for (var i = 0; i < leadingBlanks; i++) const SizedBox.shrink(),
             for (var day = 1; day <= daysInMonth; day++)
@@ -493,8 +505,13 @@ class _CalendarCell extends StatelessWidget {
               ? Border.all(color: AppColors.brand, width: 1.2)
               : null,
         ),
-        child: Column(
+        // Same reasoning as the attendance calendar: a seven-column cell has a
+        // fixed width, so its content scales down rather than overflowing.
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               '${date.day}',
@@ -515,6 +532,7 @@ class _CalendarCell extends StatelessWidget {
             else
               const SizedBox(height: 5),
           ],
+          ),
         ),
       ),
     );

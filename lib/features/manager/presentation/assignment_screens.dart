@@ -719,12 +719,16 @@ class _TaskCard extends StatelessWidget {
                     : AppColors.textSecondary,
               ),
               const SizedBox(width: AppSpacing.xs),
-              Text(
+              Flexible(
+                child: Text(
                 'Due ${Fmt.relativeDay(task.dueDate)}',
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
                 style: AppTypography.caption.copyWith(
                   color: status == TaskStatus.overdue
                       ? AppColors.error
                       : AppColors.textSecondary,
+                ),
                 ),
               ),
               if (showAssignee) ...[

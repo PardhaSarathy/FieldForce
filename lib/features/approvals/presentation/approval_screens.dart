@@ -367,9 +367,13 @@ class _ApprovalCard extends StatelessWidget {
                               const Icon(Icons.event_outlined,
                                   size: 12, color: AppColors.textSecondary),
                               const SizedBox(width: AppSpacing.xs),
-                              Text(Fmt.dateShort(item.date!),
-                                  style: AppTypography.caption),
-                              const SizedBox(width: AppSpacing.md),
+                              Flexible(
+                                child: Text(Fmt.dateShort(item.date!),
+                                    style: AppTypography.caption,
+                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: false),
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
                             ],
                             // The status badge must always stay visible, so the
                             // timestamp is what gives way on a narrow screen.

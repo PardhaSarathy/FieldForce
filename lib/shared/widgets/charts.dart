@@ -137,11 +137,14 @@ class TrendChart extends StatelessWidget {
         ),
         if (showComparison) ...[
           const SizedBox(height: AppSpacing.md),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          // Wrap: two legend labels at a large text size stop fitting on one
+          // line on a narrow phone.
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: AppSpacing.lg,
+            runSpacing: AppSpacing.xs,
             children: [
               _LegendDot(color: AppColors.brand, label: valueLabel),
-              const SizedBox(width: AppSpacing.lg),
               _LegendDot(color: AppColors.sand, label: comparisonLabel),
             ],
           ),

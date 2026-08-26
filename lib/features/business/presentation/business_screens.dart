@@ -637,9 +637,14 @@ class OrderCard extends StatelessWidget {
               const Icon(Icons.inventory_2_outlined,
                   size: 13, color: AppColors.textSecondary),
               const SizedBox(width: AppSpacing.xs),
-              Text('${order.lineCount} products · ${order.totalUnits} units',
-                  style: AppTypography.caption),
-              const Spacer(),
+              Expanded(
+                child: Text(
+                  '${order.lineCount} products · ${order.totalUnits} units',
+                  style: AppTypography.caption,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
               Text(Fmt.dateShort(order.date), style: AppTypography.caption),
             ],
           ),

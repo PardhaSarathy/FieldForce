@@ -217,8 +217,12 @@ class _ExpenseCard extends StatelessWidget {
                 const SizedBox(height: AppSpacing.xs),
                 Row(
                   children: [
-                    Text(Fmt.dateShort(expense.date),
-                        style: AppTypography.caption),
+                    Flexible(
+                      child: Text(Fmt.dateShort(expense.date),
+                          style: AppTypography.caption,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: false),
+                    ),
                     if (expense.hasReceipt) ...[
                       const SizedBox(width: AppSpacing.sm),
                       const Icon(Icons.attachment,

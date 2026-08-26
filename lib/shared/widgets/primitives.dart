@@ -202,9 +202,16 @@ class StatusBadge extends StatelessWidget {
             Icon(icon, size: 12, color: tone.foreground),
             const SizedBox(width: AppSpacing.xs),
           ],
-          Text(
-            label,
-            style: AppTypography.badge.copyWith(color: tone.foreground),
+          // A badge sits inside constrained rows all over the app; at a large
+          // text size its label has to give way rather than push the row wide.
+          Flexible(
+            child: Text(
+              label,
+              style: AppTypography.badge.copyWith(color: tone.foreground),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+            ),
           ),
         ],
       ),

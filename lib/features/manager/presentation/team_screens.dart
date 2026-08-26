@@ -1070,10 +1070,15 @@ class TeamPerformanceScreen extends ConsumerWidget {
                               ),
                             ),
                             const SizedBox(width: AppSpacing.sm),
-                            Text(
+                            Flexible(
+                              child: Text(
                                 '${ranked[i].visitsAchieved} / '
                                 '${ranked[i].visitTarget} visits',
-                                style: AppTypography.caption),
+                                style: AppTypography.caption,
+                                overflow: TextOverflow.ellipsis,
+                                softWrap: false,
+                              ),
+                            ),
                           ],
                         ),
                       ],

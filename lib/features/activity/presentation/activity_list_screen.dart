@@ -190,9 +190,19 @@ class _DateStrip extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Text(Fmt.relativeDay(selected), style: AppTypography.titleMd),
+                Flexible(
+                  child: Text(Fmt.relativeDay(selected),
+                      style: AppTypography.titleMd,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false),
+                ),
                 const SizedBox(width: AppSpacing.sm),
-                Text(Fmt.date(selected), style: AppTypography.caption),
+                Flexible(
+                  child: Text(Fmt.date(selected),
+                      style: AppTypography.caption,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false),
+                ),
                 const Spacer(),
                 TextButton(
                   onPressed: () => onSelected(DateTime.now()),

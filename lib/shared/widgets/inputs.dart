@@ -36,7 +36,15 @@ class FieldShell extends StatelessWidget {
         if (label != null) ...[
           Row(
             children: [
-              Text(label!, style: AppTypography.bodySm),
+              // Flexible: a long label at a large font size would otherwise
+              // push the required marker past the edge of the field.
+              Flexible(
+                child: Text(
+                  label!,
+                  style: AppTypography.bodySm,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               if (required)
                 Text(
                   ' *',

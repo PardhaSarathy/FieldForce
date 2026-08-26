@@ -49,6 +49,7 @@ void main() {
     Widget screen, {
     String code = 'MR1001',
     Size size = const Size(420, 900),
+    double textScale = 1.0,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
@@ -67,7 +68,15 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: MaterialApp(theme: AppTheme.light, home: screen),
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: screen,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
+        ),
       ),
     );
 
@@ -362,10 +371,10 @@ void main() {
       await pumpScreen(tester, const HomeScreen(), size: const Size(430, 1400));
 
       for (final label in [
-        'My Day Plan',
-        'My Activity',
+        'Day Plan',
+        'Activity',
         'Add Client',
-        'Clients Data',
+        'Clients',
         'Chat',
         'To-Do',
         'Tour Plan',
@@ -379,8 +388,8 @@ void main() {
       // The grid is four columns wide; at 320pt each tile is ~63pt, which is
       // where labels and the icon chip start to fight for room.
       await pumpScreen(tester, const HomeScreen(), size: const Size(320, 1400));
-      expect(find.text('My Day Plan'), findsOneWidget);
-      expect(find.text('Clients Data'), findsOneWidget);
+      expect(find.text('Day Plan'), findsOneWidget);
+      expect(find.text('Clients'), findsOneWidget);
     });
 
     test('bottom navigation has four tabs and no More', () {
@@ -453,6 +462,85 @@ void main() {
       expect(find.text('Approvals'), findsOneWidget);
       expect(find.text('MANAGEMENT'), findsOneWidget);
     });
+  });
+
+  // Every screen, on the two conditions that actually break layouts: a small
+  // phone, and the largest text size the app allows (main.dart clamps the
+  // system scale to 1.3). A tile that clips its label on "some devices" is
+  // this, and it should fail here rather than in a demo.
+  group('layout holds on a small phone at maximum text size', () {
+    final screens = <(String, Widget, String)>[
+      ('Home', const HomeScreen(), 'MR1001'),
+      ('Day plan', const DayPlanScreen(), 'MR1001'),
+      ('Activity list', const ActivityListScreen(), 'MR1001'),
+      ('Client list', const ClientListScreen(), 'MR1001'),
+      ('New client', const NewClientScreen(), 'MR1001'),
+      ('Expenses', const ExpenseListScreen(), 'MR1001'),
+      ('New expense', const NewExpenseScreen(), 'MR1001'),
+      ('Travel', const TravelDashboardScreen(), 'MR1001'),
+      ('New travel plan', const NewTravelPlanScreen(), 'MR1001'),
+      ('Business', const BusinessDashboardScreen(), 'MR1001'),
+      ('Sales', const SalesScreen(), 'MR1001'),
+      ('Targets', const TargetsScreen(), 'MR1001'),
+      ('Orders', const OrderListScreen(), 'MR1001'),
+      ('New order', const NewOrderScreen(), 'MR1001'),
+      ('HR home', const HrHomeScreen(), 'MR1001'),
+      ('Attendance', const AttendanceScreen(), 'MR1001'),
+      ('Leave list', const LeaveListScreen(), 'MR1001'),
+      ('New leave', const NewLeaveScreen(), 'MR1001'),
+      ('Payslips', const PayslipsScreen(), 'MR1001'),
+      ('Documents', const DocumentsScreen(), 'MR1001'),
+      ('Holidays', const HolidaysScreen(), 'MR1001'),
+      ('Calendar', const CalendarScreen(), 'MR1001'),
+      ('Chat list', const ChatListScreen(), 'MR1001'),
+      ('Resources', const ResourceListScreen(), 'MR1001'),
+      ('Surveys', const SurveyListScreen(), 'MR1001'),
+      ('New survey', const NewSurveyScreen(), 'MR1001'),
+      ('Complaints', const ComplaintListScreen(), 'MR1001'),
+      ('New complaint', const NewComplaintScreen(), 'MR1001'),
+      ('Reports home', const ReportsHomeScreen(), 'MR1001'),
+      ('Daily report', const DailyReportScreen(), 'MR1001'),
+      ('Visit report', const VisitReportScreen(), 'MR1001'),
+      ('Sales report', const SalesReportScreen(), 'MR1001'),
+      ('Target report', const TargetReportScreen(), 'MR1001'),
+      ('Expense report', const ExpenseReportScreen(), 'MR1001'),
+      ('Overview report', const OverviewReportScreen(), 'MR1001'),
+      ('More', const MoreScreen(), 'MR1001'),
+      ('Profile', const ProfileScreen(), 'MR1001'),
+      ('Edit profile', const EditProfileScreen(), 'MR1001'),
+      ('Settings', const SettingsScreen(), 'MR1001'),
+      ('Help', const HelpScreen(), 'MR1001'),
+      ('Sync center', const SyncCenterScreen(), 'MR1001'),
+      ('Notifications', const NotificationsScreen(), 'MR1001'),
+      ('Tasks', const TaskListScreen(), 'MR1001'),
+      ('Search', const SearchScreen(), 'MR1001'),
+      ('Manager dashboard', const ManagerDashboardScreen(), 'ASM201'),
+      ('My team', const MyTeamScreen(), 'ASM201'),
+      ('Team activity', const TeamActivityScreen(), 'ASM201'),
+      ('Team map', const TeamMapScreen(), 'ASM201'),
+      ('Team performance', const TeamPerformanceScreen(), 'ASM201'),
+      ('Approvals', const ApprovalCenterScreen(), 'ASM201'),
+      ('Target assignment', const TargetAssignmentScreen(), 'ASM201'),
+      ('Rate assignment', const RateAssignmentScreen(), 'ASM201'),
+      ('Task assignment', const TaskAssignmentScreen(), 'ASM201'),
+      ('Admin dashboard', const AdminDashboardScreen(), 'ADM001'),
+      ('Admin users', const AdminUsersScreen(), 'ADM001'),
+      ('Admin master data', const AdminMasterDataScreen(), 'ADM001'),
+      ('Admin geo-fence', const AdminGeoFenceScreen(), 'ADM001'),
+      ('Admin approval rules', const AdminApprovalRulesScreen(), 'ADM001'),
+    ];
+
+    for (final (name, screen, code) in screens) {
+      testWidgets(name, (tester) async {
+        await pumpScreen(
+          tester,
+          screen,
+          code: code,
+          size: const Size(320, 640),
+          textScale: 1.3,
+        );
+      });
+    }
   });
 
   group('narrow and wide viewports', () {
