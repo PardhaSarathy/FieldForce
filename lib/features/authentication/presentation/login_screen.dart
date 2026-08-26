@@ -1,0 +1,261 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/providers/app_providers.dart';
+import '../../../core/routing/routes.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../shared/widgets/buttons.dart';
+import '../../../shared/widgets/inputs.dart';
+import 'widgets/brand_mark.dart';
+
+class LoginScreen extends ConsumerStatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _codeController = TextEditingController(text: 'MR1001');
+  final _passwordController = TextEditingController(text: 'demo1234');
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+    await ref.read(authControllerProvider.notifier).login(
+          _codeController.text,
+          _passwordController.text,
+        );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(authControllerProvider);
+    final isBusy = state is AuthAuthenticating;
+    final failure = state is AuthFailure ? state.message : null;
+    final notice = state is AuthUnauthenticated ? state.message : null;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xxl,
+              vertical: AppSpacing.xxl,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // The brand is the subject of this page, so it is centred
+                    // along with the greeting; the form below stays
+                    // left-aligned, because field labels must be.
+                    const Center(child: BrandMark(size: 56, centered: true)),
+                    const SizedBox(height: AppSpacing.xxl),
+                    Text(
+                      'Welcome back',
+                      style: AppTypography.h1,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      'Sign in to continue to PharmaConnect.',
+                      style: AppTypography.bodySm,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: AppSpacing.xxl),
+
+                    if (notice != null) ...[
+                      _Notice(message: notice, tone: AppColors.info),
+                      const SizedBox(height: AppSpacing.lg),
+                    ],
+
+                    AppTextField(
+                      label: 'Employee ID',
+                      hint: 'e.g. MR1001',
+                      controller: _codeController,
+                      required: true,
+                      enabled: !isBusy,
+                      prefixIcon: Icons.badge_outlined,
+                      textCapitalization: TextCapitalization.characters,
+                      textInputAction: TextInputAction.next,
+                      validator: (v) => Validate.required(v, 'Employee ID'),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+
+                    AppTextField(
+                      label: 'Password',
+                      hint: 'Enter your password',
+                      controller: _passwordController,
+                      required: true,
+                      enabled: !isBusy,
+                      obscureText: _obscure,
+                      prefixIcon: Icons.lock_outline,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submit(),
+                      validator: (v) => Validate.required(v, 'Password'),
+                      suffix: IconButton(
+                        icon: Icon(
+                          _obscure
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          size: AppSizes.iconMd,
+                        ),
+                        color: AppColors.textSecondary,
+                        onPressed: () => setState(() => _obscure = !_obscure),
+                      ),
+                    ),
+
+                    if (failure != null) ...[
+                      const SizedBox(height: AppSpacing.lg),
+                      _Notice(message: failure, tone: AppColors.error),
+                    ],
+
+                    const SizedBox(height: AppSpacing.xl),
+                    PrimaryButton(
+                      label: 'Sign in',
+                      isLoading: isBusy,
+                      onPressed: _submit,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    TextButton(
+                      onPressed: isBusy
+                          ? null
+                          : () => context.push(Routes.forgotPassword),
+                      child: const Text('Forgot password?'),
+                    ),
+
+                    const SizedBox(height: AppSpacing.xxl),
+                    _DemoAccountsHint(
+                      onPick: isBusy
+                          ? null
+                          : (code) {
+                              setState(() => _codeController.text = code);
+                              ref
+                                  .read(authControllerProvider.notifier)
+                                  .clearError();
+                            },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Notice extends StatelessWidget {
+  const _Notice({required this.message, required this.tone});
+
+  final String message;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: tone.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: AppSizes.iconMd, color: tone),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTypography.bodySm.copyWith(color: tone),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Visible only because this build has no backend. The mock auth accepts any
+/// seeded employee code, and surfacing them here is what makes the role matrix
+/// explorable without documentation.
+class _DemoAccountsHint extends StatelessWidget {
+  const _DemoAccountsHint({this.onPick});
+
+  /// Tapping a row fills the Employee ID. Typing four-character codes to switch
+  /// roles is friction nobody needs while reviewing a demo build.
+  final ValueChanged<String>? onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    const accounts = [
+      ('MR1001', 'Field representative'),
+      ('ASM201', 'Area sales manager'),
+      ('RSM301', 'Regional sales manager'),
+      ('NSM401', 'National sales manager'),
+      ('ADM001', 'Administrator'),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.sandSoft,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.sand.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('DEMO ACCOUNTS', style: AppTypography.overline),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'No backend is connected yet. Sign in with any ID below and any '
+            'password to explore that role.',
+            style: AppTypography.caption,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          for (final (code, role) in accounts)
+            InkWell(
+              onTap: onPick == null ? null : () => onPick!(code),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 72,
+                      child: Text(code,
+                          style:
+                              AppTypography.numeric.copyWith(fontSize: 12)),
+                    ),
+                    Expanded(child: Text(role, style: AppTypography.caption)),
+                    const Icon(Icons.north_west,
+                        size: 13, color: AppColors.textSecondary),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
