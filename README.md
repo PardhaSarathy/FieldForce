@@ -27,7 +27,8 @@ app in a different role:
 | `NSM401`    | National Sales Manager  | Global scope — the whole organisation            |
 | `ADM001`    | Administrator           | Users, master data, geo-fence and approval rules |
 
-Tap a row in the demo-accounts panel to fill the ID — no typing needed.
+**Tap a row in the demo-accounts panel to sign in as that role** — no typing,
+so no mistyped IDs.
 
 **Every role is demo-ready.** Managers file their own expenses, leave and tour
 plans; ASMs and RSMs run joint field calls so they have a real day plan; and
@@ -157,7 +158,7 @@ treatments.
 
 ## Tests
 
-170 tests, all passing.
+182 tests, all passing.
 
 | Suite                        | What it protects                                        |
 | ---------------------------- | -------------------------------------------------------- |
@@ -171,6 +172,7 @@ treatments.
 | `screen_smoke_test` (tiles)  | Home metric tiles + all 8 quick actions, incl. a 320pt phone |
 | `demo_data_coverage_test`    | **No screen opens empty for any role** — see below        |
 | `demo_data_coverage_test`    | Per-role checks for MR / ASM / RSM / NSM / Admin           |
+| `demo_login_test`            | Every ID on the login panel actually signs in              |
 
 `demo_data_coverage_test` exists because this build is shown to clients, and
 the fastest way to make finished work look broken is a screen that opens empty.

@@ -31,6 +31,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  /// Tapping a demo account signs straight in as that role.
+  ///
+  /// Filling the field and leaving the user to press the button invited exactly
+  /// the failure this replaced: a stray keystroke turned "NSM401" into
+  /// "NSM401s" and the form rejected it. Nothing here needs typing.
+  Future<void> _signInAsDemoAccount(String code) async {
+    ref.read(authControllerProvider.notifier).clearError();
+
+    // Assign through `value` rather than `.text`: setting `.text` alone leaves
+    // the selection at offset 0, so any later keystroke lands before the ID.
+    _codeController.value = TextEditingValue(
+      text: code,
+      selection: TextSelection.collapsed(offset: code.length),
+    );
+
+    if (_passwordController.text.trim().isEmpty) {
+      _passwordController.text = 'demo1234';
+    }
+
+    await _submit();
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
@@ -143,14 +165,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                     const SizedBox(height: AppSpacing.xxl),
                     _DemoAccountsHint(
-                      onPick: isBusy
-                          ? null
-                          : (code) {
-                              setState(() => _codeController.text = code);
-                              ref
-                                  .read(authControllerProvider.notifier)
-                                  .clearError();
-                            },
+                      onPick: isBusy ? null : _signInAsDemoAccount,
                     ),
                   ],
                 ),
@@ -201,8 +216,9 @@ class _Notice extends StatelessWidget {
 class _DemoAccountsHint extends StatelessWidget {
   const _DemoAccountsHint({this.onPick});
 
-  /// Tapping a row fills the Employee ID. Typing four-character codes to switch
-  /// roles is friction nobody needs while reviewing a demo build.
+  /// Tapping a row signs in as that account. Typing codes to switch roles is
+  /// friction nobody needs while reviewing a demo build — and it is where
+  /// typos come from.
   final ValueChanged<String>? onPick;
 
   @override
@@ -228,8 +244,8 @@ class _DemoAccountsHint extends StatelessWidget {
           Text('DEMO ACCOUNTS', style: AppTypography.overline),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'No backend is connected yet. Sign in with any ID below and any '
-            'password to explore that role.',
+            'No backend is connected yet. Tap any account below to sign in as '
+            'that role.',
             style: AppTypography.caption,
           ),
           const SizedBox(height: AppSpacing.md),
@@ -248,8 +264,8 @@ class _DemoAccountsHint extends StatelessWidget {
                               AppTypography.numeric.copyWith(fontSize: 12)),
                     ),
                     Expanded(child: Text(role, style: AppTypography.caption)),
-                    const Icon(Icons.north_west,
-                        size: 13, color: AppColors.textSecondary),
+                    const Icon(Icons.arrow_forward,
+                        size: 14, color: AppColors.brand),
                   ],
                 ),
               ),
