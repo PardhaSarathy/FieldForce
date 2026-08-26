@@ -46,3 +46,7 @@ app.*.map.json
 
 # Claude Code local settings (machine-specific permissions, not shared)
 .claude/settings.local.json
+
+# Built artefacts handed out for demos (56MB APKs do not belong in git)
+/dist/
+android/build/

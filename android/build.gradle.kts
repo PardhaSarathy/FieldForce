@@ -15,10 +15,22 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+// Plugins declare their own compileSdk, and at least one asks for 37 — which
+// this SDK installation cannot resolve: it ships an "android-37.0" platform
+// whose ApiLevel reads "37.0", while Gradle looks up the hash string
+// "android-37". Force every Android module onto the pinned level so the build
+// does not depend on which platforms happen to be installed.
+//
+// This must run before the evaluationDependsOn block below, which evaluates
+// the subprojects and would make a later afterEvaluate hook illegal.
 subprojects {
-    project.evaluationDependsOn(":app")
+    afterEvaluate {
+        extensions.findByName("android")?.let { ext ->
+            (ext as com.android.build.gradle.BaseExtension).compileSdkVersion(36)
+        }
+    }
 }
 
-tasks.register<Delete>("clean") {
-    delete(rootProject.layout.buildDirectory)
+subprojects {
+    project.evaluationDependsOn(":app")
 }

@@ -6,7 +6,12 @@ plugins {
 
 android {
     namespace = "com.pharmaconnect.pharmaconnect"
-    compileSdk = flutter.compileSdkVersion
+
+    // Pinned rather than tracking flutter.compileSdkVersion. The installed SDK
+    // ships an "android-37.0" platform whose ApiLevel reads "37.0", but Gradle
+    // resolves the hash string "android-37" and fails to find it. 36 is the
+    // newest platform that is actually installed and resolvable here.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
