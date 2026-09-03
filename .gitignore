@@ -50,3 +50,11 @@ app.*.map.json
 # Built artefacts handed out for demos (56MB APKs do not belong in git)
 /dist/
 android/build/
+
+# Built artefacts — a 55 MB APK does not belong in the history.
+*.apk
+*.aab
+
+# Machine-local tool state. `.claude/launch.json` and `serve.py` are shared
+# because they drive the browser preview; the settings file is per-machine.
+.claude/settings.local.json
