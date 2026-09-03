@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_glow.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
@@ -13,10 +14,13 @@ import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/client.dart';
 import '../../../shared/models/engagement.dart';
 import '../../../shared/models/field_ops.dart';
+import '../../../shared/widgets/motion.dart';
+import '../../../shared/widgets/feedback.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
+import '../../shell/presentation/app_shell.dart';
 
 // =================================================================== chat ==
 
@@ -49,14 +53,25 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     final async = ref.watch(_threadsProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Chats')),
+      backgroundColor: Colors.transparent,
+      // A tab root has nothing to pop back to, so the leading slot carries
+      // the app's index instead — the same menu Home opens.
+      appBar: AppBar(
+        title: const Text('Chats'),
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          tooltip: 'Menu',
+          onPressed: () => openAppDrawer(ref),
+        ),
+      ),
       body: Column(
         children: [
-          Container(
-            color: AppColors.surface,
+          Padding(
             padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenH, 0, AppSpacing.screenH, AppSpacing.md,
+              AppSpacing.screenH,
+              0,
+              AppSpacing.screenH,
+              AppSpacing.md,
             ),
             child: SearchField(
               controller: _search,
@@ -81,16 +96,19 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenH, AppSpacing.md,
-                    AppSpacing.screenH, AppSpacing.xxxl,
+                    AppSpacing.screenH,
+                    AppSpacing.md,
+                    AppSpacing.screenH,
+                    AppSpacing.xxxl,
                   ),
                   children: [
                     if (pinned.isNotEmpty) ...[
                       const SectionHeader(title: 'Pinned'),
                       for (final t in pinned)
                         Padding(
-                          padding:
-                              const EdgeInsets.only(bottom: AppSpacing.cardGap),
+                          padding: const EdgeInsets.only(
+                            bottom: AppSpacing.cardGap,
+                          ),
                           child: _ThreadCard(thread: t),
                         ),
                       const SizedBox(height: AppSpacing.md),
@@ -99,8 +117,9 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                       const SectionHeader(title: 'All conversations'),
                       for (final t in rest)
                         Padding(
-                          padding:
-                              const EdgeInsets.only(bottom: AppSpacing.cardGap),
+                          padding: const EdgeInsets.only(
+                            bottom: AppSpacing.cardGap,
+                          ),
                           child: _ThreadCard(thread: t),
                         ),
                     ],
@@ -141,12 +160,16 @@ class _ThreadCard extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(thread.title,
-                          style: AppTypography.titleMd,
-                          overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        thread.title,
+                        style: AppTypography.titleMd,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    Text(Fmt.timeAgo(thread.lastMessageAt),
-                        style: AppTypography.caption),
+                    Text(
+                      Fmt.timeAgo(thread.lastMessageAt),
+                      style: AppTypography.caption,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -164,14 +187,20 @@ class _ThreadCard extends StatelessWidget {
                       const SizedBox(width: AppSpacing.sm),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: AppColors.brand,
-                          borderRadius: BorderRadius.circular(AppRadius.pill),
+                          horizontal: 6,
+                          vertical: 1,
                         ),
-                        child: Text('${thread.unreadCount}',
-                            style: AppTypography.badge
-                                .copyWith(color: Colors.white)),
+                        decoration: BoxDecoration(
+                          gradient: AppGlow.fill(AppColors.brand),
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
+                          boxShadow: AppGlow.halo(AppColors.brand, 22),
+                        ),
+                        child: Text(
+                          '${thread.unreadCount}',
+                          style: AppTypography.badge.copyWith(
+                            color: AppColors.wellGlyph,
+                          ),
+                        ),
                       ),
                     ],
                   ],
@@ -185,11 +214,11 @@ class _ThreadCard extends StatelessWidget {
   }
 }
 
-final _messagesProvider =
-    FutureProvider.autoDispose.family<List<ChatMessage>, String>((ref, id) {
-  ref.watch(dataRevisionProvider);
-  return ref.watch(chatRepositoryProvider).messages(id);
-});
+final _messagesProvider = FutureProvider.autoDispose
+    .family<List<ChatMessage>, String>((ref, id) {
+      ref.watch(dataRevisionProvider);
+      return ref.watch(chatRepositoryProvider).messages(id);
+    });
 
 class ChatDetailScreen extends ConsumerStatefulWidget {
   const ChatDetailScreen({super.key, required this.threadId});
@@ -224,7 +253,7 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
     final thread = threads.where((t) => t.id == widget.threadId).firstOrNull;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         titleSpacing: 0,
         title: Row(
@@ -269,8 +298,17 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
                   : ListView.builder(
                       padding: const EdgeInsets.all(AppSpacing.screenH),
                       itemCount: messages.length,
-                      itemBuilder: (context, i) =>
-                          _MessageBubble(message: messages[i]),
+                      // No stagger here: a thread opens at its newest
+                      // message, and animating rows in would replay a
+                      // conversation the reader has already had.
+                      itemBuilder: (context, i) => _MessageBubble(
+                        message: messages[i],
+                        // Only a group needs to name its speakers. In a
+                        // one-to-one thread the header already says who this
+                        // is, and repeating it above every bubble is the same
+                        // fact printed five times down the screen.
+                        showSender: thread?.isGroup ?? false,
+                      ),
                     ),
             ),
           ),
@@ -288,7 +326,8 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
                     IconButton(
                       icon: const Icon(Icons.attach_file),
                       color: AppColors.textSecondary,
-                      onPressed: () {},
+                      onPressed: () =>
+                          showComingWithBackend(context, 'Attachments'),
                     ),
                     Expanded(
                       child: TextField(
@@ -326,9 +365,12 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, this.showSender = true});
 
   final ChatMessage message;
+
+  /// Whether to caption an incoming bubble with who sent it.
+  final bool showSender;
 
   @override
   Widget build(BuildContext context) {
@@ -345,8 +387,13 @@ class _MessageBubble extends StatelessWidget {
           horizontal: AppSpacing.md,
           vertical: AppSpacing.sm,
         ),
+        // Your own bubble was already the deep brand fill, so by the app's own
+        // rule it lights up. At half strength: a thread is a column of these,
+        // and a full halo on twenty bubbles stops being light and becomes a
+        // green fog down the right-hand side.
         decoration: BoxDecoration(
-          color: isMine ? AppColors.brand : AppColors.surface,
+          color: isMine ? null : AppColors.surface,
+          gradient: isMine ? AppGlow.fill(AppColors.brand) : null,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(AppRadius.lg),
             topRight: const Radius.circular(AppRadius.lg),
@@ -354,17 +401,22 @@ class _MessageBubble extends StatelessWidget {
             bottomRight: Radius.circular(isMine ? AppRadius.sm : AppRadius.lg),
           ),
           border: isMine ? null : Border.all(color: AppColors.border),
+          boxShadow: isMine
+              ? AppGlow.halo(AppColors.brand, 44, strength: 0.5)
+              : null,
         ),
         child: Column(
-          crossAxisAlignment:
-              isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isMine
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
-            if (!isMine)
+            if (!isMine && showSender)
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
-                child: Text(message.senderName,
-                    style: AppTypography.badge
-                        .copyWith(color: AppColors.brand)),
+                child: Text(
+                  message.senderName,
+                  style: AppTypography.badge.copyWith(color: AppColors.brand),
+                ),
               ),
             Text(
               message.text,
@@ -389,8 +441,9 @@ class _MessageBubble extends StatelessWidget {
 
 // ============================================================== resources ==
 
-final _resourceCategoryProvider =
-    StateProvider.autoDispose<String>((ref) => 'All');
+final _resourceCategoryProvider = StateProvider.autoDispose<String>(
+  (ref) => 'All',
+);
 
 final _resourcesProvider = FutureProvider.autoDispose<List<Resource>>((ref) {
   return ref
@@ -415,8 +468,15 @@ class ResourceListScreen extends ConsumerWidget {
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Resources')),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('Resources'),
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          tooltip: 'Menu',
+          onPressed: () => openAppDrawer(ref),
+        ),
+      ),
       body: Column(
         children: [
           const SizedBox(height: AppSpacing.md),
@@ -436,19 +496,24 @@ class ResourceListScreen extends ConsumerWidget {
                   ? const EmptyState(
                       icon: Icons.library_books_outlined,
                       title: 'No resources',
-                      message: 'Marketing material shared with the field will '
+                      message:
+                          'Marketing material shared with the field will '
                           'appear here.',
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.screenH, 0,
-                        AppSpacing.screenH, AppSpacing.xxxl,
+                        AppSpacing.screenH,
+                        0,
+                        AppSpacing.screenH,
+                        AppSpacing.xxxl,
                       ),
                       itemCount: resources.length,
                       separatorBuilder: (_, _) =>
                           const SizedBox(height: AppSpacing.cardGap),
-                      itemBuilder: (context, i) =>
-                          _ResourceCard(resource: resources[i]),
+                      itemBuilder: (context, i) => Arrive.staggered(
+                        index: i,
+                        child: _ResourceCard(resource: resources[i]),
+                      ),
                     ),
             ),
           ),
@@ -486,10 +551,12 @@ class _ResourceCard extends StatelessWidget {
                 Text(resource.title, style: AppTypography.titleMd),
                 if (resource.description != null) ...[
                   const SizedBox(height: 2),
-                  Text(resource.description!,
-                      style: AppTypography.caption,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
+                  Text(
+                    resource.description!,
+                    style: AppTypography.caption,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
                 const SizedBox(height: AppSpacing.sm),
                 // Wrap rather than Row: category names vary in length and this
@@ -530,21 +597,22 @@ class ResourceDetailScreen extends ConsumerWidget {
     final async = ref.watch(_resourceProvider(resourceId));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Resource')),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('Resource Detail')),
       bottomNavigationBar: BottomActionBar(
         children: [
           SecondaryButton(
             label: 'Share',
             icon: Icons.ios_share_outlined,
-            onPressed: () {},
+            onPressed: () => showComingWithBackend(context, 'Sharing'),
           ),
           PrimaryButton(
             label: 'Download',
             icon: Icons.download_outlined,
             onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                  content: Text('Downloads arrive with the backend.')),
+                content: Text('Downloads arrive with the backend.'),
+              ),
             ),
           ),
         ],
@@ -555,11 +623,15 @@ class ResourceDetailScreen extends ConsumerWidget {
         data: (resource) => ListView(
           padding: const EdgeInsets.all(AppSpacing.screenH),
           children: [
+            // The file's stand-in until a real thumbnail exists. Lit, like
+            // every other icon in the app that sits on a deep fill.
             Container(
               height: 180,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.brandSoft,
+                gradient: AppGlow.fill(AppColors.brand),
                 borderRadius: BorderRadius.circular(AppRadius.lg),
+                boxShadow: AppGlow.halo(AppColors.brand, 120, strength: 0.5),
               ),
               child: Icon(
                 switch (resource.fileType) {
@@ -568,7 +640,8 @@ class ResourceDetailScreen extends ConsumerWidget {
                   _ => Icons.description_outlined,
                 },
                 size: 56,
-                color: AppColors.brand,
+                color: AppColors.wellGlyph,
+                shadows: AppGlow.bloom(AppColors.brand, 56),
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -584,7 +657,9 @@ class ResourceDetailScreen extends ConsumerWidget {
                   KeyValueRow(label: 'File type', value: resource.fileType),
                   KeyValueRow(label: 'Size', value: resource.sizeLabel),
                   KeyValueRow(
-                      label: 'Last updated', value: Fmt.date(resource.updatedAt)),
+                    label: 'Last updated',
+                    value: Fmt.date(resource.updatedAt),
+                  ),
                 ],
               ),
             ),
@@ -596,14 +671,15 @@ class ResourceDetailScreen extends ConsumerWidget {
   }
 }
 
-final _resourceProvider =
-    FutureProvider.autoDispose.family<Resource, String>(
+final _resourceProvider = FutureProvider.autoDispose.family<Resource, String>(
   (ref, id) => ref.watch(resourceRepositoryProvider).byId(id),
 );
 
 // ================================================================ surveys ==
 
-final _surveysProvider = FutureProvider.autoDispose<List<SurveyResponse>>((ref) {
+final _surveysProvider = FutureProvider.autoDispose<List<SurveyResponse>>((
+  ref,
+) {
   final session = ref.watch(sessionProvider);
   ref.watch(dataRevisionProvider);
   return ref.watch(surveyRepositoryProvider).list(session);
@@ -617,12 +693,12 @@ class SurveyListScreen extends ConsumerWidget {
     final async = ref.watch(_surveysProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Surveys')),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: AppFab(
         onPressed: () => context.push(Routes.newSurvey),
-        icon: const Icon(Icons.add),
-        label: const Text('New survey'),
+        icon: Icons.add,
+        label: 'New survey',
       ),
       body: async.when(
         loading: () => const SkeletonList(),
@@ -637,8 +713,10 @@ class SurveyListScreen extends ConsumerWidget {
               )
             : ListView.separated(
                 padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.screenH, AppSpacing.screenH,
-                  AppSpacing.screenH, AppSpacing.xxxl * 3,
+                  AppSpacing.screenH,
+                  AppSpacing.screenH,
+                  AppSpacing.screenH,
+                  AppSpacing.xxxl * 3,
                 ),
                 itemCount: surveys.length,
                 separatorBuilder: (_, _) =>
@@ -652,8 +730,10 @@ class SurveyListScreen extends ConsumerWidget {
                         Row(
                           children: [
                             Expanded(
-                              child: Text(s.clientName,
-                                  style: AppTypography.titleMd),
+                              child: Text(
+                                s.clientName,
+                                style: AppTypography.titleMd,
+                              ),
                             ),
                             if (s.rating != null)
                               Row(
@@ -673,9 +753,11 @@ class SurveyListScreen extends ConsumerWidget {
                           ],
                         ),
                         const SizedBox(height: AppSpacing.xs),
-                        Text('${s.clientType.label} · '
-                            '${Fmt.date(s.submittedAt)}',
-                            style: AppTypography.caption),
+                        Text(
+                          '${s.clientType.label} · '
+                          '${Fmt.date(s.submittedAt)}',
+                          style: AppTypography.caption,
+                        ),
                         const SizedBox(height: AppSpacing.sm),
                         Text(s.feedback, style: AppTypography.bodySm),
                         if (s.remarks != null) ...[
@@ -719,7 +801,9 @@ class _NewSurveyScreenState extends ConsumerState<NewSurveyScreen> {
     setState(() => _submitting = true);
 
     final session = ref.read(sessionProvider);
-    await ref.read(surveyRepositoryProvider).create(
+    await ref
+        .read(surveyRepositoryProvider)
+        .create(
           SurveyResponse(
             id: const Uuid().v4(),
             employeeId: session.employee.id,
@@ -738,9 +822,9 @@ class _NewSurveyScreenState extends ConsumerState<NewSurveyScreen> {
     ref.bumpRevision();
     setState(() => _submitting = false);
     context.pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Survey submitted.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Survey submitted.')));
   }
 
   @override
@@ -748,7 +832,7 @@ class _NewSurveyScreenState extends ConsumerState<NewSurveyScreen> {
     final clientsAsync = ref.watch(_commClientsProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('New Survey')),
       bottomNavigationBar: BottomActionBar(
         children: [
@@ -785,7 +869,8 @@ class _NewSurveyScreenState extends ConsumerState<NewSurveyScreen> {
               children: [
                 for (var i = 1; i <= 5; i++)
                   IconButton(
-                    onPressed: () => setState(() => _rating = i == _rating ? 0 : i),
+                    onPressed: () =>
+                        setState(() => _rating = i == _rating ? 0 : i),
                     padding: const EdgeInsets.only(right: AppSpacing.xs),
                     constraints: const BoxConstraints(),
                     iconSize: 30,
@@ -808,11 +893,7 @@ class _NewSurveyScreenState extends ConsumerState<NewSurveyScreen> {
               validator: (v) => Validate.required(v, 'Feedback'),
             ),
             const SizedBox(height: AppSpacing.lg),
-            AppTextField(
-              label: 'Remarks',
-              controller: _remarks,
-              maxLines: 2,
-            ),
+            AppTextField(label: 'Remarks', controller: _remarks, maxLines: 2),
             const SizedBox(height: AppSpacing.xxxl),
           ],
         ),
@@ -834,6 +915,17 @@ final _complaintsProvider = FutureProvider.autoDispose<List<Complaint>>((ref) {
   return ref.watch(complaintRepositoryProvider).list(session);
 });
 
+/// One complaint, by id — the way every other detail screen in the app loads.
+///
+/// This screen used to read the whole list and filter it in the widget, which
+/// fetched every complaint to show one and, worse, made a complaint outside the
+/// caller's list scope render as "not found" even though the record exists.
+final _complaintProvider =
+    FutureProvider.autoDispose.family<Complaint, String>((ref, id) {
+  ref.watch(dataRevisionProvider);
+  return ref.watch(complaintRepositoryProvider).byId(id);
+});
+
 class ComplaintListScreen extends ConsumerWidget {
   const ComplaintListScreen({super.key});
 
@@ -842,12 +934,12 @@ class ComplaintListScreen extends ConsumerWidget {
     final async = ref.watch(_complaintsProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Complaints')),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: AppFab(
         onPressed: () => context.push(Routes.newComplaint),
-        icon: const Icon(Icons.add),
-        label: const Text('Raise'),
+        icon: Icons.add,
+        label: 'Raise',
       ),
       body: async.when(
         loading: () => const SkeletonList(),
@@ -856,14 +948,17 @@ class ComplaintListScreen extends ConsumerWidget {
             ? EmptyState(
                 icon: Icons.report_problem_outlined,
                 title: 'No complaints',
-                message: 'Raise product or service issues on behalf of clients.',
+                message:
+                    'Raise product or service issues on behalf of clients.',
                 actionLabel: 'Raise a complaint',
                 onAction: () => context.push(Routes.newComplaint),
               )
             : ListView.separated(
                 padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.screenH, AppSpacing.screenH,
-                  AppSpacing.screenH, AppSpacing.xxxl * 3,
+                  AppSpacing.screenH,
+                  AppSpacing.screenH,
+                  AppSpacing.screenH,
+                  AppSpacing.xxxl * 3,
                 ),
                 itemCount: complaints.length,
                 separatorBuilder: (_, _) =>
@@ -878,24 +973,31 @@ class ComplaintListScreen extends ConsumerWidget {
                         Row(
                           children: [
                             Expanded(
-                              child: Text(c.subject,
-                                  style: AppTypography.titleMd,
-                                  overflow: TextOverflow.ellipsis),
+                              child: Text(
+                                c.subject,
+                                style: AppTypography.titleMd,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                             StatusBadge(
-                                label: c.status.label,
-                                tone: c.status.tone,
-                                dense: true),
+                              label: c.status.label,
+                              tone: c.status.tone,
+                              dense: true,
+                            ),
                           ],
                         ),
                         const SizedBox(height: AppSpacing.xs),
-                        Text('${c.reference} · ${c.clientName}',
-                            style: AppTypography.caption),
+                        Text(
+                          '${c.reference} · ${c.clientName}',
+                          style: AppTypography.caption,
+                        ),
                         const SizedBox(height: AppSpacing.sm),
-                        Text(c.description,
-                            style: AppTypography.bodySm,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis),
+                        Text(
+                          c.description,
+                          style: AppTypography.bodySm,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
                   );
@@ -913,23 +1015,18 @@ class ComplaintDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(_complaintsProvider);
+    final async = ref.watch(_complaintProvider(complaintId));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Complaint')),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('Complaint Detail')),
       body: async.when(
         loading: () => const LoadingState(),
-        error: (_, _) => const ErrorState(),
-        data: (complaints) {
-          final c = complaints.where((x) => x.id == complaintId).firstOrNull;
-          if (c == null) {
-            return const EmptyState(
-              icon: Icons.search_off,
-              title: 'Complaint not found',
-            );
-          }
-
+        error: (_, _) => const EmptyState(
+          icon: Icons.search_off,
+          title: 'Complaint not found',
+        ),
+        data: (c) {
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.screenH),
             children: [
@@ -958,7 +1055,10 @@ class ComplaintDetailScreen extends ConsumerWidget {
                     KeyValueRow(label: 'Product', value: c.productName),
                     KeyValueRow(label: 'Mobile', value: c.mobile),
                     KeyValueRow(label: 'Email', value: c.email),
-                    KeyValueRow(label: 'Raised on', value: Fmt.date(c.createdAt)),
+                    KeyValueRow(
+                      label: 'Raised on',
+                      value: Fmt.date(c.createdAt),
+                    ),
                   ],
                 ),
               ),
@@ -971,9 +1071,12 @@ class ComplaintDetailScreen extends ConsumerWidget {
                 AppCard(
                   color: AppColors.successSoft,
                   borderColor: Colors.transparent,
-                  child: Text(c.resolution!,
-                      style: AppTypography.body
-                          .copyWith(color: AppColors.success)),
+                  child: Text(
+                    c.resolution!,
+                    style: AppTypography.body.copyWith(
+                      color: AppColors.success,
+                    ),
+                  ),
                 ),
               ],
               const SizedBox(height: AppSpacing.xxxl),
@@ -1015,7 +1118,9 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
     if (!_formKey.currentState!.validate() || _client == null) return;
     setState(() => _submitting = true);
 
-    await ref.read(complaintRepositoryProvider).create(
+    await ref
+        .read(complaintRepositoryProvider)
+        .create(
           Complaint(
             id: const Uuid().v4(),
             reference: 'CMP-${DateTime.now().millisecondsSinceEpoch % 10000}',
@@ -1036,9 +1141,9 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
     ref.bumpRevision();
     setState(() => _submitting = false);
     context.pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Complaint raised.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Complaint raised.')));
   }
 
   @override
@@ -1047,7 +1152,7 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
     final productsAsync = ref.watch(_commProductsProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Raise Complaint')),
       bottomNavigationBar: BottomActionBar(
         children: [
@@ -1138,7 +1243,8 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
               label: 'Attach photo',
               icon: Icons.photo_camera_outlined,
               small: true,
-              onPressed: () {},
+              onPressed: () =>
+                  showComingWithBackend(context, 'Attaching a photo'),
             ),
             const SizedBox(height: AppSpacing.xxxl),
           ],

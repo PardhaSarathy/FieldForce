@@ -34,16 +34,16 @@ class ActivityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final needsFlag = activity.status == ActivityStatus.completed &&
-        !activity.isVerified;
+    final needsFlag =
+        activity.status == ActivityStatus.completed && !activity.isVerified;
 
     return AppCard(
       onTap: onTap ?? () => context.push(Routes.activityDetail(activity.id)),
       accentColor: activity.status == ActivityStatus.inProgress
           ? AppColors.success
           : activity.status == ActivityStatus.missed
-              ? AppColors.error
-              : null,
+          ? AppColors.error
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -83,7 +83,7 @@ class ActivityCard extends StatelessWidget {
                 icon: Icons.schedule_outlined,
                 text: showDate
                     ? '${Fmt.dateShort(activity.scheduledStart)} · '
-                        '${Fmt.time(activity.scheduledStart)}'
+                          '${Fmt.time(activity.scheduledStart)}'
                     : Fmt.time(activity.scheduledStart),
               ),
               if (activity.areaName != null)
@@ -92,8 +92,7 @@ class ActivityCard extends StatelessWidget {
                 // without adding meaning.
                 Text(activity.areaName!, style: AppTypography.caption),
               if (showEmployee)
-                _Meta(
-                    icon: Icons.person_outline, text: activity.employeeName),
+                _Meta(icon: Icons.person_outline, text: activity.employeeName),
             ],
           ),
           if (needsFlag || activity.syncStatus == SyncStatus.failed) ...[

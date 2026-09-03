@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pharmaconnect/core/theme/app_colors.dart';
 import 'package:pharmaconnect/shared/enums/app_enums.dart';
 import 'package:pharmaconnect/shared/models/business.dart';
 
@@ -170,7 +171,7 @@ void main() {
 
       expect(target.achievementPercent, closeTo(75, 0.001));
       expect(target.gap, closeTo(150000, 0.001));
-      expect(target.tone, StatusTone.brand);
+      expect(target.tier, GameTier.ahead);
     });
 
     test('over-achievement is preserved, not clamped at 100', () {
@@ -186,7 +187,7 @@ void main() {
       expect(target.achievementPercent, closeTo(125, 0.001));
       // Gap cannot go negative — you cannot owe negative sales.
       expect(target.gap, 0);
-      expect(target.tone, StatusTone.success);
+      expect(target.tier, GameTier.met);
     });
 
     test('a zero target yields zero achievement rather than dividing by zero', () {

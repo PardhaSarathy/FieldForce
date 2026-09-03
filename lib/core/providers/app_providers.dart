@@ -7,6 +7,7 @@ import '../../shared/enums/app_enums.dart';
 import '../../shared/models/activity.dart';
 import '../../shared/models/business.dart';
 import '../../shared/models/engagement.dart';
+import '../../shared/models/field_ops.dart';
 import '../../shared/models/organization.dart';
 
 /// Composition root.
@@ -23,6 +24,8 @@ final clientRepositoryProvider =
     Provider<ClientRepository>((ref) => MockClientRepository());
 final activityRepositoryProvider =
     Provider<ActivityRepository>((ref) => MockActivityRepository());
+final dayPlanRepositoryProvider =
+    Provider<DayPlanRepository>((ref) => MockDayPlanRepository());
 final travelRepositoryProvider =
     Provider<TravelRepository>((ref) => MockTravelRepository());
 final expenseRepositoryProvider =
@@ -169,15 +172,11 @@ final geoFenceRadiusProvider = StateProvider<double>((ref) => 50);
 final todaySummaryProvider = FutureProvider.autoDispose<DaySummary>((ref) async {
   final session = ref.watch(sessionProvider);
   final repo = ref.watch(activityRepositoryProvider);
+  // Home's day state comes from the day plan, so submitting one has to move
+  // this screen. Without the revision watch the rep intimated, came back, and
+  // Home still said "Day not started".
+  ref.watch(dataRevisionProvider);
   return repo.daySummary(session.employee.id, DateTime.now());
-});
-
-/// Day summary for an arbitrary date, used by the day-plan and calendar views.
-final daySummaryProvider =
-    FutureProvider.autoDispose.family<DaySummary, DateTime>((ref, date) async {
-  final session = ref.watch(sessionProvider);
-  final repo = ref.watch(activityRepositoryProvider);
-  return repo.daySummary(session.employee.id, date);
 });
 
 final unreadNotificationsProvider =
@@ -209,20 +208,6 @@ final teamProvider = FutureProvider.autoDispose<List<Employee>>((ref) async {
   return ref.watch(employeeRepositoryProvider).teamOf(session);
 });
 
-final myTasksProvider = FutureProvider.autoDispose<List<FieldTask>>((ref) async {
-  final session = ref.watch(sessionProvider);
-  return ref
-      .watch(taskRepositoryProvider)
-      .list(session, employeeId: session.employee.id);
-});
-
-/// Open (not completed) tasks for the signed-in user — the "Pending Tasks"
-/// figure on Home.
-final pendingTaskCountProvider = FutureProvider.autoDispose<int>((ref) async {
-  final tasks = await ref.watch(myTasksProvider.future);
-  return tasks.where((t) => t.effectiveStatus() != TaskStatus.completed).length;
-});
-
 /// This month's visit target for the signed-in user, used as the secondary
 /// figure under Home's goal ring. Null when no target has been assigned.
 final monthlyVisitTargetProvider =
@@ -237,6 +222,74 @@ final monthlyVisitTargetProvider =
       );
   return targets.isEmpty ? null : targets.first;
 });
+
+/// The month the expense claim screen is showing. Not auto-disposed: stepping
+/// into a day and back should return to the month you were in, not to today.
+final claimMonthProvider = StateProvider<DateTime>((ref) {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month);
+});
+
+/// What one worked day pays. Company reference data (§ master data), so it is
+/// read through the repository rather than written into a screen.
+final dailyAllowanceProvider = FutureProvider<double>(
+  (ref) => ref.watch(expenseRepositoryProvider).dailyAllowance(),
+);
+
+/// The chosen month as claimable days: every date the rep intimated, joined
+/// to whatever has been filed against it.
+final claimMonthDaysProvider =
+    FutureProvider.autoDispose<List<ClaimDay>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  final month = ref.watch(claimMonthProvider);
+  ref.watch(dataRevisionProvider);
+
+  return ref.watch(expenseRepositoryProvider).claimMonth(session, month);
+});
+
+/// Today's day, if the rep intimated and has not yet claimed for it, plus how
+/// many earlier days are still open.
+///
+/// Home asks one question of this — "is there anything to confirm?" — so the
+/// answer is computed once here rather than by the card. A widget deciding it
+/// would be a second opinion on what "claimed" means.
+final todayClaimProvider =
+    FutureProvider.autoDispose<TodayClaim>((ref) async {
+  final session = ref.watch(sessionProvider);
+  ref.watch(dataRevisionProvider);
+
+  final now = DateTime.now();
+  final days = await ref
+      .watch(expenseRepositoryProvider)
+      .claimMonth(session, DateTime(now.year, now.month));
+
+  final today = days
+      .where((d) =>
+          d.date.year == now.year &&
+          d.date.month == now.month &&
+          d.date.day == now.day)
+      .firstOrNull;
+
+  return TodayClaim(
+    today: today,
+    // Earlier days only. Today is the card's subject, so counting it in the
+    // catch-up line would have the card chase itself.
+    earlierOpen: days
+        .where((d) => d.isOpen && d.date.isBefore(DateTime(now.year, now.month, now.day)))
+        .length,
+  );
+});
+
+/// What Home needs to know about claiming, in one value.
+class TodayClaim {
+  const TodayClaim({required this.today, required this.earlierOpen});
+
+  final ClaimDay? today;
+  final int earlierOpen;
+
+  /// Nothing to show: no plan filed today and nothing owed behind it.
+  bool get isEmpty => (today == null || !today!.isOpen) && earlierOpen == 0;
+}
 
 /// Bumped after any write so dependent lists refetch. A crude but honest
 /// invalidation signal for the mock build; the real app will use targeted

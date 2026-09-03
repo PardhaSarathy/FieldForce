@@ -41,7 +41,7 @@ class LocationError extends LocationResult {
         LocationFailure.serviceDisabled =>
           'Location services are turned off. Turn on GPS to verify this visit.',
         LocationFailure.permissionDenied =>
-          'PharmaConnect needs location access to verify field visits.',
+          'Mr Sales needs location access to verify field visits.',
         LocationFailure.permissionPermanentlyDenied =>
           'Location access is blocked. Enable it in Settings to verify visits.',
         LocationFailure.timeout =>

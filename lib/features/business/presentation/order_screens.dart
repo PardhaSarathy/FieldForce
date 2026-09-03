@@ -18,8 +18,10 @@ import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
 
-final _orderProvider =
-    FutureProvider.autoDispose.family<Order, String>((ref, id) {
+final _orderProvider = FutureProvider.autoDispose.family<Order, String>((
+  ref,
+  id,
+) {
   ref.watch(dataRevisionProvider);
   return ref.watch(businessRepositoryProvider).orderById(id);
 });
@@ -34,7 +36,7 @@ class OrderDetailScreen extends ConsumerWidget {
     final async = ref.watch(_orderProvider(orderId));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Order Detail')),
       body: async.when(
         loading: () => const LoadingState(),
@@ -60,8 +62,9 @@ class OrderDetailScreen extends ConsumerWidget {
                   KeyValueRow(label: 'Order date', value: Fmt.date(order.date)),
                   if (order.expectedDelivery != null)
                     KeyValueRow(
-                        label: 'Expected delivery',
-                        value: Fmt.date(order.expectedDelivery!)),
+                      label: 'Expected delivery',
+                      value: Fmt.date(order.expectedDelivery!),
+                    ),
                   KeyValueRow(label: 'Remarks', value: order.remarks),
                 ],
               ),
@@ -120,18 +123,28 @@ class _OrderLineRow extends StatelessWidget {
             spacing: AppSpacing.md,
             runSpacing: AppSpacing.xs,
             children: [
-              Text('${item.quantity} × ${Fmt.money(item.rate)}',
-                  style: AppTypography.caption),
+              Text(
+                '${item.quantity} × ${Fmt.money(item.rate)}',
+                style: AppTypography.caption,
+              ),
               if (item.freeQuantity > 0)
-                Text('+${item.freeQuantity} FOC',
-                    style: AppTypography.caption
-                        .copyWith(color: AppColors.success)),
+                Text(
+                  '+${item.freeQuantity} FOC',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.success,
+                  ),
+                ),
               if (item.discountPercent > 0)
-                Text('${item.discountPercent.toStringAsFixed(1)}% off',
-                    style: AppTypography.caption
-                        .copyWith(color: AppColors.warning)),
-              Text('GST ${item.gstPercent.round()}%',
-                  style: AppTypography.caption),
+                Text(
+                  '${item.discountPercent.toStringAsFixed(1)}% off',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.warning,
+                  ),
+                ),
+              Text(
+                'GST ${item.gstPercent.round()}%',
+                style: AppTypography.caption,
+              ),
             ],
           ),
         ],
@@ -229,16 +242,16 @@ class _NewOrderScreenState extends ConsumerState<NewOrderScreen> {
   /// Draft order used for live totals. Building a real [Order] rather than
   /// summing by hand guarantees the preview matches what gets submitted.
   Order get _draft => Order(
-        id: 'draft',
-        orderNumber: 'DRAFT',
-        employeeId: '',
-        employeeName: '',
-        clientId: _client?.id ?? '',
-        clientName: _client?.name ?? '',
-        date: DateTime.now(),
-        status: ApprovalStatus.draft,
-        items: _items,
-      );
+    id: 'draft',
+    orderNumber: 'DRAFT',
+    employeeId: '',
+    employeeName: '',
+    clientId: _client?.id ?? '',
+    clientName: _client?.name ?? '',
+    date: DateTime.now(),
+    status: ApprovalStatus.draft,
+    items: _items,
+  );
 
   bool get _canSubmit => _client != null && _items.isNotEmpty;
 
@@ -246,12 +259,15 @@ class _NewOrderScreenState extends ConsumerState<NewOrderScreen> {
     final products = await ref.read(_orderProductsProvider.future);
     if (!mounted) return;
 
-    final available =
-        products.where((p) => !_items.any((i) => i.productId == p.id)).toList();
+    final available = products
+        .where((p) => !_items.any((i) => i.productId == p.id))
+        .toList();
 
     if (available.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Every product is already on this order.')),
+        const SnackBar(
+          content: Text('Every product is already on this order.'),
+        ),
       );
       return;
     }
@@ -286,14 +302,16 @@ class _NewOrderScreenState extends ConsumerState<NewOrderScreen> {
 
     if (picked == null) return;
     setState(() {
-      _items.add(OrderItem(
-        productId: picked.id,
-        productName: picked.name,
-        rate: picked.mrp,
-        quantity: 10,
-        gstPercent: picked.gstPercent,
-        packSize: picked.packSize,
-      ));
+      _items.add(
+        OrderItem(
+          productId: picked.id,
+          productName: picked.name,
+          rate: picked.mrp,
+          quantity: 10,
+          gstPercent: picked.gstPercent,
+          packSize: picked.packSize,
+        ),
+      );
     });
   }
 
@@ -333,7 +351,7 @@ class _NewOrderScreenState extends ConsumerState<NewOrderScreen> {
   Widget build(BuildContext context) {
     if (_created != null) {
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.transparent,
         body: SafeArea(
           child: SuccessState(
             title: 'Order submitted',
@@ -343,7 +361,9 @@ class _NewOrderScreenState extends ConsumerState<NewOrderScreen> {
                 children: [
                   KeyValueRow(label: 'Customer', value: _created!.clientName),
                   KeyValueRow(
-                      label: 'Products', value: '${_created!.lineCount}'),
+                    label: 'Products',
+                    value: '${_created!.lineCount}',
+                  ),
                   KeyValueRow(
                     label: 'Total',
                     value: Fmt.moneyPrecise(_created!.grandTotal),
@@ -364,7 +384,7 @@ class _NewOrderScreenState extends ConsumerState<NewOrderScreen> {
     final clientsAsync = ref.watch(_orderClientsProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('New Order')),
       bottomNavigationBar: BottomActionBar(
         children: [
@@ -531,7 +551,9 @@ class _OrderLineEditor extends StatelessWidget {
                   children: [
                     for (final pct in [0.0, 5.0, 7.5, 10.0, 15.0])
                       ChoiceChip(
-                        label: Text('${pct.toStringAsFixed(pct == pct.roundToDouble() ? 0 : 1)}%'),
+                        label: Text(
+                          '${pct.toStringAsFixed(pct == pct.roundToDouble() ? 0 : 1)}%',
+                        ),
                         selected: item.discountPercent == pct,
                         onSelected: (_) =>
                             onChanged(item.copyWith(discountPercent: pct)),

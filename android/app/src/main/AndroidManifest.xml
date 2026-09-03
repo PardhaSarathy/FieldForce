@@ -1,8 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- enableOnBackInvokedCallback opts in to Android 13+ predictive back, so
+         the back swipe previews where it is going instead of ending abruptly.
+         Flutter honours each route's PopScope either way; this is the
+         animation around it. -->
     <application
-        android:label="PharmaConnect"
+        android:label="Mr Sales"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

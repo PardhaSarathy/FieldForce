@@ -1,5 +1,6 @@
 import 'package:uuid/uuid.dart';
 
+import '../../core/location/geo_math.dart';
 import '../../shared/enums/app_enums.dart';
 import '../../shared/models/activity.dart';
 import '../../shared/models/business.dart';
@@ -24,10 +25,52 @@ class MockStore {
   MockStore._();
   static final MockStore instance = MockStore._();
 
+  /// What a worked day pays, before anything is spent above it.
+  ///
+  /// Flat: every worked day, whatever the distance. Reference data a company
+  /// maintains, so it lives here rather than in a screen and reaches the UI
+  /// through `ExpenseRepository.dailyAllowance()`. It will come from
+  /// `/master-data/allowances` behind the same call later.
+  static const double dailyAllowance = 250;
+
   final _data = MockDataset.instance;
+
+  /// The specialty master list.
+  ///
+  /// Static here because it is reference data a company maintains, not
+  /// transactional data a rep creates — it is exactly the shape that will come
+  /// from a `/master-data/specialties` endpoint later. It lived as a literal
+  /// inside the admin screen before, where the client form could not reach it
+  /// and the two would have drifted the first time anyone edited either.
+  static const List<String> specialties = [
+    'Cardiologist',
+    'Dentist',
+    'Dermatologist',
+    'Diabetologist',
+    'ENT Specialist',
+    'Endocrinologist',
+    'Gastroenterologist',
+    'General Surgeon',
+    'Gynecologist',
+    'Hematologist',
+    'Nephrologist',
+    'Neurologist',
+    'Neurosurgeon',
+    'Oncologist',
+    'Ophthalmologist',
+    'Orthopedic',
+    'Pediatrician',
+    'Physician',
+    'Psychiatrist',
+    'Pulmonologist',
+    'Radiologist',
+    'Rheumatologist',
+    'Urologist',
+  ];
 
   late final List<Client> clients = [..._data.clients];
   late final List<Activity> activities = [..._data.activities];
+  late final List<DayPlan> dayPlans = [..._data.dayPlans];
   late final List<Expense> expenses = [..._data.expenses];
   late final List<TravelPlan> travelPlans = [..._data.travelPlans];
   late final List<LeaveRequest> leaves = [..._data.leaveRequests];
@@ -185,6 +228,14 @@ class MockEmployeeRepository implements EmployeeRepository {
 class MockClientRepository implements ClientRepository {
   final _store = MockStore.instance;
 
+  /// Sorted, so the picker's list is predictable and its search is the only
+  /// thing that reorders anything.
+  @override
+  Future<List<String>> specialties() async {
+    await _latency();
+    return List.of(MockStore.specialties)..sort();
+  }
+
   @override
   Future<List<Client>> list(
     Session session, {
@@ -292,10 +343,20 @@ class MockActivityRepository implements ActivityRepository {
         .toList()
       ..sort((a, b) => a.scheduledStart.compareTo(b.scheduledStart));
 
+    // The intimation for this date, if the rep has filed one. It is what makes
+    // the day "started" and what names a non-field day as a meeting or a
+    // training — both facts the rep already typed into My Day Plan and which,
+    // until now, reached no screen.
+    final plan = _store.dayPlans
+        .where((p) => p.employeeId == employeeId && _sameDay(p.date, date))
+        .firstOrNull;
+
     return DaySummary(
       date: date,
       activities: items,
       headquarters: employee.headquarters,
+      workType: plan?.workType ?? WorkType.fieldWork,
+      declaredAt: plan?.submittedAt,
     );
   }
 
@@ -357,6 +418,53 @@ class MockActivityRepository implements ActivityRepository {
   }
 }
 
+// ============================================================== day plan ==
+
+class MockDayPlanRepository implements DayPlanRepository {
+  final _store = MockStore.instance;
+
+  @override
+  Future<DayPlan?> forDate(String employeeId, DateTime date) async {
+    await _latency();
+    return _store.dayPlans
+        .where((p) =>
+            p.employeeId == employeeId &&
+            p.date.year == date.year &&
+            p.date.month == date.month &&
+            p.date.day == date.day)
+        .firstOrNull;
+  }
+
+  @override
+  Future<DayPlan> submit(DayPlan plan) async {
+    await _latency();
+    // One intimation per rep per day: a correction replaces the morning's
+    // first answer rather than appearing beside it.
+    _store.dayPlans.removeWhere((p) =>
+        p.employeeId == plan.employeeId &&
+        p.date.year == plan.date.year &&
+        p.date.month == plan.date.month &&
+        p.date.day == plan.date.day);
+    _store.dayPlans.add(plan);
+    return plan;
+  }
+
+  @override
+  Future<List<DayPlan>> list(Session session, {String? employeeId}) async {
+    await _latency();
+    return _store.dayPlans
+        .where((p) => _store.canSee(session, p.employeeId, filterId: employeeId))
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+  }
+
+  @override
+  Future<String> addressFor(GeoPoint point, {String? areaId}) async {
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    return _store.seed.addressFor(areaId: areaId, point: point);
+  }
+}
+
 // ================================================================ travel ==
 
 class MockTravelRepository implements TravelRepository {
@@ -388,6 +496,14 @@ class MockTravelRepository implements TravelRepository {
   Future<TravelPlan> create(TravelPlan plan) async {
     await _latency(500);
     _store.travelPlans.add(plan);
+    return plan;
+  }
+
+  @override
+  Future<TravelPlan> update(TravelPlan plan) async {
+    await _latency(400);
+    final index = _store.travelPlans.indexWhere((p) => p.id == plan.id);
+    if (index >= 0) _store.travelPlans[index] = plan;
     return plan;
   }
 
@@ -477,6 +593,130 @@ class MockExpenseRepository implements ExpenseRepository {
     _store.expenses[index] = updated;
     return updated;
   }
+
+  // ------------------------------------------------------------- claiming
+
+  @override
+  Future<double> dailyAllowance() async {
+    await _latency(120);
+    return MockStore.dailyAllowance;
+  }
+
+  @override
+  Future<List<ClaimDay>> claimMonth(
+    Session session,
+    DateTime month, {
+    String? employeeId,
+  }) async {
+    await _latency(260);
+
+    final id = employeeId ?? session.employee.id;
+    bool inMonth(DateTime d) => d.year == month.year && d.month == month.month;
+
+    final plans = _store.dayPlans
+        .where((p) => p.employeeId == id && inMonth(p.date))
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+
+    final filed = _store.expenses.where(
+      (e) => e.employeeId == id && inMonth(e.date),
+    );
+
+    return [
+      for (final plan in plans)
+        ClaimDay(
+          date: plan.date,
+          dayPlanId: plan.id,
+          workType: plan.workType,
+          // The cluster is the more useful of the two — an area is a whole
+          // city, a cluster is where he actually was.
+          place: plan.clusterName ?? plan.areaName ?? '—',
+          allowance: ClaimDay.isClaimable(plan.workType)
+              ? MockStore.dailyAllowance
+              : 0,
+          // Matched on the day plan, not on the date. A claim belongs to the
+          // intimation it was filed against, and matching by date would
+          // silently attach it to a second plan for the same day.
+          expenses: filed.where((e) => e.dayPlanId == plan.id).toList(),
+          calls: _store.activities
+              .where((a) =>
+                  a.employeeId == id &&
+                  a.status == ActivityStatus.completed &&
+                  _sameDay(a.scheduledStart, plan.date))
+              .length,
+        ),
+    ];
+  }
+
+  @override
+  Future<int> confirmStandardDays(Session session, List<ClaimDay> days) async {
+    await _latency(600);
+
+    var added = 0;
+    for (final day in days) {
+      if (!day.claimable) continue;
+
+      // Asked of the *store*, not of the ClaimDay handed in.
+      //
+      // A `ClaimDay` is a snapshot taken when the screen loaded, so after the
+      // first confirm the object in the caller's list still reads as open —
+      // and a second tap on "confirm all" paid every day again. Checking the
+      // snapshot is checking a copy of the question. This is the guard that
+      // makes the button safe to press twice, which is exactly what a rep
+      // does when he is not sure it worked.
+      final already = _store.expenses.any(
+        (e) => e.dayPlanId == day.dayPlanId,
+      );
+      if (already) continue;
+
+      _store.expenses.add(
+        Expense(
+          id: const Uuid().v4(),
+          employeeId: session.employee.id,
+          employeeName: session.employee.name,
+          date: day.date,
+          category: ExpenseCategory.other,
+          amount: day.allowance,
+          status: ApprovalStatus.draft,
+          description: 'Daily allowance',
+          dayPlanId: day.dayPlanId,
+          allowance: day.allowance,
+          createdAt: DateTime.now(),
+        ),
+      );
+      added++;
+    }
+    return added;
+  }
+
+  @override
+  Future<int> submitMonth(Session session, DateTime month) async {
+    await _latency(600);
+
+    var sent = 0;
+    for (var i = 0; i < _store.expenses.length; i++) {
+      final e = _store.expenses[i];
+      if (e.employeeId != session.employee.id) continue;
+      if (e.date.year != month.year || e.date.month != month.month) continue;
+      if (e.status != ApprovalStatus.draft) continue;
+
+      _store.expenses[i] = e.copyWith(
+        status: ApprovalStatus.submitted,
+        approvalHistory: [
+          ...e.approvalHistory,
+          ApprovalEvent(
+            status: ApprovalStatus.submitted,
+            actorId: e.employeeId,
+            actorName: e.employeeName,
+            actorRole: 'MR',
+            at: DateTime.now(),
+          ),
+        ],
+      );
+      sent++;
+    }
+    return sent;
+  }
 }
 
 // ==================================================================== hr ==
@@ -526,7 +766,9 @@ class MockHrRepository implements HrRepository {
 
       final status = isHoliday
           ? AttendanceStatus.holiday
-          : date.weekday == DateTime.sunday
+          // A Sunday is a week off unless the rep actually worked it — the
+          // calendar must agree with the visits it is derived from.
+          : (date.weekday == DateTime.sunday && !hasWork)
               ? AttendanceStatus.weekOff
               : isLeave
                   ? AttendanceStatus.leave

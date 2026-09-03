@@ -93,15 +93,15 @@ class AppNotification {
   final String? relatedId;
 
   AppNotification copyWith({bool? isRead}) => AppNotification(
-        id: id,
-        kind: kind,
-        title: title,
-        body: body,
-        createdAt: createdAt,
-        isRead: isRead ?? this.isRead,
-        deepLink: deepLink,
-        relatedId: relatedId,
-      );
+    id: id,
+    kind: kind,
+    title: title,
+    body: body,
+    createdAt: createdAt,
+    isRead: isRead ?? this.isRead,
+    deepLink: deepLink,
+    relatedId: relatedId,
+  );
 }
 
 class ChatThread {

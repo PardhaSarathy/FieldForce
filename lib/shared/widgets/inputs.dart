@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_glow.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/formatters.dart';
+import 'primitives.dart';
 
 /// A labelled field wrapper.
 ///
@@ -156,8 +159,11 @@ class AppTextField extends StatelessWidget {
           fillColor: enabled ? AppColors.surface : AppColors.surfaceSecondary,
           prefixIcon: prefixIcon == null
               ? null
-              : Icon(prefixIcon, size: AppSizes.iconMd,
-                  color: AppColors.textSecondary),
+              : Icon(
+                  prefixIcon,
+                  size: AppSizes.iconMd,
+                  color: AppColors.textSecondary,
+                ),
           suffixIcon: suffix,
           contentPadding: EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
@@ -198,8 +204,11 @@ class SearchField extends StatelessWidget {
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
         hintText: hint,
-        prefixIcon: const Icon(Icons.search,
-            size: AppSizes.iconLg, color: AppColors.textSecondary),
+        prefixIcon: const Icon(
+          Icons.search,
+          size: AppSizes.iconLg,
+          color: AppColors.textSecondary,
+        ),
         suffixIcon: hasText
             ? IconButton(
                 icon: const Icon(Icons.close, size: AppSizes.iconMd),
@@ -217,8 +226,115 @@ class SearchField extends StatelessWidget {
   }
 }
 
+/// Two or three options, shown all at once.
+///
+/// The right control for a small closed set: a dropdown hides both answers
+/// behind a tap and then costs a second tap to pick one of them, which is more
+/// work than simply reading them. Anything longer belongs in a
+/// [DropdownField] — past three the row runs out of width and the labels start
+/// ellipsising, which is worse than a sheet.
+///
+/// Selection is marked by a radio glyph as well as the tint, so it never rests
+/// on colour alone.
+class SegmentedField<T> extends StatelessWidget {
+  const SegmentedField({
+    super.key,
+    required this.options,
+    required this.itemLabel,
+    required this.value,
+    required this.onChanged,
+    this.label,
+    this.required = false,
+    this.helper,
+  });
+
+  final List<T> options;
+  final String Function(T) itemLabel;
+  final T value;
+  final ValueChanged<T> onChanged;
+  final String? label;
+  final bool required;
+  final String? helper;
+
+  @override
+  Widget build(BuildContext context) {
+    return FieldShell(
+      label: label,
+      required: required,
+      helper: helper,
+      child: Row(
+        children: [
+          for (var i = 0; i < options.length; i++) ...[
+            if (i > 0) const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  AppHaptics.selection();
+                  onChanged(options[i]);
+                },
+                behavior: HitTestBehavior.opaque,
+                child: AppCard(
+                  // The tint and the border cross-fade rather than switching,
+                  // so choosing between two options reads as one control
+                  // changing state instead of two cards swapping appearance.
+                  animateColour: true,
+                  color: value == options[i]
+                      ? AppColors.brandSoft
+                      : AppColors.surface,
+                  borderColor: value == options[i]
+                      ? AppColors.brand
+                      : AppColors.border,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                    vertical: AppSpacing.md,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        value == options[i]
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                        size: AppSizes.iconMd,
+                        color: value == options[i]
+                            ? AppColors.brand
+                            : AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Flexible(
+                        child: Text(
+                          itemLabel(options[i]),
+                          style: AppTypography.titleSm,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// Typed dropdown. Generic so callers keep their enum/model type end to end
 /// instead of round-tripping through strings.
+///
+/// The options open in a **bottom sheet**, not in a menu anchored to the field.
+/// A rep works this form one-handed in the street: an anchored menu opens
+/// wherever the field happens to be — often the top of a long form, out of
+/// thumb reach — it can open behind the keyboard mid-edit, and the cascading
+/// pairs in this app (territory → area, HQ → cluster, the client list) are long
+/// enough that a popup becomes a cramped scroller. A sheet is always under the
+/// thumb, always above the keyboard, and has room for a search box.
+///
+/// [value] stays the caller's source of truth. The [FormField] underneath is
+/// only here so `validator` keeps working; its own value is re-synced whenever
+/// the caller changes [value] out from under it, which is what happens every
+/// time a parent dropdown resets its child.
 class DropdownField<T> extends StatelessWidget {
   const DropdownField({
     super.key,
@@ -245,34 +361,216 @@ class DropdownField<T> extends StatelessWidget {
   final String? helper;
   final String? Function(T?)? validator;
 
+  /// Above this many options the sheet grows a search box. Below it, searching
+  /// is more work than reading the list.
+  static const _searchThreshold = 8;
+
+  Future<void> _open(BuildContext context, FormFieldState<T> state) async {
+    final picked = await showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _OptionSheet<T>(
+        title: label ?? hint,
+        items: items,
+        itemLabel: itemLabel,
+        selected: value,
+        showSearch: items.length >= _searchThreshold,
+      ),
+    );
+    if (picked == null) return;
+    state.didChange(picked);
+    onChanged?.call(picked);
+  }
+
   @override
   Widget build(BuildContext context) {
     return FieldShell(
       label: label,
       required: required,
       helper: helper,
-      child: DropdownButtonFormField<T>(
+      child: FormField<T>(
         initialValue: value,
-        onChanged: enabled ? onChanged : null,
         validator: validator,
-        isExpanded: true,
-        style: AppTypography.body,
-        icon: const Icon(Icons.keyboard_arrow_down,
-            color: AppColors.textSecondary),
-        dropdownColor: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        hint: Text(hint,
-            style: AppTypography.body.copyWith(color: AppColors.textSecondary)),
-        decoration: InputDecoration(
-          fillColor: enabled ? AppColors.surface : AppColors.surfaceSecondary,
-        ),
-        items: [
-          for (final item in items)
-            DropdownMenuItem(
-              value: item,
-              child: Text(itemLabel(item), overflow: TextOverflow.ellipsis),
+        builder: (state) {
+          // The caller owns the value. When it changes externally — a parent
+          // dropdown clearing its child — the FormField would otherwise keep
+          // validating against the stale one.
+          if (state.value != value) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (state.mounted) state.didChange(value);
+            });
+          }
+
+          return InkWell(
+            onTap: enabled && items.isNotEmpty
+                ? () => _open(context, state)
+                : null,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            child: InputDecorator(
+              isEmpty: value == null,
+              decoration: InputDecoration(
+                fillColor: enabled
+                    ? AppColors.surface
+                    : AppColors.surfaceSecondary,
+                errorText: state.errorText,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      value == null ? hint : itemLabel(value as T),
+                      style: AppTypography.body.copyWith(
+                        color: value == null
+                            ? AppColors.textSecondary
+                            : AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const Icon(
+                    Icons.keyboard_arrow_down,
+                    color: AppColors.textSecondary,
+                  ),
+                ],
+              ),
             ),
-        ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// The options themselves. Capped at 70% of the screen so the form behind it
+/// stays visible — a sheet that covers everything is a screen, and this is a
+/// choice inside a form, not a departure from it.
+class _OptionSheet<T> extends StatefulWidget {
+  const _OptionSheet({
+    required this.title,
+    required this.items,
+    required this.itemLabel,
+    required this.selected,
+    required this.showSearch,
+  });
+
+  final String title;
+  final List<T> items;
+  final String Function(T) itemLabel;
+  final T? selected;
+  final bool showSearch;
+
+  @override
+  State<_OptionSheet<T>> createState() => _OptionSheetState<T>();
+}
+
+class _OptionSheetState<T> extends State<_OptionSheet<T>> {
+  final _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final matches = _query.isEmpty
+        ? widget.items
+        : widget.items
+              .where(
+                (i) => widget
+                    .itemLabel(i)
+                    .toLowerCase()
+                    .contains(_query.toLowerCase()),
+              )
+              .toList();
+
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenH,
+                AppSpacing.xs,
+                AppSpacing.screenH,
+                AppSpacing.md,
+              ),
+              child: Text(widget.title, style: AppTypography.h3),
+            ),
+            if (widget.showSearch)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenH,
+                  0,
+                  AppSpacing.screenH,
+                  AppSpacing.md,
+                ),
+                child: SearchField(
+                  controller: _search,
+                  autofocus: false,
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+            Flexible(
+              child: matches.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.screenH,
+                        AppSpacing.md,
+                        AppSpacing.screenH,
+                        AppSpacing.xxl,
+                      ),
+                      child: Text(
+                        widget.items.isEmpty
+                            ? 'Nothing to choose from yet.'
+                            : 'No match for "$_query".',
+                        style: AppTypography.bodySm,
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                      itemCount: matches.length,
+                      itemBuilder: (context, i) {
+                        final item = matches[i];
+                        final isSelected = item == widget.selected;
+
+                        return ListTile(
+                          title: Text(
+                            widget.itemLabel(item),
+                            style: AppTypography.titleSm.copyWith(
+                              color: isSelected
+                                  ? AppColors.brand
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                          // The tick is what says "selected"; the tint only
+                          // reinforces it, so the state is never colour alone.
+                          trailing: isSelected
+                              ? const Icon(
+                                  Icons.check,
+                                  color: AppColors.brand,
+                                  size: AppSizes.iconMd,
+                                )
+                              : null,
+                          onTap: () {
+                            AppHaptics.selection();
+                            Navigator.of(context).pop(item);
+                          },
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -474,7 +772,10 @@ class CurrencyField extends StatelessWidget {
             padding: EdgeInsets.only(left: AppSpacing.md, right: AppSpacing.sm),
             child: Text('₹', style: AppTypography.titleMd),
           ),
-          prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 0,
+            minHeight: 0,
+          ),
           fillColor: enabled ? AppColors.surface : AppColors.surfaceSecondary,
         ),
       ),
@@ -588,17 +889,28 @@ class FilterChipBar<T> extends StatelessWidget {
           final count = countOf?.call(option);
 
           return GestureDetector(
-            onTap: () => onSelected(option),
+            onTap: () {
+              AppHaptics.selection();
+              onSelected(option);
+            },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 140),
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               alignment: Alignment.center,
+              // The selected chip carries the deep fill, so it lights up like
+              // every other deep fill in the app. Half strength: a filter row
+              // can hold eight of these, and a full halo on one of eight makes
+              // the row look like it is on fire rather than answered.
               decoration: BoxDecoration(
-                color: isSelected ? AppColors.brand : AppColors.surface,
+                color: isSelected ? null : AppColors.surface,
+                gradient: isSelected ? AppGlow.fill(AppColors.brand) : null,
                 borderRadius: BorderRadius.circular(AppRadius.pill),
                 border: Border.all(
-                  color: isSelected ? AppColors.brand : AppColors.border,
+                  color: isSelected ? Colors.transparent : AppColors.border,
                 ),
+                boxShadow: isSelected
+                    ? AppGlow.halo(AppColors.brand, 38, strength: 0.5)
+                    : null,
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -609,15 +921,18 @@ class FilterChipBar<T> extends StatelessWidget {
                       color: isSelected
                           ? AppColors.textOnBrand
                           : AppColors.textPrimary,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w500,
                     ),
                   ),
                   if (count != null && count > 0) ...[
                     const SizedBox(width: AppSpacing.sm),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 1),
+                        horizontal: 6,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
                         color: isSelected
                             ? Colors.white.withValues(alpha: 0.22)
@@ -672,7 +987,10 @@ class SegmentedControl<T> extends StatelessWidget {
           for (final option in options)
             Expanded(
               child: GestureDetector(
-                onTap: () => onSelected(option),
+                onTap: () {
+                  AppHaptics.selection();
+                  onSelected(option);
+                },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 140),
                   height: 34,
@@ -712,7 +1030,9 @@ abstract final class Validate {
     final v = value?.trim() ?? '';
     if (v.isEmpty) return isRequired ? 'Mobile number is required' : null;
     final digits = v.replaceAll(RegExp(r'[^\d]'), '');
-    final local = digits.length > 10 ? digits.substring(digits.length - 10) : digits;
+    final local = digits.length > 10
+        ? digits.substring(digits.length - 10)
+        : digits;
     if (local.length != 10 || !RegExp(r'^[6-9]').hasMatch(local)) {
       return 'Enter a valid 10-digit mobile number';
     }
@@ -728,7 +1048,11 @@ abstract final class Validate {
     return null;
   }
 
-  static String? amount(String? value, {bool isRequired = true, double max = 1000000}) {
+  static String? amount(
+    String? value, {
+    bool isRequired = true,
+    double max = 1000000,
+  }) {
     final v = value?.trim() ?? '';
     if (v.isEmpty) return isRequired ? 'Amount is required' : null;
     final parsed = double.tryParse(v);

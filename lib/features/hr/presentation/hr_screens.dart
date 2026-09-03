@@ -11,6 +11,8 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/field_ops.dart';
+import '../../../shared/widgets/motion.dart';
+import '../../../shared/widgets/feedback.dart';
 import '../../../shared/widgets/approval_timeline.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
@@ -25,20 +27,40 @@ class HrHomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     const items = [
-      (Icons.event_available_outlined, 'Attendance',
-          'Your monthly presence record', Routes.attendance),
-      (Icons.event_busy_outlined, 'Leave', 'Apply and track leave requests',
-          Routes.leaves),
-      (Icons.celebration_outlined, 'Holidays', 'Company holiday calendar',
-          Routes.holidays),
-      (Icons.payments_outlined, 'Pay slips', 'Monthly salary statements',
-          Routes.payslips),
-      (Icons.folder_outlined, 'Documents', 'Your employment documents',
-          Routes.documents),
+      (
+        Icons.event_available_outlined,
+        'Attendance',
+        'Your monthly presence record',
+        Routes.attendance,
+      ),
+      (
+        Icons.event_busy_outlined,
+        'Leave',
+        'Apply and track leave requests',
+        Routes.leaves,
+      ),
+      (
+        Icons.celebration_outlined,
+        'Holidays',
+        'Company holiday calendar',
+        Routes.holidays,
+      ),
+      (
+        Icons.payments_outlined,
+        'Pay slips',
+        'Monthly salary statements',
+        Routes.payslips,
+      ),
+      (
+        Icons.folder_outlined,
+        'Documents',
+        'Your employment documents',
+        Routes.documents,
+      ),
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('HR')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
@@ -54,8 +76,10 @@ class HrHomeScreen extends ConsumerWidget {
                     leading: IconTile(icon: items[i].$1),
                     title: Text(items[i].$2, style: AppTypography.titleMd),
                     subtitle: Text(items[i].$3, style: AppTypography.caption),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppColors.textSecondary),
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: AppColors.textSecondary,
+                    ),
                     onTap: () => context.push(items[i].$4),
                   ),
                 ],
@@ -74,8 +98,9 @@ final _attendanceMonthProvider = StateProvider.autoDispose<DateTime>(
   (ref) => DateTime(DateTime.now().year, DateTime.now().month),
 );
 
-final _attendanceProvider =
-    FutureProvider.autoDispose<List<AttendanceRecord>>((ref) {
+final _attendanceProvider = FutureProvider.autoDispose<List<AttendanceRecord>>((
+  ref,
+) {
   final session = ref.watch(sessionProvider);
   final month = ref.watch(_attendanceMonthProvider);
   return ref.watch(hrRepositoryProvider).attendance(session.employee.id, month);
@@ -90,7 +115,7 @@ class AttendanceScreen extends ConsumerWidget {
     final async = ref.watch(_attendanceProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Attendance')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
@@ -140,7 +165,8 @@ class _MonthSwitcher extends StatelessWidget {
 
     return AppCard(
       padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm, vertical: AppSpacing.xs,
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
       ),
       child: Row(
         children: [
@@ -174,18 +200,21 @@ class _AttendanceSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    int count(AttendanceStatus s) =>
-        records.where((r) => r.status == s).length;
+    int count(AttendanceStatus s) => records.where((r) => r.status == s).length;
 
     final working = records
-        .where((r) =>
-            r.status != AttendanceStatus.holiday &&
-            r.status != AttendanceStatus.weekOff)
+        .where(
+          (r) =>
+              r.status != AttendanceStatus.holiday &&
+              r.status != AttendanceStatus.weekOff,
+        )
         .length;
 
     return Row(
       children: [
-        Expanded(child: _Stat(label: 'Working', value: '$working')),
+        Expanded(
+          child: _Stat(label: 'Working', value: '$working'),
+        ),
         const SizedBox(width: AppSpacing.md),
         Expanded(
           child: _Stat(
@@ -321,21 +350,21 @@ class _DayCell extends StatelessWidget {
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '$day',
-            style: AppTypography.bodySm.copyWith(
-              color: color ?? AppColors.textSecondary,
-              fontWeight: status == null ? FontWeight.w400 : FontWeight.w600,
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$day',
+              style: AppTypography.bodySm.copyWith(
+                color: color ?? AppColors.textSecondary,
+                fontWeight: status == null ? FontWeight.w400 : FontWeight.w600,
+              ),
             ),
-          ),
-          if (color != null) ...[
-            const SizedBox(height: 2),
-            StatusDot(color: color, size: 5),
+            if (color != null) ...[
+              const SizedBox(height: 2),
+              StatusDot(color: color, size: 5),
+            ],
           ],
-        ],
         ),
       ),
     );
@@ -385,12 +414,12 @@ class LeaveListScreen extends ConsumerWidget {
     final async = ref.watch(_leavesProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Leave')),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: AppFab(
         onPressed: () => context.push(Routes.newLeave),
-        icon: const Icon(Icons.add),
-        label: const Text('Apply'),
+        icon: Icons.add,
+        label: 'Apply',
       ),
       body: async.when(
         loading: () => const SkeletonList(),
@@ -405,13 +434,18 @@ class LeaveListScreen extends ConsumerWidget {
               )
             : ListView.separated(
                 padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.screenH, AppSpacing.screenH,
-                  AppSpacing.screenH, AppSpacing.xxxl * 3,
+                  AppSpacing.screenH,
+                  AppSpacing.screenH,
+                  AppSpacing.screenH,
+                  AppSpacing.xxxl * 3,
                 ),
                 itemCount: leaves.length,
                 separatorBuilder: (_, _) =>
                     const SizedBox(height: AppSpacing.cardGap),
-                itemBuilder: (context, i) => _LeaveCard(leave: leaves[i]),
+                itemBuilder: (context, i) => Arrive.staggered(
+                  index: i,
+                  child: _LeaveCard(leave: leaves[i]),
+                ),
               ),
       ),
     );
@@ -441,8 +475,11 @@ class _LeaveCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
-              const Icon(Icons.date_range_outlined,
-                  size: 13, color: AppColors.textSecondary),
+              const Icon(
+                Icons.date_range_outlined,
+                size: 13,
+                color: AppColors.textSecondary,
+              ),
               const SizedBox(width: AppSpacing.xs),
               Flexible(
                 child: Text(
@@ -454,15 +491,19 @@ class _LeaveCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              Text('· ${leave.days} day${leave.days == 1 ? '' : 's'}',
-                  style: AppTypography.caption),
+              Text(
+                '· ${leave.days} day${leave.days == 1 ? '' : 's'}',
+                style: AppTypography.caption,
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
-          Text(leave.reason,
-              style: AppTypography.bodySm,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
+          Text(
+            leave.reason,
+            style: AppTypography.bodySm,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
@@ -479,7 +520,7 @@ class LeaveDetailScreen extends ConsumerWidget {
     final async = ref.watch(_leavesProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Leave Detail')),
       body: async.when(
         loading: () => const LoadingState(),
@@ -502,7 +543,10 @@ class LeaveDetailScreen extends ConsumerWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(leave.type.label, style: AppTypography.h3),
+                          child: Text(
+                            leave.type.label,
+                            style: AppTypography.h3,
+                          ),
                         ),
                         StatusBadge.approval(leave.status),
                       ],
@@ -556,7 +600,9 @@ class _NewLeaveScreenState extends ConsumerState<NewLeaveScreen> {
     setState(() => _submitting = true);
 
     final session = ref.read(sessionProvider);
-    await ref.read(hrRepositoryProvider).applyLeave(
+    await ref
+        .read(hrRepositoryProvider)
+        .applyLeave(
           LeaveRequest(
             id: const Uuid().v4(),
             employeeId: session.employee.id,
@@ -575,15 +621,15 @@ class _NewLeaveScreenState extends ConsumerState<NewLeaveScreen> {
     ref.bumpRevision();
     setState(() => _submitting = false);
     context.pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Leave request submitted.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Leave request submitted.')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Apply for Leave')),
       bottomNavigationBar: BottomActionBar(
         children: [
@@ -636,8 +682,10 @@ class _NewLeaveScreenState extends ConsumerState<NewLeaveScreen> {
             ),
             if (_rangeError != null) ...[
               const SizedBox(height: AppSpacing.sm),
-              Text(_rangeError!,
-                  style: AppTypography.caption.copyWith(color: AppColors.error)),
+              Text(
+                _rangeError!,
+                style: AppTypography.caption.copyWith(color: AppColors.error),
+              ),
             ],
             const SizedBox(height: AppSpacing.lg),
             AppCard(
@@ -645,14 +693,18 @@ class _NewLeaveScreenState extends ConsumerState<NewLeaveScreen> {
               borderColor: Colors.transparent,
               child: Row(
                 children: [
-                  const Icon(Icons.info_outline,
-                      size: AppSizes.iconMd, color: AppColors.brand),
+                  const Icon(
+                    Icons.info_outline,
+                    size: AppSizes.iconMd,
+                    color: AppColors.brand,
+                  ),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
                       '$_days day${_days == 1 ? '' : 's'} of ${_type.label}',
-                      style: AppTypography.titleSm
-                          .copyWith(color: AppColors.brandDark),
+                      style: AppTypography.titleSm.copyWith(
+                        color: AppColors.brandDark,
+                      ),
                     ),
                   ),
                 ],
@@ -685,7 +737,7 @@ class HolidaysScreen extends ConsumerWidget {
     final today = DateTime.now();
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Holidays')),
       body: async.when(
         loading: () => const SkeletonList(),
@@ -693,7 +745,8 @@ class HolidaysScreen extends ConsumerWidget {
         data: (holidays) => ListView.separated(
           padding: const EdgeInsets.all(AppSpacing.screenH),
           itemCount: holidays.length,
-          separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.cardGap),
+          separatorBuilder: (_, _) =>
+              const SizedBox(height: AppSpacing.cardGap),
           itemBuilder: (context, i) {
             final holiday = holidays[i];
             final isPast = holiday.date.isBefore(today);
@@ -703,7 +756,9 @@ class HolidaysScreen extends ConsumerWidget {
                 children: [
                   Container(
                     width: 46,
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.sm,
+                    ),
                     decoration: BoxDecoration(
                       color: isPast
                           ? AppColors.surfaceSecondary
@@ -712,14 +767,18 @@ class HolidaysScreen extends ConsumerWidget {
                     ),
                     child: Column(
                       children: [
-                        Text(Fmt.monthShort(holiday.date).toUpperCase(),
-                            style: AppTypography.overline.copyWith(fontSize: 9)),
-                        Text('${holiday.date.day}',
-                            style: AppTypography.titleMd.copyWith(
-                              color: isPast
-                                  ? AppColors.textSecondary
-                                  : AppColors.textPrimary,
-                            )),
+                        Text(
+                          Fmt.monthShort(holiday.date).toUpperCase(),
+                          style: AppTypography.overline.copyWith(fontSize: 9),
+                        ),
+                        Text(
+                          '${holiday.date.day}',
+                          style: AppTypography.titleMd.copyWith(
+                            color: isPast
+                                ? AppColors.textSecondary
+                                : AppColors.textPrimary,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -728,14 +787,18 @@ class HolidaysScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(holiday.name,
-                            style: AppTypography.titleMd.copyWith(
-                              color: isPast
-                                  ? AppColors.textSecondary
-                                  : AppColors.textPrimary,
-                            )),
-                        Text(Fmt.weekday(holiday.date),
-                            style: AppTypography.caption),
+                        Text(
+                          holiday.name,
+                          style: AppTypography.titleMd.copyWith(
+                            color: isPast
+                                ? AppColors.textSecondary
+                                : AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          Fmt.weekday(holiday.date),
+                          style: AppTypography.caption,
+                        ),
                       ],
                     ),
                   ),
@@ -768,7 +831,7 @@ class PayslipsScreen extends ConsumerWidget {
     final async = ref.watch(_payslipsProvider(session.employee.id));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Pay Slips')),
       body: async.when(
         loading: () => const SkeletonList(),
@@ -776,18 +839,22 @@ class PayslipsScreen extends ConsumerWidget {
         data: (payslips) => ListView.separated(
           padding: const EdgeInsets.all(AppSpacing.screenH),
           itemCount: payslips.length,
-          separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.cardGap),
-          itemBuilder: (context, i) => _PayslipCard(payslip: payslips[i]),
+          separatorBuilder: (_, _) =>
+              const SizedBox(height: AppSpacing.cardGap),
+          itemBuilder: (context, i) => Arrive.staggered(
+            index: i,
+            child: _PayslipCard(payslip: payslips[i]),
+          ),
         ),
       ),
     );
   }
 }
 
-final _payslipsProvider =
-    FutureProvider.autoDispose.family<List<Payslip>, String>(
-  (ref, id) => ref.watch(hrRepositoryProvider).payslips(id),
-);
+final _payslipsProvider = FutureProvider.autoDispose
+    .family<List<Payslip>, String>(
+      (ref, id) => ref.watch(hrRepositoryProvider).payslips(id),
+    );
 
 class _PayslipCard extends StatefulWidget {
   const _PayslipCard({required this.payslip});
@@ -817,8 +884,10 @@ class _PayslipCardState extends State<_PayslipCard> {
                   children: [
                     Text(Fmt.monthYear(p.month), style: AppTypography.titleMd),
                     const SizedBox(height: 2),
-                    Text('Net pay ${Fmt.money(p.netPay)}',
-                        style: AppTypography.caption),
+                    Text(
+                      'Net pay ${Fmt.money(p.netPay)}',
+                      style: AppTypography.caption,
+                    ),
                   ],
                 ),
               ),
@@ -830,8 +899,11 @@ class _PayslipCardState extends State<_PayslipCard> {
           ),
           if (_expanded) ...[
             const AppDivider(),
-            Text('EARNINGS',
-                style: AppTypography.overline, textAlign: TextAlign.left),
+            Text(
+              'EARNINGS',
+              style: AppTypography.overline,
+              textAlign: TextAlign.left,
+            ),
             const SizedBox(height: AppSpacing.sm),
             for (final entry in p.earnings.entries)
               KeyValueRow(
@@ -853,12 +925,11 @@ class _PayslipCardState extends State<_PayslipCard> {
             const AppDivider(),
             Row(
               children: [
-                Expanded(
-                  child: Text('Net pay', style: AppTypography.titleMd),
+                Expanded(child: Text('Net pay', style: AppTypography.titleMd)),
+                Text(
+                  Fmt.money(p.netPay),
+                  style: AppTypography.titleMd.copyWith(color: AppColors.brand),
                 ),
-                Text(Fmt.money(p.netPay),
-                    style: AppTypography.titleMd
-                        .copyWith(color: AppColors.brand)),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
@@ -868,7 +939,8 @@ class _PayslipCardState extends State<_PayslipCard> {
               small: true,
               onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                    content: Text('PDF download arrives with the backend.')),
+                  content: Text('PDF download arrives with the backend.'),
+                ),
               ),
             ),
           ],
@@ -887,7 +959,7 @@ class DocumentsScreen extends ConsumerWidget {
     final async = ref.watch(_documentsProvider(session.employee.id));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Documents')),
       body: async.when(
         loading: () => const SkeletonList(),
@@ -931,7 +1003,8 @@ class DocumentsScreen extends ConsumerWidget {
                         IconButton(
                           icon: const Icon(Icons.download_outlined),
                           color: AppColors.brand,
-                          onPressed: () {},
+                          onPressed: () =>
+                              showComingWithBackend(context, 'Downloads'),
                         ),
                       ],
                     ),
@@ -943,7 +1016,7 @@ class DocumentsScreen extends ConsumerWidget {
   }
 }
 
-final _documentsProvider =
-    FutureProvider.autoDispose.family<List<AppDocument>, String>(
-  (ref, id) => ref.watch(hrRepositoryProvider).documents(id),
-);
+final _documentsProvider = FutureProvider.autoDispose
+    .family<List<AppDocument>, String>(
+      (ref, id) => ref.watch(hrRepositoryProvider).documents(id),
+    );

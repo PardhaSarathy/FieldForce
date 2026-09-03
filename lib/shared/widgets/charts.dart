@@ -6,7 +6,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../models/business.dart';
 
-/// Charts for PharmaConnect (§80).
+/// Charts for Mr Sales (§80).
 ///
 /// Deliberately plain: no gradients, no 3D, no decorative axes. A sales trend
 /// exists to answer "is this going up", and every pixel that is not doing that
@@ -43,8 +43,12 @@ class TrendChart extends StatelessWidget {
     }
 
     final maxValue = points
-        .map((p) => [p.value, if (showComparison) p.secondary ?? 0].reduce(
-            (a, b) => a > b ? a : b))
+        .map(
+          (p) => [
+            p.value,
+            if (showComparison) p.secondary ?? 0,
+          ].reduce((a, b) => a > b ? a : b),
+        )
         .reduce((a, b) => a > b ? a : b);
 
     return Column(
@@ -105,11 +109,12 @@ class TrendChart extends StatelessWidget {
                 touchTooltipData: LineTouchTooltipData(
                   getTooltipColor: (_) => AppColors.textPrimary,
                   getTooltipItems: (spots) => spots
-                      .map((s) => LineTooltipItem(
-                            _short(s.y),
-                            AppTypography.caption
-                                .copyWith(color: Colors.white),
-                          ))
+                      .map(
+                        (s) => LineTooltipItem(
+                          _short(s.y),
+                          AppTypography.caption.copyWith(color: Colors.white),
+                        ),
+                      )
                       .toList(),
                 ),
               ),
@@ -222,9 +227,11 @@ class CategoryBars extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(entry.label,
-                          style: AppTypography.bodySm,
-                          overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        entry.label,
+                        style: AppTypography.bodySm,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     Text(
                       valueFormatter?.call(entry.value) ??
@@ -270,10 +277,10 @@ class AchievementRing extends StatelessWidget {
     final color = percent >= 100
         ? AppColors.success
         : percent >= 75
-            ? AppColors.brand
-            : percent >= 50
-                ? AppColors.warning
-                : AppColors.error;
+        ? AppColors.brand
+        : percent >= 50
+        ? AppColors.warning
+        : AppColors.error;
 
     return SizedBox(
       width: size,

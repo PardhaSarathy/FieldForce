@@ -68,6 +68,16 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  fonts:
+    # Plus Jakarta Sans, bundled rather than fetched — this is an offline-first
+    # field app, and a font that resolves over the network is exactly wrong for
+    # a rep in a hospital basement. One variable TTF (172 KB) covers weights
+    # 200-800, so `FontWeight` works across the range without a file per weight.
+    # SIL Open Font License; the licence ships beside it in assets/fonts/OFL.txt.
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Variable.ttf
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

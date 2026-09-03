@@ -6,7 +6,7 @@ import 'app_colors.dart';
 import 'app_spacing.dart';
 import 'app_typography.dart';
 
-/// Assembles the Material [ThemeData] from PharmaConnect tokens.
+/// Assembles the Material [ThemeData] from Mr Sales tokens.
 ///
 /// Widgets should read from the theme (or from the token classes directly for
 /// non-Material properties). The goal is that a screen file contains layout and
@@ -40,7 +40,9 @@ abstract final class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: AppColors.background,
+      // Transparent: AppBackground paints the ground once, behind the
+      // whole navigator. A scaffold colour here would cover it.
+      scaffoldBackgroundColor: Colors.transparent,
       canvasColor: AppColors.background,
       splashFactory: InkSparkle.splashFactory,
       visualDensity: VisualDensity.standard,
@@ -104,8 +106,14 @@ abstract final class AppTheme {
     labelSmall: AppTypography.overline,
   );
 
+  // Transparent, so the page's wash runs from the very top of the screen.
+  // A white bar over a tinted ground drew a hard horizontal edge under every
+  // title — the app looked like two documents stacked, and it was the single
+  // biggest thing separating an inner screen from Home, which has always had
+  // its ground running edge to edge. The body still starts below the bar, so
+  // nothing scrolls underneath and no text loses its background.
   static const _appBarTheme = AppBarTheme(
-    backgroundColor: AppColors.surface,
+    backgroundColor: Colors.transparent,
     foregroundColor: AppColors.textPrimary,
     surfaceTintColor: Colors.transparent,
     elevation: 0,

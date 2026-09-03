@@ -10,12 +10,17 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/activity.dart';
+import '../../../shared/widgets/feedback.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
 
-final _activityProvider =
-    FutureProvider.autoDispose.family<Activity, String>((ref, id) {
+/// One activity, by id. Public because the edit form loads through it too —
+/// a second identical provider would be a second cache of the same record.
+final activityByIdProvider = FutureProvider.autoDispose.family<Activity, String>((
+  ref,
+  id,
+) {
   ref.watch(dataRevisionProvider);
   return ref.watch(activityRepositoryProvider).byId(id);
 });
@@ -29,18 +34,26 @@ class ActivityDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(_activityProvider(activityId));
+    final async = ref.watch(activityByIdProvider(activityId));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Activity Detail'),
         actions: [
+          // A mistyped POB figure or feedback note had no way to be corrected.
+          IconButton(
+            tooltip: 'Edit activity',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () => context.push(Routes.editActivity(activityId)),
+          ),
           IconButton(
             tooltip: 'Share',
             icon: const Icon(Icons.ios_share_outlined),
             onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Sharing will be enabled with the backend.')),
+              const SnackBar(
+                content: Text('Sharing will be enabled with the backend.'),
+              ),
             ),
           ),
         ],
@@ -48,7 +61,7 @@ class ActivityDetailScreen extends ConsumerWidget {
       body: async.when(
         loading: () => const LoadingState(),
         error: (_, _) => ErrorState(
-          onRetry: () => ref.invalidate(_activityProvider(activityId)),
+          onRetry: () => ref.invalidate(activityByIdProvider(activityId)),
         ),
         data: (activity) => _Body(activity: activity),
       ),
@@ -59,14 +72,18 @@ class ActivityDetailScreen extends ConsumerWidget {
                   SecondaryButton(
                     label: 'Navigate',
                     icon: Icons.directions_outlined,
-                    onPressed: () {},
+                    onPressed: () => showComingWithBackend(
+                      context,
+                      'Turn-by-turn navigation',
+                    ),
                   ),
                   PrimaryButton(
                     label: activity.status == ActivityStatus.inProgress
                         ? 'Continue visit'
                         : 'Start visit',
                     icon: Icons.play_arrow_rounded,
-                    onPressed: () => context.push(Routes.visitFlow(activity.id)),
+                    onPressed: () =>
+                        context.push(Routes.visitFlow(activity.id)),
                   ),
                 ],
               )
@@ -133,12 +150,18 @@ class _Body extends StatelessWidget {
         _Section(
           title: 'Visit',
           children: [
-            KeyValueRow(label: 'Date', value: Fmt.date(activity.scheduledStart)),
+            KeyValueRow(
+              label: 'Date',
+              value: Fmt.date(activity.scheduledStart),
+            ),
             KeyValueRow(
               label: 'Scheduled',
               value: activity.scheduledEnd == null
                   ? Fmt.time(activity.scheduledStart)
-                  : Fmt.timeRange(activity.scheduledStart, activity.scheduledEnd!),
+                  : Fmt.timeRange(
+                      activity.scheduledStart,
+                      activity.scheduledEnd!,
+                    ),
             ),
             if (activity.actualStart != null)
               KeyValueRow(
@@ -149,7 +172,9 @@ class _Body extends StatelessWidget {
               ),
             if (activity.duration != null)
               KeyValueRow(
-                  label: 'Duration', value: Fmt.duration(activity.duration!)),
+                label: 'Duration',
+                value: Fmt.duration(activity.duration!),
+              ),
             KeyValueRow(label: 'Work type', value: activity.workType.label),
             KeyValueRow(label: 'Purpose', value: activity.purpose?.label),
             KeyValueRow(label: 'Client type', value: activity.clientType.label),
@@ -191,6 +216,16 @@ class _Body extends StatelessWidget {
               ),
               KeyValueRow(label: 'Feedback', value: activity.feedback),
               KeyValueRow(label: 'POP shared', value: activity.pop),
+              // Entered on the call form and shown nowhere until now — a rep
+              // could record what they left behind and then never see it again
+              // on the record itself.
+              KeyValueRow(label: 'Inputs given', value: activity.inputsGiven),
+              KeyValueRow(
+                label: 'POB value',
+                value: activity.pobAmount == null
+                    ? null
+                    : Fmt.money(activity.pobAmount!),
+              ),
               KeyValueRow(label: 'Remarks', value: activity.remarks),
               KeyValueRow(
                 label: 'Next visit',
@@ -227,13 +262,24 @@ class _Body extends StatelessWidget {
               ),
               KeyValueRow(label: 'Distance', value: geo.distanceLabel),
               KeyValueRow(
-                  label: 'Fence radius', value: '${geo.radiusMeters.round()} m'),
+                label: 'Fence radius',
+                value: '${geo.radiusMeters.round()} m',
+              ),
               if (geo.captured != null)
-                KeyValueRow(label: 'Captured at', value: geo.captured.toString()),
+                KeyValueRow(
+                  label: 'Captured at',
+                  value: geo.captured.toString(),
+                ),
               if (geo.capturedAt != null)
-                KeyValueRow(label: 'Timestamp', value: Fmt.dateTime(geo.capturedAt!)),
+                KeyValueRow(
+                  label: 'Timestamp',
+                  value: Fmt.dateTime(geo.capturedAt!),
+                ),
               if (activity.outOfRangeReason != null)
-                KeyValueRow(label: 'Reason given', value: activity.outOfRangeReason),
+                KeyValueRow(
+                  label: 'Reason given',
+                  value: activity.outOfRangeReason,
+                ),
             ],
           ),
 
@@ -254,10 +300,15 @@ class _Section extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SectionHeader(title: title, padding: const EdgeInsets.only(
-          left: AppSpacing.xs, right: AppSpacing.xs,
-          top: AppSpacing.md, bottom: AppSpacing.md,
-        )),
+        SectionHeader(
+          title: title,
+          padding: const EdgeInsets.only(
+            left: AppSpacing.xs,
+            right: AppSpacing.xs,
+            top: AppSpacing.md,
+            bottom: AppSpacing.md,
+          ),
+        ),
         AppCard(child: Column(children: children)),
       ],
     );
@@ -281,8 +332,10 @@ class _RcpaRow extends StatelessWidget {
               Expanded(
                 child: Text(entry.productName, style: AppTypography.titleSm),
               ),
-              Text('${entry.sharePercent.round()}% share',
-                  style: AppTypography.numeric.copyWith(fontSize: 13)),
+              Text(
+                '${entry.sharePercent.round()}% share',
+                style: AppTypography.numeric.copyWith(fontSize: 13),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),

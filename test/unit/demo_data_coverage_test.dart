@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pharmaconnect/data/mock/mock_dataset.dart';
 import 'package:pharmaconnect/data/repositories/mock_repositories.dart';
 import 'package:pharmaconnect/shared/enums/app_enums.dart';
 import 'package:pharmaconnect/shared/models/organization.dart';
@@ -10,6 +11,8 @@ import 'package:pharmaconnect/shared/models/organization.dart';
 /// module has something to show for every role — so a thin seed fails CI
 /// instead of surfacing live in a demo.
 void main() {
+  _specialtyMasterData();
+
   final store = MockStore.instance;
   final seed = store.seed;
 
@@ -295,6 +298,46 @@ void main() {
           .where((e) => e.reason != null && e.reason!.isNotEmpty);
       expect(reasons, isNotEmpty,
           reason: 'rejection without a reason breaks the §66.4 rule');
+    });
+  });
+}
+
+/// Specialty is master data, not typed text.
+///
+/// Free text arrives as "Cardiologist", "cardiologist" and "Cardio" — the same
+/// thing to a rep, three separate rows to every report that groups by
+/// specialty. The list has to come from the repository so the client form and
+/// the admin master-data screen cannot disagree about it.
+void _specialtyMasterData() {
+  group('specialty master data', () {
+    test('the repository serves a sorted, de-duplicated list', () async {
+      final specialties = await MockClientRepository().specialties();
+
+      expect(specialties, isNotEmpty);
+      expect(specialties.toSet().length, specialties.length,
+          reason: 'a duplicate would appear twice in the picker');
+      final sorted = List.of(specialties)..sort();
+      expect(specialties, sorted, reason: 'the picker relies on the order');
+    });
+
+    test('it is long enough that the picker offers search', () {
+      // DropdownField grows a search box past eight options; below that the
+      // field would be a plain scroll and the promise of search would be a lie.
+      expect(MockStore.specialties.length, greaterThan(8));
+    });
+
+    test('every specialty the seed uses is on the list', () {
+      // Otherwise editing a seeded doctor would show a value the picker cannot
+      // reproduce, and saving would silently drop it.
+      final seeded = MockDataset.instance.clients
+          .map((c) => c.specialty)
+          .whereType<String>()
+          .where((s) => s != 'Multi-speciality')
+          .toSet();
+
+      for (final s in seeded) {
+        expect(MockStore.specialties, contains(s), reason: '$s is not offered');
+      }
     });
   });
 }

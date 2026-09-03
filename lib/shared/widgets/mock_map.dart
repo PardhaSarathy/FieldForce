@@ -109,7 +109,10 @@ class _MockMapCanvasState extends State<MockMapCanvas> {
               maxScale: 4,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final size = Size(constraints.maxWidth, constraints.maxHeight);
+                  final size = Size(
+                    constraints.maxWidth,
+                    constraints.maxHeight,
+                  );
 
                   return Stack(
                     children: [
@@ -121,8 +124,9 @@ class _MockMapCanvasState extends State<MockMapCanvas> {
 
                       // Client dots sit under the people so a rep is never
                       // hidden behind a place.
-                      for (final marker in widget.markers
-                          .where((m) => m.kind == MapMarkerKind.client))
+                      for (final marker in widget.markers.where(
+                        (m) => m.kind == MapMarkerKind.client,
+                      ))
                         _positioned(
                           marker,
                           bounds,
@@ -130,8 +134,9 @@ class _MockMapCanvasState extends State<MockMapCanvas> {
                           child: const _ClientDot(),
                         ),
 
-                      for (final marker in widget.markers
-                          .where((m) => m.kind != MapMarkerKind.client))
+                      for (final marker in widget.markers.where(
+                        (m) => m.kind != MapMarkerKind.client,
+                      ))
                         _positioned(
                           marker,
                           bounds,
@@ -232,8 +237,7 @@ class _Bounds {
   }
 
   /// Stable seed so the generated streets are identical across rebuilds.
-  int get seed =>
-      ((minLat + maxLat + minLng + maxLng) * 100000).round().abs();
+  int get seed => ((minLat + maxLat + minLng + maxLng) * 100000).round().abs();
 }
 
 /// Paints the schematic base: land, parks, water and a street network.
@@ -264,12 +268,16 @@ class _MapBasePainter extends CustomPainter {
     final path = Path()
       ..moveTo(size.width * 0.78, 0)
       ..quadraticBezierTo(
-        size.width * 0.88, size.height * 0.32,
-        size.width * 0.74, size.height * 0.58,
+        size.width * 0.88,
+        size.height * 0.32,
+        size.width * 0.74,
+        size.height * 0.58,
       )
       ..quadraticBezierTo(
-        size.width * 0.66, size.height * 0.82,
-        size.width * 0.86, size.height,
+        size.width * 0.66,
+        size.height * 0.82,
+        size.width * 0.86,
+        size.height,
       )
       ..lineTo(size.width, size.height)
       ..lineTo(size.width, 0)
@@ -340,8 +348,10 @@ class _MapBasePainter extends CustomPainter {
     final diagonal = Path()
       ..moveTo(0, size.height * 0.92)
       ..quadraticBezierTo(
-        size.width * 0.42, size.height * 0.62,
-        size.width * 0.72, size.height * 0.08,
+        size.width * 0.42,
+        size.height * 0.62,
+        size.width * 0.72,
+        size.height * 0.08,
       );
     canvas.drawPath(diagonal, arterialEdge);
     canvas.drawPath(diagonal, arterial);
@@ -409,10 +419,9 @@ class _PersonPin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = marker.color ??
-        (marker.kind == MapMarkerKind.self
-            ? AppColors.info
-            : AppColors.brand);
+    final color =
+        marker.color ??
+        (marker.kind == MapMarkerKind.self ? AppColors.info : AppColors.brand);
 
     return GestureDetector(
       onTap: onTap,
@@ -523,12 +532,16 @@ class _PreviewChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.layers_outlined,
-              size: 12, color: AppColors.textSecondary),
+          const Icon(
+            Icons.layers_outlined,
+            size: 12,
+            color: AppColors.textSecondary,
+          ),
           const SizedBox(width: AppSpacing.xs),
-          Text('Design preview · positions are real',
-              style: AppTypography.badge
-                  .copyWith(color: AppColors.textSecondary)),
+          Text(
+            'Design preview · positions are real',
+            style: AppTypography.badge.copyWith(color: AppColors.textSecondary),
+          ),
         ],
       ),
     );

@@ -5,231 +5,14 @@ import 'package:go_router/go_router.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_glow.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/activity.dart';
-import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
-
-/// Today's full plan (§16), rendered as a timeline.
-///
-/// A timeline rather than a list because the question a rep asks here is
-/// "what does my day look like", which is about sequence and gaps — a flat
-/// list of cards hides both.
-class DayPlanScreen extends ConsumerWidget {
-  const DayPlanScreen({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(todaySummaryProvider);
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text("Today's Plan"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'Add activity',
-            onPressed: () => context.push(Routes.addActivity),
-          ),
-        ],
-      ),
-      body: async.when(
-        loading: () => const LoadingState(),
-        error: (_, _) =>
-            ErrorState(onRetry: () => ref.invalidate(todaySummaryProvider)),
-        data: (summary) {
-          if (summary.activities.isEmpty) {
-            return EmptyState(
-              icon: Icons.event_note_outlined,
-              title: 'Nothing planned today',
-              message: 'Add visits to build your day plan.',
-              actionLabel: 'Add activity',
-              onAction: () => context.push(Routes.addActivity),
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(todaySummaryProvider),
-            child: ListView(
-              padding: const EdgeInsets.all(AppSpacing.screenH),
-              children: [
-                AppCard(
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(Fmt.weekday(summary.date),
-                                    style: AppTypography.titleMd),
-                                Text(Fmt.date(summary.date),
-                                    style: AppTypography.caption),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            '${summary.completed}/${summary.planned}',
-                            style: AppTypography.metricSm
-                                .copyWith(color: AppColors.brand),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      AppProgressBar(value: summary.progress),
-                      const SizedBox(height: AppSpacing.sm),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(summary.paceLabel(),
-                                style: AppTypography.caption),
-                          ),
-                          Text('${summary.missed} missed',
-                              style: AppTypography.caption.copyWith(
-                                color: summary.missed > 0
-                                    ? AppColors.error
-                                    : AppColors.textSecondary,
-                              )),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.section),
-                const SectionHeader(title: 'Schedule'),
-                for (var i = 0; i < summary.activities.length; i++)
-                  _TimelineEntry(
-                    activity: summary.activities[i],
-                    isLast: i == summary.activities.length - 1,
-                  ),
-                const SizedBox(height: AppSpacing.xxxl),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _TimelineEntry extends StatelessWidget {
-  const _TimelineEntry({required this.activity, required this.isLast});
-
-  final Activity activity;
-  final bool isLast;
-
-  @override
-  Widget build(BuildContext context) {
-    final tone = activity.status.tone;
-    final isDone = activity.status == ActivityStatus.completed;
-
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Time gutter
-          SizedBox(
-            width: 56,
-            child: Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.md),
-              child: Text(
-                Fmt.time(activity.scheduledStart),
-                style: AppTypography.caption.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: isDone
-                      ? AppColors.textSecondary
-                      : AppColors.textPrimary,
-                ),
-              ),
-            ),
-          ),
-
-          // Rail
-          Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: AppSpacing.md),
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: isDone ? tone.foreground : AppColors.surface,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: tone.foreground, width: 2),
-                ),
-              ),
-              if (!isLast)
-                Expanded(
-                  child: Container(width: 2, color: AppColors.border),
-                ),
-            ],
-          ),
-          const SizedBox(width: AppSpacing.md),
-
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : AppSpacing.cardGap),
-              child: AppCard(
-                onTap: () => context.push(Routes.activityDetail(activity.id)),
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(activity.clientName,
-                              style: AppTypography.titleSm,
-                              overflow: TextOverflow.ellipsis),
-                        ),
-                        StatusBadge.activity(activity.status, dense: true),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      activity.clientSpecialty ?? activity.clientType.label,
-                      style: AppTypography.caption,
-                    ),
-                    if (activity.locationName != null) ...[
-                      const SizedBox(height: AppSpacing.xs),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(activity.locationName!,
-                                style: AppTypography.caption,
-                                overflow: TextOverflow.ellipsis),
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (activity.status.isOpen) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      SecondaryButton(
-                        label: activity.status == ActivityStatus.inProgress
-                            ? 'Continue visit'
-                            : 'Start visit',
-                        icon: Icons.play_arrow_rounded,
-                        small: true,
-                        expand: false,
-                        onPressed: () =>
-                            context.push(Routes.visitFlow(activity.id)),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // =============================================================== calendar ==
 
@@ -237,16 +20,20 @@ final _calendarMonthProvider = StateProvider.autoDispose<DateTime>(
   (ref) => DateTime(DateTime.now().year, DateTime.now().month),
 );
 
-final _selectedDateProvider =
-    StateProvider.autoDispose<DateTime>((ref) => DateTime.now());
+final _selectedDateProvider = StateProvider.autoDispose<DateTime>(
+  (ref) => DateTime.now(),
+);
 
-final _monthActivitiesProvider =
-    FutureProvider.autoDispose<List<Activity>>((ref) async {
+final _monthActivitiesProvider = FutureProvider.autoDispose<List<Activity>>((
+  ref,
+) async {
   final session = ref.watch(sessionProvider);
   final month = ref.watch(_calendarMonthProvider);
   ref.watch(dataRevisionProvider);
 
-  return ref.watch(activityRepositoryProvider).list(
+  return ref
+      .watch(activityRepositoryProvider)
+      .list(
         session,
         from: DateTime(month.year, month.month, 1),
         to: DateTime(month.year, month.month + 1, 0),
@@ -267,7 +54,7 @@ class CalendarScreen extends ConsumerWidget {
     final holidaysAsync = ref.watch(_calendarHolidaysProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Calendar')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
@@ -284,9 +71,11 @@ class CalendarScreen extends ConsumerWidget {
                               DateTime(month.year, month.month - 1),
                     ),
                     Expanded(
-                      child: Text(Fmt.monthYear(month),
-                          textAlign: TextAlign.center,
-                          style: AppTypography.titleMd),
+                      child: Text(
+                        Fmt.monthYear(month),
+                        textAlign: TextAlign.center,
+                        style: AppTypography.titleMd,
+                      ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.chevron_right),
@@ -351,17 +140,23 @@ class CalendarScreen extends ConsumerWidget {
                       ListTile(
                         leading: SizedBox(
                           width: 52,
-                          child: Text(Fmt.time(day[i].scheduledStart),
-                              style: AppTypography.caption),
+                          child: Text(
+                            Fmt.time(day[i].scheduledStart),
+                            style: AppTypography.caption,
+                          ),
                         ),
-                        title: Text(day[i].clientName,
-                            style: AppTypography.titleSm),
+                        title: Text(
+                          day[i].clientName,
+                          style: AppTypography.titleSm,
+                        ),
                         subtitle: Text(
                           day[i].clientSpecialty ?? day[i].clientType.label,
                           style: AppTypography.caption,
                         ),
-                        trailing:
-                            StatusBadge.activity(day[i].status, dense: true),
+                        trailing: StatusBadge.activity(
+                          day[i].status,
+                          dense: true,
+                        ),
                         onTap: () =>
                             context.push(Routes.activityDetail(day[i].id)),
                       ),
@@ -409,7 +204,9 @@ class _CalendarGrid extends StatelessWidget {
           children: [
             for (final label in ['M', 'T', 'W', 'T', 'F', 'S', 'S'])
               Expanded(
-                child: Center(child: Text(label, style: AppTypography.overline)),
+                child: Center(
+                  child: Text(label, style: AppTypography.overline),
+                ),
               ),
           ],
         ),
@@ -423,11 +220,13 @@ class _CalendarGrid extends StatelessWidget {
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: AppSpacing.xs,
           crossAxisSpacing: AppSpacing.xs,
-          childAspectRatio: 1 /
-              ((MediaQuery.textScalerOf(context)
-                          .scale(AppTypography.bodySm.fontSize!) *
-                      1.35 +
-                  14) /
+          childAspectRatio:
+              1 /
+              ((MediaQuery.textScalerOf(
+                            context,
+                          ).scale(AppTypography.bodySm.fontSize!) *
+                          1.35 +
+                      14) /
                   ((MediaQuery.sizeOf(context).width -
                           AppSpacing.screenH * 2 -
                           AppSpacing.cardPadding * 2 -
@@ -448,11 +247,14 @@ class _CalendarGrid extends StatelessWidget {
                   isToday: _sameDay(date, today),
                   isHoliday: holidays.any((h) => _sameDay(h, date)),
                   activityCount: dayActivities.length,
-                  hasMissed: dayActivities
-                      .any((a) => a.status == ActivityStatus.missed),
-                  allComplete: dayActivities.isNotEmpty &&
+                  hasMissed: dayActivities.any(
+                    (a) => a.status == ActivityStatus.missed,
+                  ),
+                  allComplete:
+                      dayActivities.isNotEmpty &&
                       dayActivities.every(
-                          (a) => a.status == ActivityStatus.completed),
+                        (a) => a.status == ActivityStatus.completed,
+                      ),
                   onTap: () => onSelect(date),
                 );
               }(),
@@ -489,20 +291,23 @@ class _CalendarCell extends StatelessWidget {
     final dotColor = isHoliday
         ? AppColors.info
         : hasMissed
-            ? AppColors.error
-            : allComplete
-                ? AppColors.success
-                : AppColors.brand;
+        ? AppColors.error
+        : allComplete
+        ? AppColors.success
+        : AppColors.brand;
 
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppRadius.sm),
       child: Container(
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.brand : Colors.transparent,
+          gradient: isSelected ? AppGlow.fill(AppColors.brand) : null,
           borderRadius: BorderRadius.circular(AppRadius.sm),
           border: isToday && !isSelected
               ? Border.all(color: AppColors.brand, width: 1.2)
+              : null,
+          boxShadow: isSelected
+              ? AppGlow.halo(AppColors.brand, 40, strength: 0.6)
               : null,
         ),
         // Same reasoning as the attendance calendar: a seven-column cell has a
@@ -510,28 +315,26 @@ class _CalendarCell extends StatelessWidget {
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${date.day}',
-              style: AppTypography.bodySm.copyWith(
-                color: isSelected
-                    ? AppColors.textOnBrand
-                    : AppColors.textPrimary,
-                fontWeight:
-                    isToday || isSelected ? FontWeight.w700 : FontWeight.w400,
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${date.day}',
+                style: AppTypography.bodySm.copyWith(
+                  color: isSelected
+                      ? AppColors.textOnBrand
+                      : AppColors.textPrimary,
+                  fontWeight: isToday || isSelected
+                      ? FontWeight.w700
+                      : FontWeight.w400,
+                ),
               ),
-            ),
-            const SizedBox(height: 3),
-            if (activityCount > 0 || isHoliday)
-              StatusDot(
-                color: isSelected ? Colors.white : dotColor,
-                size: 5,
-              )
-            else
-              const SizedBox(height: 5),
-          ],
+              const SizedBox(height: 3),
+              if (activityCount > 0 || isHoliday)
+                StatusDot(color: isSelected ? Colors.white : dotColor, size: 5)
+              else
+                const SizedBox(height: 5),
+            ],
           ),
         ),
       ),
@@ -547,13 +350,13 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          StatusDot(color: color, size: 7),
-          const SizedBox(width: AppSpacing.xs),
-          Text(label, style: AppTypography.caption),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      StatusDot(color: color, size: 7),
+      const SizedBox(width: AppSpacing.xs),
+      Text(label, style: AppTypography.caption),
+    ],
+  );
 }
 
 bool _sameDay(DateTime a, DateTime b) =>

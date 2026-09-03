@@ -7,6 +7,7 @@ import '../../../core/location/geo_math.dart';
 import '../../../core/location/location_service.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/routing/routes.dart';
+import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -15,6 +16,8 @@ import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/activity.dart';
 import '../../../shared/models/client.dart';
 import '../../../shared/models/organization.dart';
+import '../../../shared/widgets/motion.dart';
+import '../../../shared/widgets/feedback.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
@@ -36,14 +39,18 @@ enum ClientFilter {
 }
 
 final _clientQueryProvider = StateProvider.autoDispose<String>((ref) => '');
-final _clientFilterProvider =
-    StateProvider.autoDispose<ClientFilter>((ref) => ClientFilter.all);
+final _clientFilterProvider = StateProvider.autoDispose<ClientFilter>(
+  (ref) => ClientFilter.all,
+);
 
-final _clientListProvider =
-    FutureProvider.autoDispose<List<Client>>((ref) async {
+final _clientListProvider = FutureProvider.autoDispose<List<Client>>((
+  ref,
+) async {
   final session = ref.watch(sessionProvider);
   ref.watch(dataRevisionProvider);
-  return ref.watch(clientRepositoryProvider).list(
+  return ref
+      .watch(clientRepositoryProvider)
+      .list(
         session,
         query: ref.watch(_clientQueryProvider),
         type: ref.watch(_clientFilterProvider).type,
@@ -72,19 +79,24 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen> {
     final listAsync = ref.watch(_clientListProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Clients')),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: AppFab(
         onPressed: () => context.push(Routes.newClient),
-        icon: const Icon(Icons.person_add_alt),
-        label: const Text('New client'),
+        icon: Icons.person_add_alt,
+        label: 'New client',
       ),
       body: Column(
         children: [
-          Container(
-            color: AppColors.surface,
+          // On the wash, not on a white slab. The field is white and the
+          // ground is not, which is all the separation a search box needs —
+          // the slab only added a second edge under the app bar's.
+          Padding(
             padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenH, 0, AppSpacing.screenH, AppSpacing.md,
+              AppSpacing.screenH,
+              0,
+              AppSpacing.screenH,
+              AppSpacing.md,
             ),
             child: SearchField(
               hint: 'Search by name, specialty or area',
@@ -98,14 +110,16 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen> {
             options: ClientFilter.values,
             selected: filter,
             labelOf: (f) => f.label,
-            onSelected: (f) => ref.read(_clientFilterProvider.notifier).state = f,
+            onSelected: (f) =>
+                ref.read(_clientFilterProvider.notifier).state = f,
           ),
           const SizedBox(height: AppSpacing.md),
           Expanded(
             child: listAsync.when(
               loading: () => const SkeletonList(),
-              error: (_, _) =>
-                  ErrorState(onRetry: () => ref.invalidate(_clientListProvider)),
+              error: (_, _) => ErrorState(
+                onRetry: () => ref.invalidate(_clientListProvider),
+              ),
               data: (clients) {
                 if (clients.isEmpty) {
                   return EmptyState(
@@ -115,7 +129,7 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen> {
                         : 'No matching clients',
                     message: _searchController.text.isEmpty
                         ? 'Register the doctors, hospitals and chemists in '
-                            'your territory to start planning visits.'
+                              'your territory to start planning visits.'
                         : 'Try a different name, specialty or area.',
                     actionLabel: _searchController.text.isEmpty
                         ? 'Add your first client'
@@ -126,12 +140,18 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen> {
 
                 return ListView.separated(
                   padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenH, 0, AppSpacing.screenH, AppSpacing.xxxl * 3,
+                    AppSpacing.screenH,
+                    0,
+                    AppSpacing.screenH,
+                    AppSpacing.xxxl * 3,
                   ),
                   itemCount: clients.length,
                   separatorBuilder: (_, _) =>
                       const SizedBox(height: AppSpacing.cardGap),
-                  itemBuilder: (context, i) => _ClientCard(client: clients[i]),
+                  itemBuilder: (context, i) => Arrive.staggered(
+                    index: i,
+                    child: _ClientCard(client: clients[i]),
+                  ),
                 );
               },
             ),
@@ -154,26 +174,32 @@ class _ClientCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AppAvatar(name: client.name),
+          AppAvatar(name: client.name, heroTag: 'client-${client.id}'),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(client.name,
-                    style: AppTypography.titleMd,
-                    overflow: TextOverflow.ellipsis),
+                Text(
+                  client.name,
+                  style: AppTypography.titleMd,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: 2),
-                Text(client.subtitle,
-                    style: AppTypography.caption,
-                    overflow: TextOverflow.ellipsis),
+                Text(
+                  client.subtitle,
+                  style: AppTypography.caption,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: AppSpacing.sm),
                 Row(
                   children: [
                     Expanded(
-                      child: Text(client.areaName,
-                          style: AppTypography.caption,
-                          overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        client.areaName,
+                        style: AppTypography.caption,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     if (client.lastVisitAt != null) ...[
                       const SizedBox(width: AppSpacing.sm),
@@ -208,17 +234,19 @@ class _ClientCard extends StatelessWidget {
 
 // ========================================================== client detail ==
 
-final _clientProvider =
-    FutureProvider.autoDispose.family<Client, String>((ref, id) {
+final _clientProvider = FutureProvider.autoDispose.family<Client, String>((
+  ref,
+  id,
+) {
   ref.watch(dataRevisionProvider);
   return ref.watch(clientRepositoryProvider).byId(id);
 });
 
-final _clientHistoryProvider =
-    FutureProvider.autoDispose.family<List<Activity>, String>((ref, id) {
-  ref.watch(dataRevisionProvider);
-  return ref.watch(clientRepositoryProvider).historyOf(id);
-});
+final _clientHistoryProvider = FutureProvider.autoDispose
+    .family<List<Activity>, String>((ref, id) {
+      ref.watch(dataRevisionProvider);
+      return ref.watch(clientRepositoryProvider).historyOf(id);
+    });
 
 class ClientDetailScreen extends ConsumerWidget {
   const ClientDetailScreen({super.key, required this.clientId});
@@ -231,22 +259,33 @@ class ClientDetailScreen extends ConsumerWidget {
     final historyAsync = ref.watch(_clientHistoryProvider(clientId));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Client Detail')),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('Client Detail'),
+        actions: [
+          // A doctor moves clinic, changes number, retires. Without this the
+          // record could only ever be created, never corrected.
+          IconButton(
+            tooltip: 'Edit client',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () => context.push(Routes.editClient(clientId)),
+          ),
+        ],
+      ),
       bottomNavigationBar: clientAsync.maybeWhen(
         data: (client) => BottomActionBar(
           children: [
             SecondaryButton(
               label: 'Add activity',
               icon: Icons.event_available_outlined,
-              onPressed: () => context.push(
-                '${Routes.addActivity}?clientId=${client.id}',
-              ),
+              onPressed: () =>
+                  context.push('${Routes.addActivity}?clientId=${client.id}'),
             ),
             PrimaryButton(
               label: 'Navigate',
               icon: Icons.directions_outlined,
-              onPressed: () {},
+              onPressed: () =>
+                  showComingWithBackend(context, 'Turn-by-turn navigation'),
             ),
           ],
         ),
@@ -254,8 +293,9 @@ class ClientDetailScreen extends ConsumerWidget {
       ),
       body: clientAsync.when(
         loading: () => const LoadingState(),
-        error: (_, _) =>
-            ErrorState(onRetry: () => ref.invalidate(_clientProvider(clientId))),
+        error: (_, _) => ErrorState(
+          onRetry: () => ref.invalidate(_clientProvider(clientId)),
+        ),
         data: (client) => ListView(
           padding: const EdgeInsets.all(AppSpacing.screenH),
           children: [
@@ -266,7 +306,11 @@ class ClientDetailScreen extends ConsumerWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      AppAvatar(name: client.name, size: AppSizes.avatarLg),
+                      AppAvatar(
+                        name: client.name,
+                        size: AppSizes.avatarLg,
+                        heroTag: 'client-${client.id}',
+                      ),
                       const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Column(
@@ -324,12 +368,23 @@ class ClientDetailScreen extends ConsumerWidget {
             ),
             const SizedBox(height: AppSpacing.cardGap),
 
+            // The date was being captured and shown nowhere at all, which made
+            // it impossible to act on — the one thing it exists for.
+            if (client.specialDate != null) ...[
+              const SectionHeader(title: 'Remember'),
+              _OccasionCard(client: client),
+              const SizedBox(height: AppSpacing.cardGap),
+            ],
+
             const SectionHeader(title: 'Contact'),
             AppCard(
               child: Column(
                 children: [
                   KeyValueRow(label: 'Designation', value: client.designation),
-                  KeyValueRow(label: 'Contact person', value: client.contactPerson),
+                  KeyValueRow(
+                    label: 'Contact person',
+                    value: client.contactPerson,
+                  ),
                   KeyValueRow(label: 'Mobile', value: client.mobile),
                   KeyValueRow(label: 'Email', value: client.email),
                 ],
@@ -368,7 +423,8 @@ class ClientDetailScreen extends ConsumerWidget {
                       compact: true,
                       icon: Icons.history,
                       title: 'No visits recorded yet',
-                      message: 'Completed visits to this client will appear here.',
+                      message:
+                          'Completed visits to this client will appear here.',
                     ),
                   );
                 }
@@ -376,7 +432,9 @@ class ClientDetailScreen extends ConsumerWidget {
                   children: [
                     for (final a in history.take(3))
                       Padding(
-                        padding: const EdgeInsets.only(bottom: AppSpacing.cardGap),
+                        padding: const EdgeInsets.only(
+                          bottom: AppSpacing.cardGap,
+                        ),
                         child: ActivityCard(activity: a, showDate: true),
                       ),
                   ],
@@ -401,7 +459,7 @@ class ClientHistoryScreen extends ConsumerWidget {
     final async = ref.watch(_clientHistoryProvider(clientId));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Visit History')),
       body: async.when(
         loading: () => const SkeletonList(),
@@ -417,8 +475,10 @@ class ClientHistoryScreen extends ConsumerWidget {
                 itemCount: history.length,
                 separatorBuilder: (_, _) =>
                     const SizedBox(height: AppSpacing.cardGap),
-                itemBuilder: (context, i) =>
-                    ActivityCard(activity: history[i], showDate: true),
+                itemBuilder: (context, i) => Arrive.staggered(
+                  index: i,
+                  child: ActivityCard(activity: history[i], showDate: true),
+                ),
               ),
       ),
     );
@@ -452,8 +512,111 @@ class _StatTile extends StatelessWidget {
 /// the reference for every future visit's geo-fence (§20). Getting it wrong
 /// here silently breaks verification for months, so the step is prominent and
 /// the captured coordinates are shown rather than hidden.
+/// The client's special date, as something a rep can act on.
+///
+/// A date on its own is a fact; "Birthday · in 6 days" is a prompt. The
+/// countdown is the whole reason the field exists, so it leads, and the date
+/// itself sits underneath for anyone who wants it.
+class _OccasionCard extends StatelessWidget {
+  const _OccasionCard({required this.client});
+
+  final Client client;
+
+  @override
+  Widget build(BuildContext context) {
+    final days = client.daysUntilOccasion();
+    final soon = days != null && days <= 7;
+
+    final when = switch (days) {
+      null => '',
+      0 => 'Today',
+      1 => 'Tomorrow',
+      _ => 'In $days days',
+    };
+
+    return AppCard(
+      child: Row(
+        children: [
+          IconWell(
+            icon: days == 0 ? Icons.celebration_outlined : Icons.cake_outlined,
+            size: AppSizes.avatarMd,
+            color: soon ? AppColors.brand : AppColors.textSecondary,
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  client.occasionLabel ?? 'Special date',
+                  style: AppTypography.titleMd,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  Fmt.dateShort(client.specialDate!),
+                  style: AppTypography.caption,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          // A word, never the colour alone.
+          StatusBadge(
+            label: when,
+            tone: soon ? StatusTone.brand : StatusTone.neutral,
+            dense: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Loads a client, then hands it to the shared form.
+///
+/// A thin wrapper rather than a `Client` route parameter: arriving by deep
+/// link or after a process death there is no object to pass, only an id, and a
+/// form that takes an id would have to handle its own loading state anyway.
+class EditClientScreen extends ConsumerWidget {
+  const EditClientScreen({super.key, required this.clientId});
+
+  final String clientId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ref
+        .watch(_clientProvider(clientId))
+        .when(
+          loading: () => const Scaffold(
+            backgroundColor: Colors.transparent,
+            body: LoadingState(message: 'Loading client'),
+          ),
+          error: (_, _) => Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: AppBar(title: const Text('Edit Client')),
+            body: ErrorState(
+              onRetry: () => ref.invalidate(_clientProvider(clientId)),
+            ),
+          ),
+          data: (client) => NewClientScreen(existing: client),
+        );
+  }
+}
+
+/// The client form, for both registering and editing.
+///
+/// One screen rather than two: the fields, the validation and the cascading
+/// territory→area pair are identical, and a second copy would drift from this
+/// one the first time either changed. [existing] is what switches the mode.
 class NewClientScreen extends ConsumerStatefulWidget {
-  const NewClientScreen({super.key});
+  const NewClientScreen({super.key, this.existing});
+
+  /// Null to register a new client, otherwise the one being edited.
+  final Client? existing;
+
+  bool get isEditing => existing != null;
 
   @override
   ConsumerState<NewClientScreen> createState() => _NewClientScreenState();
@@ -464,16 +627,26 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
 
   final _name = TextEditingController();
   final _designation = TextEditingController();
-  final _specialty = TextEditingController();
   final _contact = TextEditingController();
   final _mobile = TextEditingController();
   final _email = TextEditingController();
   final _address = TextEditingController();
   final _pincode = TextEditingController();
 
+  final _search = TextEditingController();
+
+  /// Chosen from master data, so this is a value rather than typed text.
+  String? _specialty;
+
+  SpecialOccasion _occasion = SpecialOccasion.birthday;
+  final _occasionNote = TextEditingController();
+
   ClientType _type = ClientType.doctor;
-  ClientCategory _category = ClientCategory.regular;
+  ClientListing _listing = ClientListing.unlisted;
+  Territory? _territory;
   Area? _area;
+  bool _isActive = true;
+  DateTime? _specialDate;
 
   GeoPoint? _captured;
   bool _capturing = false;
@@ -483,10 +656,41 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
   Client? _created;
 
   @override
+  void initState() {
+    super.initState();
+    final c = widget.existing;
+    if (c == null) return;
+
+    _name.text = c.name;
+    _designation.text = c.designation ?? '';
+    _contact.text = c.contactPerson ?? '';
+    _mobile.text = c.mobile ?? '';
+    _email.text = c.email ?? '';
+    _address.text = c.addressLine ?? '';
+    _pincode.text = c.pincode ?? '';
+    _occasionNote.text = c.specialOccasionNote ?? '';
+
+    _type = c.type;
+    _listing = c.listing;
+    _specialty = c.specialty;
+    _isActive = c.isActive;
+    _specialDate = c.specialDate;
+    _occasion = c.specialOccasion ?? SpecialOccasion.birthday;
+    _captured = c.location;
+  }
+
+  @override
   void dispose() {
     for (final c in [
-      _name, _designation, _specialty, _contact,
-      _mobile, _email, _address, _pincode,
+      _name,
+      _designation,
+      _contact,
+      _mobile,
+      _email,
+      _address,
+      _pincode,
+      _occasionNote,
+      _search,
     ]) {
       c.dispose();
     }
@@ -522,18 +726,23 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
 
     setState(() => _submitting = true);
     final session = ref.read(sessionProvider);
+    final existing = widget.existing;
 
     final client = Client(
-      id: const Uuid().v4(),
+      // An edit keeps the id, and with it every activity, order and expense
+      // already pointing at this client.
+      id: existing?.id ?? const Uuid().v4(),
       name: _name.text.trim(),
       type: _type,
-      category: _category,
       areaId: _area!.id,
       areaName: _area!.name,
       territoryId: _area!.territoryId,
-      specialty: _specialty.text.trim().isEmpty ? null : _specialty.text.trim(),
-      designation:
-          _designation.text.trim().isEmpty ? null : _designation.text.trim(),
+      // A chemist has no specialty, and switching type after picking one
+      // would otherwise carry it along.
+      specialty: _type == ClientType.doctor ? _specialty : null,
+      designation: _designation.text.trim().isEmpty
+          ? null
+          : _designation.text.trim(),
       contactPerson: _contact.text.trim(),
       mobile: _mobile.text.trim(),
       email: _email.text.trim().isEmpty ? null : _email.text.trim(),
@@ -541,17 +750,48 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
       pincode: _pincode.text.trim().isEmpty ? null : _pincode.text.trim(),
       latitude: _captured?.latitude,
       longitude: _captured?.longitude,
-      ownerEmployeeId: session.employee.id,
-      createdAt: DateTime.now(),
+      isActive: _isActive,
+      specialDate: _specialDate,
+      // Both only mean anything with a date behind them.
+      specialOccasion: _specialDate == null ? null : _occasion,
+      specialOccasionNote:
+          _specialDate != null && _occasion == SpecialOccasion.other
+          ? _occasionNote.text.trim()
+          : null,
+      listing: _listing,
+      // Planning priority is head office's call, not something asked for at
+      // the roadside. New clients start Regular and are re-graded centrally.
+      category: existing?.category ?? ClientCategory.regular,
+      ownerEmployeeId: existing?.ownerEmployeeId ?? session.employee.id,
+      createdAt: existing?.createdAt ?? DateTime.now(),
+      lastVisitAt: existing?.lastVisitAt,
+      nextPlannedVisitAt: existing?.nextPlannedVisitAt,
+      totalVisits: existing?.totalVisits ?? 0,
+      clusterId: existing?.clusterId,
+      clusterName: existing?.clusterName,
       syncStatus: ref.read(isOnlineProvider)
           ? SyncStatus.synced
           : SyncStatus.savedLocally,
     );
 
-    await ref.read(clientRepositoryProvider).create(client);
+    final repository = ref.read(clientRepositoryProvider);
+    if (widget.isEditing) {
+      await repository.update(client);
+    } else {
+      await repository.create(client);
+    }
     if (!mounted) return;
 
+    AppHaptics.success();
     ref.bumpRevision();
+
+    // An edit returns to the record it changed; there is nothing to announce
+    // that the updated detail screen does not already show.
+    if (widget.isEditing) {
+      context.pop();
+      return;
+    }
+
     setState(() {
       _submitting = false;
       _created = client;
@@ -562,7 +802,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
   Widget build(BuildContext context) {
     if (_created != null) {
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.transparent,
         body: SafeArea(
           child: SuccessState(
             title: 'Client registered',
@@ -590,15 +830,18 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
     }
 
     final areasAsync = ref.watch(_areasProvider);
+    final territoriesAsync = ref.watch(_territoriesProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('New Client')),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(widget.isEditing ? 'Edit Client' : 'New Client'),
+      ),
       bottomNavigationBar: BottomActionBar(
         children: [
           SecondaryButton(label: 'Cancel', onPressed: () => context.pop()),
           PrimaryButton(
-            label: 'Register client',
+            label: widget.isEditing ? 'Save changes' : 'Register client',
             isLoading: _submitting,
             onPressed: _submit,
           ),
@@ -609,12 +852,36 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.screenH),
           children: [
-            const SectionHeader(title: 'Identity'),
+            // Search first — but only when registering. A rep standing outside
+            // a clinic does not know whether head office already listed this
+            // doctor, and a duplicate splits their visit history across two
+            // records for good. Editing a record that already exists cannot
+            // duplicate anything, so the search would just be noise above the
+            // fields they came to change.
+            if (!widget.isEditing) ...[
+              _DuplicateCheck(
+                controller: _search,
+                onOpen: (client) =>
+                    context.push(Routes.clientDetail(client.id)),
+              ),
+              const SizedBox(height: AppSpacing.section),
+            ],
+            SectionHeader(
+              title: widget.isEditing
+                  ? 'Client details'
+                  : 'New client registration',
+            ),
             AppTextField(
               label: 'Client name',
               required: true,
               controller: _name,
               validator: (v) => Validate.required(v, 'Client name'),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            AppTextField(
+              label: 'Designation',
+              controller: _designation,
+              hint: 'e.g. Consultant',
             ),
             const SizedBox(height: AppSpacing.lg),
             DropdownField<ClientType>(
@@ -625,30 +892,52 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
               itemLabel: (t) => t.label,
               onChanged: (v) => setState(() => _type = v ?? ClientType.doctor),
             ),
-            const SizedBox(height: AppSpacing.lg),
+            // Specialty is a doctor's attribute; a chemist does not have one.
+            //
+            // Chosen from master data rather than typed. Free text arrives as
+            // "Cardiologist", "cardiologist" and "Cardio" — indistinguishable
+            // to a rep, three separate rows in any report that groups by it.
+            // The picker searches once the list passes eight entries, which
+            // this one does.
             if (_type == ClientType.doctor) ...[
-              AppTextField(
-                label: 'Specialty',
-                controller: _specialty,
-                hint: 'e.g. Cardiologist',
-              ),
               const SizedBox(height: AppSpacing.lg),
-              AppTextField(
-                label: 'Designation',
-                controller: _designation,
-                hint: 'e.g. Consultant',
-              ),
-              const SizedBox(height: AppSpacing.lg),
+              ref
+                  .watch(_specialtiesProvider)
+                  .when(
+                    loading: () => const Skeleton(height: 68),
+                    error: (_, _) => const SizedBox.shrink(),
+                    data: (specialties) => DropdownField<String>(
+                      label: 'Specialty',
+                      hint: 'Search or select',
+                      items: specialties,
+                      value: _specialty,
+                      itemLabel: (s) => s,
+                      onChanged: (v) => setState(() => _specialty = v),
+                    ),
+                  ),
             ],
-            DropdownField<ClientCategory>(
+            const SizedBox(height: AppSpacing.lg),
+            // Two options, so both are on screen. A dropdown here hid one
+            // answer behind a tap and charged a second tap to choose it.
+            SegmentedField<ClientListing>(
               label: 'Category',
               required: true,
-              items: ClientCategory.values,
-              value: _category,
-              itemLabel: (c) => c.label,
-              onChanged: (v) =>
-                  setState(() => _category = v ?? ClientCategory.regular),
-              helper: 'Determines planning priority.',
+              options: ClientListing.values,
+              value: _listing,
+              itemLabel: (l) => l.label,
+              onChanged: (v) => setState(() => _listing = v),
+              helper: 'Listed clients are already on the company list.',
+            ),
+            const SizedBox(height: AppSpacing.lg),
+
+            // A clinic that has closed should stop appearing in planning
+            // immediately, so this is the rep's to set.
+            SegmentedField<bool>(
+              label: 'Status',
+              options: const [true, false],
+              value: _isActive,
+              itemLabel: (active) => active ? 'Active' : 'Inactive',
+              onChanged: (v) => setState(() => _isActive = v),
             ),
 
             const SizedBox(height: AppSpacing.section),
@@ -686,17 +975,42 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
               validator: (v) => Validate.required(v, 'Address'),
             ),
             const SizedBox(height: AppSpacing.lg),
+            territoriesAsync.when(
+              loading: () => const Skeleton(height: 48),
+              error: (_, _) => const SizedBox.shrink(),
+              data: (territories) => DropdownField<Territory>(
+                label: 'Territory',
+                required: true,
+                items: territories,
+                value: _territory,
+                itemLabel: (t) => t.name,
+                onChanged: (v) => setState(() {
+                  _territory = v;
+                  // The area below belongs to the territory above, so a
+                  // stale selection is cleared rather than left mismatched.
+                  _area = null;
+                }),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
             areasAsync.when(
               loading: () => const Skeleton(height: 48),
               error: (_, _) => const SizedBox.shrink(),
-              data: (areas) => DropdownField<Area>(
-                label: 'Area',
-                required: true,
-                items: areas,
-                value: _area,
-                itemLabel: (a) => a.name,
-                onChanged: (v) => setState(() => _area = v),
-              ),
+              data: (areas) {
+                final scoped = _territory == null
+                    ? areas
+                    : areas
+                          .where((a) => a.territoryId == _territory!.id)
+                          .toList();
+                return DropdownField<Area>(
+                  label: 'Area',
+                  required: true,
+                  items: scoped,
+                  value: _area,
+                  itemLabel: (a) => a.name,
+                  onChanged: (v) => setState(() => _area = v),
+                );
+              },
             ),
             const SizedBox(height: AppSpacing.lg),
             AppTextField(
@@ -705,6 +1019,40 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
               keyboardType: TextInputType.number,
               maxLength: 6,
             ),
+            const SizedBox(height: AppSpacing.lg),
+            DateField(
+              label: 'Special date',
+              value: _specialDate,
+              firstDate: DateTime(1940),
+              lastDate: DateTime.now(),
+              onChanged: (d) => setState(() => _specialDate = d),
+              helper: 'A date worth wishing them on.',
+            ),
+
+            // Only once there is a date. A lone occasion picker on an empty
+            // field is a question about nothing, and the date is what the
+            // rep came here to enter.
+            if (_specialDate != null) ...[
+              const SizedBox(height: AppSpacing.lg),
+              SegmentedField<SpecialOccasion>(
+                label: 'Occasion',
+                required: true,
+                options: SpecialOccasion.values,
+                value: _occasion,
+                itemLabel: (o) => o.label,
+                onChanged: (v) => setState(() => _occasion = v),
+              ),
+              if (_occasion == SpecialOccasion.other) ...[
+                const SizedBox(height: AppSpacing.lg),
+                AppTextField(
+                  label: 'What is the occasion?',
+                  controller: _occasionNote,
+                  hint: 'e.g. Clinic anniversary',
+                  required: true,
+                  validator: (v) => Validate.required(v, 'The occasion'),
+                ),
+              ],
+            ],
 
             const SizedBox(height: AppSpacing.section),
             const SectionHeader(title: 'Registered location'),
@@ -713,6 +1061,9 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
               isCapturing: _capturing,
               error: _locationError,
               onCapture: _capture,
+              // Read from the policy, not written into the copy: if the
+              // geo-fence is ever widened, this sentence must not lie.
+              radiusMeters: ref.watch(geoFenceRadiusProvider),
             ),
             const SizedBox(height: AppSpacing.xxxl),
           ],
@@ -726,18 +1077,138 @@ final _areasProvider = FutureProvider.autoDispose<List<Area>>(
   (ref) => ref.watch(employeeRepositoryProvider).areas(),
 );
 
+final _territoriesProvider = FutureProvider.autoDispose<List<Territory>>(
+  (ref) => ref.watch(employeeRepositoryProvider).territories(),
+);
+
+/// The specialty master list, for the doctor form.
+final _specialtiesProvider = FutureProvider.autoDispose<List<String>>(
+  (ref) => ref.watch(clientRepositoryProvider).specialties(),
+);
+
+/// Existing clients matching what has been typed, so a duplicate is caught
+/// before it is created rather than merged afterwards.
+final _duplicateSearchProvider = FutureProvider.autoDispose
+    .family<List<Client>, String>((ref, query) async {
+      if (query.trim().length < 2) return const [];
+      final session = ref.watch(sessionProvider);
+      return ref.watch(clientRepositoryProvider).list(session, query: query);
+    });
+
+/// Search the existing master before adding to it.
+///
+/// The single most damaging mistake on this screen is registering a client who
+/// is already listed: their visit history, targets and RCPA then live under two
+/// records, and nothing downstream can tell they are one person.
+class _DuplicateCheck extends ConsumerStatefulWidget {
+  const _DuplicateCheck({required this.controller, required this.onOpen});
+
+  final TextEditingController controller;
+  final ValueChanged<Client> onOpen;
+
+  @override
+  ConsumerState<_DuplicateCheck> createState() => _DuplicateCheckState();
+}
+
+class _DuplicateCheckState extends ConsumerState<_DuplicateCheck> {
+  String _query = '';
+  ClientType? _type;
+
+  @override
+  Widget build(BuildContext context) {
+    final matches =
+        ref.watch(_duplicateSearchProvider(_query)).valueOrNull ?? const [];
+    final filtered = matches
+        .where((c) => _type == null || c.type == _type)
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionHeader(title: 'Search existing clients'),
+        AppTextField(
+          controller: widget.controller,
+          hint: 'Check before you add',
+          prefixIcon: Icons.search,
+          textCapitalization: TextCapitalization.words,
+          onChanged: (v) => setState(() => _query = v),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        FilterChipBar<ClientFilter>(
+          options: ClientFilter.values,
+          selected: ClientFilter.values.firstWhere(
+            (f) => f.type == _type,
+            orElse: () => ClientFilter.all,
+          ),
+          labelOf: (f) => f.label,
+          onSelected: (f) => setState(() => _type = f.type),
+          padding: EdgeInsets.zero,
+        ),
+        if (_query.trim().length >= 2) ...[
+          const SizedBox(height: AppSpacing.md),
+          if (filtered.isEmpty)
+            Text(
+              'No existing client matches "${_query.trim()}". Register it below.',
+              style: AppTypography.caption,
+            )
+          else
+            AppCard(
+              color: AppColors.warningSoft,
+              borderColor: Colors.transparent,
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${filtered.length} already listed. Open one instead of '
+                    'adding a duplicate.',
+                    style: AppTypography.bodySm.copyWith(
+                      color: AppColors.textPrimary,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  for (final client in filtered.take(4))
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: AppAvatar(name: client.name, size: 32),
+                      title: Text(client.name, style: AppTypography.titleSm),
+                      subtitle: Text(
+                        '${client.type.label} · ${client.areaName}',
+                        style: AppTypography.caption,
+                      ),
+                      trailing: const Icon(
+                        Icons.chevron_right,
+                        size: AppSizes.iconMd,
+                      ),
+                      onTap: () => widget.onOpen(client),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Active or inactive, as words rather than an unlabelled switch (§73).
+
 class _LocationCapture extends StatelessWidget {
   const _LocationCapture({
     required this.captured,
     required this.isCapturing,
     required this.error,
     required this.onCapture,
+    required this.radiusMeters,
   });
 
   final GeoPoint? captured;
   final bool isCapturing;
   final String? error;
   final VoidCallback onCapture;
+  final double radiusMeters;
 
   @override
   Widget build(BuildContext context) {
@@ -751,9 +1222,7 @@ class _LocationCapture extends StatelessWidget {
           Row(
             children: [
               Icon(
-                captured != null
-                    ? Icons.location_on
-                    : Icons.location_searching,
+                captured != null ? Icons.location_on : Icons.location_searching,
                 size: 22,
                 color: captured != null ? AppColors.success : AppColors.brand,
               ),
@@ -777,10 +1246,12 @@ class _LocationCapture extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           Text(
             captured != null
-                ? 'Every future visit to this client is verified against this '
-                    'point. Stand at the entrance before capturing.'
+                ? 'Capture this at the client premises. Every future visit is '
+                      'verified against this point, and counts as verified only '
+                      'within ${radiusMeters.round()} m of it.'
                 : 'Stand at the client premises and capture the GPS position. '
-                    'This becomes the reference for visit verification.',
+                      'Future visits count as verified only within '
+                      '${radiusMeters.round()} m of it.',
             style: AppTypography.caption,
           ),
           if (captured != null) ...[
@@ -794,8 +1265,10 @@ class _LocationCapture extends StatelessWidget {
           ],
           if (error != null) ...[
             const SizedBox(height: AppSpacing.md),
-            Text(error!,
-                style: AppTypography.caption.copyWith(color: AppColors.error)),
+            Text(
+              error!,
+              style: AppTypography.caption.copyWith(color: AppColors.error),
+            ),
           ],
           const SizedBox(height: AppSpacing.md),
           SecondaryButton(

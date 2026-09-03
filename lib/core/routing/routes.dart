@@ -21,12 +21,32 @@ abstract final class Routes {
   // manager tabs (replaces business for managers)
   static const team = '/team';
 
-  // home
+  /// Roots of the tabbed shell's branches.
+  ///
+  /// These must be *navigated to*, never pushed: pushing one lands it on that
+  /// branch's own navigator, which the indexed stack is not currently showing,
+  /// so the screen appears not to open at all. [navigateTo] picks the right
+  /// verb; anything reached from a menu or a tile should go through it.
+  static const shellRoots = {
+    home,
+    activity,
+    team,
+    reports,
+    chat,
+    resources,
+    tasks,
+    admin,
+    adminUsers,
+    adminMasterData,
+  };
+
+  // day plan — the morning intimation, not a schedule
   static const dayPlan = '/home/day-plan';
 
   // activity
   static const addActivity = '/activity/add';
   static String activityDetail(String id) => '/activity/detail/$id';
+  static String editActivity(String id) => '/activity/detail/$id/edit';
   static String visitFlow(String id) => '/activity/visit/$id';
 
   // clients
@@ -34,16 +54,31 @@ abstract final class Routes {
   static const newClient = '/clients/new';
   static String clientDetail(String id) => '/clients/detail/$id';
   static String clientHistory(String id) => '/clients/detail/$id/history';
+  static String editClient(String id) => '/clients/detail/$id/edit';
 
-  // travel
+  // travel — a hub with two jobs behind it: plans and expenses
   static const travel = '/travel';
+  static const travelPlans = '/travel/plans';
   static const newTravelPlan = '/travel/new';
   static String travelDetail(String id) => '/travel/detail/$id';
+  static String editTravelPlan(String id) => '/travel/detail/$id/edit';
 
   // expenses
   static const expenses = '/expenses';
-  static const newExpense = '/expenses/new';
+
+  /// One declared day's claim, addressed by its date.
+  ///
+  /// By date rather than by a record id, because the screen exists before the
+  /// record does — the whole point is claiming a day nothing has been filed
+  /// against yet.
+  /// The name and the path literal share a line on purpose. Split across
+  /// two, `no_dead_controls_test` can no longer tell which screen is behind
+  /// this constant — the guard reads this file as text, so a route written
+  /// across several lines is a route that quietly stops being checked. The
+  /// date formatting lives in [isoDay] below for exactly that reason.
+  static String claimDay(DateTime d) => '/expenses/day/${isoDay(d)}';
   static String expenseDetail(String id) => '/expenses/detail/$id';
+  static String editExpense(String id) => '/expenses/detail/$id/edit';
 
   // hr
   static const hr = '/hr';
@@ -94,11 +129,11 @@ abstract final class Routes {
   static const teamActivity = '/team/activity';
   static const teamPerformance = '/team/performance';
   static const approvals = '/approvals';
-  static String approvalDetail(String id) => '/approvals/$id';
   static const targetAssignment = '/manage/targets';
   static const rateAssignment = '/manage/rates';
   static const taskAssignment = '/manage/tasks';
   static const tasks = '/tasks';
+  static const newTask = '/tasks/new';
 
   // admin
   static const admin = '/admin';
@@ -112,8 +147,10 @@ abstract final class Routes {
   static const profile = '/profile';
   static const editProfile = '/profile/edit';
   static const settings = '/settings';
-  static const notificationSettings = '/settings/notifications';
   static const help = '/help';
   static const search = '/search';
   static const syncCenter = '/sync';
 }
+
+/// `2026-09-04` — the path segment [Routes.claimDay] addresses a day by.
+String isoDay(DateTime d) => d.toIso8601String().substring(0, 10);

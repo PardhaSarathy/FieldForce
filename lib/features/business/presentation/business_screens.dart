@@ -11,6 +11,8 @@ import '../../../core/utils/formatters.dart';
 import '../../../data/repositories/repositories.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/business.dart';
+import '../../../shared/widgets/motion.dart';
+import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/charts.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
@@ -20,21 +22,27 @@ final _monthProvider = StateProvider.autoDispose<DateTime>(
   (ref) => DateTime(DateTime.now().year, DateTime.now().month),
 );
 
-final _salesReportProvider =
-    FutureProvider.autoDispose<SalesReport>((ref) async {
+final _salesReportProvider = FutureProvider.autoDispose<SalesReport>((
+  ref,
+) async {
   final session = ref.watch(sessionProvider);
   final month = ref.watch(_monthProvider);
-  return ref.watch(reportRepositoryProvider).salesReport(
+  return ref
+      .watch(reportRepositoryProvider)
+      .salesReport(
         session,
         year: month.year,
         employeeId: session.isManager ? null : session.employee.id,
       );
 });
 
-final _targetReportProvider =
-    FutureProvider.autoDispose<TargetReport>((ref) async {
+final _targetReportProvider = FutureProvider.autoDispose<TargetReport>((
+  ref,
+) async {
   final session = ref.watch(sessionProvider);
-  return ref.watch(reportRepositoryProvider).targetReport(
+  return ref
+      .watch(reportRepositoryProvider)
+      .targetReport(
         session,
         month: ref.watch(_monthProvider),
         employeeId: session.isManager ? null : session.employee.id,
@@ -44,7 +52,9 @@ final _targetReportProvider =
 final _ordersProvider = FutureProvider.autoDispose<List<Order>>((ref) {
   final session = ref.watch(sessionProvider);
   ref.watch(dataRevisionProvider);
-  return ref.watch(businessRepositoryProvider).orders(
+  return ref
+      .watch(businessRepositoryProvider)
+      .orders(
         session,
         employeeId: session.isManager ? null : session.employee.id,
       );
@@ -63,11 +73,10 @@ class BusinessDashboardScreen extends ConsumerWidget {
     final ordersAsync = ref.watch(_ordersProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Business'),
-        automaticallyImplyLeading: false,
-      ),
+      backgroundColor: Colors.transparent,
+      // Business is opened from Home's quick actions rather than a tab, so it
+      // needs the back button an implied leading gives it.
+      appBar: AppBar(title: const Text('Business')),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(_targetReportProvider);
@@ -75,8 +84,10 @@ class BusinessDashboardScreen extends ConsumerWidget {
         },
         child: ListView(
           padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenH, AppSpacing.md,
-            AppSpacing.screenH, AppSpacing.xxxl * 3,
+            AppSpacing.screenH,
+            AppSpacing.md,
+            AppSpacing.screenH,
+            AppSpacing.xxxl * 3,
           ),
           children: [
             _MonthPicker(
@@ -103,7 +114,10 @@ class BusinessDashboardScreen extends ConsumerWidget {
                           ),
                         ),
                         Container(
-                            width: 1, height: 34, color: AppColors.border),
+                          width: 1,
+                          height: 34,
+                          color: AppColors.border,
+                        ),
                         Expanded(
                           child: _Figure(
                             label: 'Target',
@@ -111,7 +125,10 @@ class BusinessDashboardScreen extends ConsumerWidget {
                           ),
                         ),
                         Container(
-                            width: 1, height: 34, color: AppColors.border),
+                          width: 1,
+                          height: 34,
+                          color: AppColors.border,
+                        ),
                         Expanded(
                           child: _Figure(
                             label: 'Gap',
@@ -154,7 +171,7 @@ class BusinessDashboardScreen extends ConsumerWidget {
                     subtitle: ordersAsync.valueOrNull == null
                         ? 'Capture and track client orders'
                         : '${ordersAsync.value!.length} orders · '
-                            '${ordersAsync.value!.where((o) => o.status.awaitsDecision).length} pending',
+                              '${ordersAsync.value!.where((o) => o.status.awaitsDecision).length} pending',
                     route: Routes.orders,
                   ),
                 ],
@@ -183,8 +200,9 @@ class BusinessDashboardScreen extends ConsumerWidget {
                       children: [
                         for (final order in orders.take(3))
                           Padding(
-                            padding:
-                                const EdgeInsets.only(bottom: AppSpacing.cardGap),
+                            padding: const EdgeInsets.only(
+                              bottom: AppSpacing.cardGap,
+                            ),
                             child: OrderCard(order: order),
                           ),
                       ],
@@ -206,15 +224,17 @@ class _Figure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        children: [
-          Text(value,
-              style: AppTypography.titleMd.copyWith(color: color),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 2),
-          Text(label, style: AppTypography.caption),
-        ],
-      );
+    children: [
+      Text(
+        value,
+        style: AppTypography.titleMd.copyWith(color: color),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      const SizedBox(height: 2),
+      Text(label, style: AppTypography.caption),
+    ],
+  );
 }
 
 class _NavRow extends StatelessWidget {
@@ -236,8 +256,7 @@ class _NavRow extends StatelessWidget {
       leading: IconTile(icon: icon),
       title: Text(title, style: AppTypography.titleMd),
       subtitle: Text(subtitle, style: AppTypography.caption),
-      trailing:
-          const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+      trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
       onTap: () => context.push(route),
     );
   }
@@ -256,7 +275,9 @@ class _MonthPicker extends StatelessWidget {
 
     return AppCard(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
       child: Row(
         children: [
           IconButton(
@@ -264,8 +285,11 @@ class _MonthPicker extends StatelessWidget {
             onPressed: () => onChanged(DateTime(month.year, month.month - 1)),
           ),
           Expanded(
-            child: Text(Fmt.monthYear(month),
-                textAlign: TextAlign.center, style: AppTypography.titleMd),
+            child: Text(
+              Fmt.monthYear(month),
+              textAlign: TextAlign.center,
+              style: AppTypography.titleMd,
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.chevron_right),
@@ -290,7 +314,7 @@ class SalesScreen extends ConsumerWidget {
     final async = ref.watch(_salesReportProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Sales')),
       body: async.when(
         loading: () => const LoadingState(),
@@ -384,10 +408,12 @@ class _SmallMetric extends StatelessWidget {
         children: [
           Text(label.toUpperCase(), style: AppTypography.overline),
           const SizedBox(height: AppSpacing.sm),
-          Text(value,
-              style: AppTypography.metricSm.copyWith(color: color),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
+          Text(
+            value,
+            style: AppTypography.metricSm.copyWith(color: color),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
@@ -405,7 +431,7 @@ class TargetsScreen extends ConsumerWidget {
     final async = ref.watch(_targetReportProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Targets')),
       body: async.when(
         loading: () => const LoadingState(),
@@ -423,10 +449,11 @@ class TargetsScreen extends ConsumerWidget {
                 children: [
                   AchievementRing(percent: report.achievement),
                   const SizedBox(height: AppSpacing.lg),
+                  KeyValueRow(label: 'Target', value: Fmt.money(report.target)),
                   KeyValueRow(
-                      label: 'Target', value: Fmt.money(report.target)),
-                  KeyValueRow(
-                      label: 'Achieved', value: Fmt.money(report.achieved)),
+                    label: 'Achieved',
+                    value: Fmt.money(report.achieved),
+                  ),
                   KeyValueRow(label: 'Gap', value: Fmt.money(report.gap)),
                 ],
               ),
@@ -479,26 +506,33 @@ class _TargetRow extends StatelessWidget {
               Expanded(
                 child: Text(target.employeeName, style: AppTypography.titleSm),
               ),
-              StatusBadge(
-                label: '${target.achievementPercent.round()}%',
-                tone: target.tone,
-                dense: true,
+              // The rung, not a bare number: "Ahead · 82%" says where this
+              // employee stands, where "82%" leaves the reader to work it out.
+              Flexible(
+                child: TierBadge(
+                  tier: target.tier,
+                  percent: target.achievementPercent,
+                ),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
           AppProgressBar(
             value: target.achievementPercent / 100,
-            color: target.tone.foreground,
+            color: target.tier.ink,
             height: 5,
           ),
           const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
-              Text(Fmt.moneyCompact(target.achievedAmount),
-                  style: AppTypography.caption),
-              Text(' of ${Fmt.moneyCompact(target.targetAmount)}',
-                  style: AppTypography.caption),
+              Text(
+                Fmt.moneyCompact(target.achievedAmount),
+                style: AppTypography.caption,
+              ),
+              Text(
+                ' of ${Fmt.moneyCompact(target.targetAmount)}',
+                style: AppTypography.caption,
+              ),
               const Spacer(),
               if (target.areaName != null)
                 Text(target.areaName!, style: AppTypography.caption),
@@ -522,15 +556,16 @@ enum OrderFilter {
   final String label;
 
   bool matches(Order o) => switch (this) {
-        all => true,
-        pending => o.status.awaitsDecision,
-        approved => o.status == ApprovalStatus.approved,
-        rejected => o.status == ApprovalStatus.rejected,
-      };
+    all => true,
+    pending => o.status.awaitsDecision,
+    approved => o.status == ApprovalStatus.approved,
+    rejected => o.status == ApprovalStatus.rejected,
+  };
 }
 
-final _orderFilterProvider =
-    StateProvider.autoDispose<OrderFilter>((ref) => OrderFilter.all);
+final _orderFilterProvider = StateProvider.autoDispose<OrderFilter>(
+  (ref) => OrderFilter.all,
+);
 
 class OrderListScreen extends ConsumerWidget {
   const OrderListScreen({super.key});
@@ -541,12 +576,12 @@ class OrderListScreen extends ConsumerWidget {
     final async = ref.watch(_ordersProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Orders')),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: AppFab(
         onPressed: () => context.push(Routes.newOrder),
-        icon: const Icon(Icons.add),
-        label: const Text('New order'),
+        icon: Icons.add,
+        label: 'New order',
       ),
       body: Column(
         children: [
@@ -558,7 +593,8 @@ class OrderListScreen extends ConsumerWidget {
             countOf: (f) => f == OrderFilter.all
                 ? null
                 : async.valueOrNull?.where(f.matches).length,
-            onSelected: (f) => ref.read(_orderFilterProvider.notifier).state = f,
+            onSelected: (f) =>
+                ref.read(_orderFilterProvider.notifier).state = f,
           ),
           const SizedBox(height: AppSpacing.md),
           Expanded(
@@ -578,12 +614,18 @@ class OrderListScreen extends ConsumerWidget {
                 }
                 return ListView.separated(
                   padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenH, 0, AppSpacing.screenH, AppSpacing.xxxl * 3,
+                    AppSpacing.screenH,
+                    0,
+                    AppSpacing.screenH,
+                    AppSpacing.xxxl * 3,
                   ),
                   itemCount: filtered.length,
                   separatorBuilder: (_, _) =>
                       const SizedBox(height: AppSpacing.cardGap),
-                  itemBuilder: (context, i) => OrderCard(order: filtered[i]),
+                  itemBuilder: (context, i) => Arrive.staggered(
+                    index: i,
+                    child: OrderCard(order: filtered[i]),
+                  ),
                 );
               },
             ),
@@ -614,17 +656,21 @@ class OrderCard extends StatelessWidget {
                   children: [
                     Text(order.orderNumber, style: AppTypography.titleMd),
                     const SizedBox(height: 2),
-                    Text(order.clientName,
-                        style: AppTypography.caption,
-                        overflow: TextOverflow.ellipsis),
+                    Text(
+                      order.clientName,
+                      style: AppTypography.caption,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(Fmt.money(order.grandTotal),
-                      style: AppTypography.numeric),
+                  Text(
+                    Fmt.money(order.grandTotal),
+                    style: AppTypography.numeric,
+                  ),
                   const SizedBox(height: AppSpacing.xs),
                   StatusBadge.approval(order.status, dense: true),
                 ],
@@ -634,8 +680,11 @@ class OrderCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           Row(
             children: [
-              const Icon(Icons.inventory_2_outlined,
-                  size: 13, color: AppColors.textSecondary),
+              const Icon(
+                Icons.inventory_2_outlined,
+                size: 13,
+                color: AppColors.textSecondary,
+              ),
               const SizedBox(width: AppSpacing.xs),
               Expanded(
                 child: Text(

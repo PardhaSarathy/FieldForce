@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/providers/app_providers.dart';
+import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -12,10 +13,12 @@ import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/business.dart';
 import '../../../shared/models/engagement.dart';
 import '../../../shared/models/organization.dart';
+import '../../../shared/widgets/motion.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
+import '../../shell/presentation/app_shell.dart';
 
 // ====================================================== target assignment ==
 
@@ -98,7 +101,7 @@ class _TargetAssignmentScreenState
           targetAmount: amount,
           areaId: employee.areaId,
           areaName: employee.areaName,
-          visitTarget: 132,
+          visitTarget: 182,
         ),
       );
     }
@@ -116,12 +119,15 @@ class _TargetAssignmentScreenState
     final teamAsync = ref.watch(teamProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Assign Targets')),
       bottomNavigationBar: _loaded
           ? BottomActionBar(
               children: [
-                SecondaryButton(label: 'Cancel', onPressed: () => context.pop()),
+                SecondaryButton(
+                  label: 'Cancel',
+                  onPressed: () => context.pop(),
+                ),
                 PrimaryButton(
                   label: 'Save targets',
                   isLoading: _saving,
@@ -229,13 +235,19 @@ class _TargetAssignmentScreenState
               child: Row(
                 children: [
                   Expanded(
-                    child: Text('Annual total',
-                        style: AppTypography.titleSm
-                            .copyWith(color: AppColors.brandDark)),
+                    child: Text(
+                      'Annual total',
+                      style: AppTypography.titleSm.copyWith(
+                        color: AppColors.brandDark,
+                      ),
+                    ),
                   ),
-                  Text(Fmt.money(_annualTotal),
-                      style: AppTypography.titleMd
-                          .copyWith(color: AppColors.brandDark)),
+                  Text(
+                    Fmt.money(_annualTotal),
+                    style: AppTypography.titleMd.copyWith(
+                      color: AppColors.brandDark,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -300,7 +312,7 @@ class _RateAssignmentScreenState extends ConsumerState<RateAssignmentScreen> {
     final teamAsync = ref.watch(teamProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Travel Rates')),
       bottomNavigationBar: BottomActionBar(
         children: [
@@ -312,8 +324,7 @@ class _RateAssignmentScreenState extends ConsumerState<RateAssignmentScreen> {
                 : () {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content:
-                            Text('Rates saved for ${_employee!.name}.'),
+                        content: Text('Rates saved for ${_employee!.name}.'),
                       ),
                     );
                     context.pop();
@@ -346,14 +357,20 @@ class _RateAssignmentScreenState extends ConsumerState<RateAssignmentScreen> {
                   children: [
                     const SizedBox(width: 84),
                     Expanded(
-                        child: Text('Local',
-                            style: AppTypography.overline,
-                            textAlign: TextAlign.center)),
+                      child: Text(
+                        'Local',
+                        style: AppTypography.overline,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
-                        child: Text('Outstation',
-                            style: AppTypography.overline,
-                            textAlign: TextAlign.center)),
+                      child: Text(
+                        'Outstation',
+                        style: AppTypography.overline,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                   ],
                 ),
                 const AppDivider(height: AppSpacing.md),
@@ -364,13 +381,13 @@ class _RateAssignmentScreenState extends ConsumerState<RateAssignmentScreen> {
                       children: [
                         SizedBox(
                           width: 84,
-                          child:
-                              Text(mode.label, style: AppTypography.titleSm),
+                          child: Text(mode.label, style: AppTypography.titleSm),
                         ),
                         Expanded(child: _RateInput(controller: _local[mode]!)),
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(
-                            child: _RateInput(controller: _outstation[mode]!)),
+                          child: _RateInput(controller: _outstation[mode]!),
+                        ),
                       ],
                     ),
                   ),
@@ -440,7 +457,9 @@ class _TaskAssignmentScreenState extends ConsumerState<TaskAssignmentScreen> {
     setState(() => _submitting = true);
 
     final session = ref.read(sessionProvider);
-    await ref.read(taskRepositoryProvider).create(
+    await ref
+        .read(taskRepositoryProvider)
+        .create(
           FieldTask(
             id: const Uuid().v4(),
             title: _title.text.trim(),
@@ -454,8 +473,9 @@ class _TaskAssignmentScreenState extends ConsumerState<TaskAssignmentScreen> {
             instructions: _instructions.text.trim().isEmpty
                 ? null
                 : _instructions.text.trim(),
-            locationName:
-                _location.text.trim().isEmpty ? null : _location.text.trim(),
+            locationName: _location.text.trim().isEmpty
+                ? null
+                : _location.text.trim(),
             createdAt: DateTime.now(),
           ),
         );
@@ -474,7 +494,7 @@ class _TaskAssignmentScreenState extends ConsumerState<TaskAssignmentScreen> {
     final teamAsync = ref.watch(teamProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Assign Task')),
       bottomNavigationBar: BottomActionBar(
         children: [
@@ -563,7 +583,9 @@ class _TaskAssignmentScreenState extends ConsumerState<TaskAssignmentScreen> {
 final _tasksProvider = FutureProvider.autoDispose<List<FieldTask>>((ref) {
   final session = ref.watch(sessionProvider);
   ref.watch(dataRevisionProvider);
-  return ref.watch(taskRepositoryProvider).list(
+  return ref
+      .watch(taskRepositoryProvider)
+      .list(
         session,
         employeeId: session.isManager ? null : session.employee.id,
       );
@@ -586,15 +608,28 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
     const filters = ['Open', 'Overdue', 'Completed', 'All'];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Tasks')),
-      floatingActionButton: session.isManager
-          ? FloatingActionButton.extended(
-              onPressed: () => context.push('/manage/tasks'),
-              icon: const Icon(Icons.add),
-              label: const Text('Assign'),
-            )
-          : null,
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('To-Do'),
+        leading: const DrawerMenuButton(),
+        actions: [
+          IconButton(
+            tooltip: 'Calendar',
+            icon: const Icon(Icons.calendar_month_outlined),
+            onPressed: () => context.push(Routes.calendar),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+        ],
+      ),
+      // A manager assigns work to someone else; a rep adds their own to-do.
+      // Same button, same place — the sheet behind it is what differs.
+      floatingActionButton: AppFab(
+        onPressed: () => context.push(
+          session.isManager ? Routes.taskAssignment : Routes.newTask,
+        ),
+        icon: Icons.add,
+        label: session.isManager ? 'Assign' : 'Add to-do',
+      ),
       body: Column(
         children: [
           const SizedBox(height: AppSpacing.md),
@@ -632,20 +667,26 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
 
                 return ListView.separated(
                   padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenH, 0, AppSpacing.screenH, AppSpacing.xxxl * 3,
+                    AppSpacing.screenH,
+                    0,
+                    AppSpacing.screenH,
+                    AppSpacing.xxxl * 3,
                   ),
                   itemCount: tasks.length,
                   separatorBuilder: (_, _) =>
                       const SizedBox(height: AppSpacing.cardGap),
-                  itemBuilder: (context, i) => _TaskCard(
-                    task: tasks[i],
-                    showAssignee: session.isManager,
-                    onComplete: () async {
-                      await ref
-                          .read(taskRepositoryProvider)
-                          .updateStatus(tasks[i].id, TaskStatus.completed);
-                      ref.bumpRevision();
-                    },
+                  itemBuilder: (context, i) => Arrive.staggered(
+                    index: i,
+                    child: _TaskCard(
+                      task: tasks[i],
+                      showAssignee: session.isManager,
+                      onComplete: () async {
+                        await ref
+                            .read(taskRepositoryProvider)
+                            .updateStatus(tasks[i].id, TaskStatus.completed);
+                        ref.bumpRevision();
+                      },
+                    ),
                   ),
                 );
               },
@@ -674,8 +715,7 @@ class _TaskCard extends StatelessWidget {
     final isDone = status == TaskStatus.completed;
 
     return AppCard(
-      accentColor:
-          status == TaskStatus.overdue ? AppColors.error : null,
+      accentColor: status == TaskStatus.overdue ? AppColors.error : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -703,10 +743,12 @@ class _TaskCard extends StatelessWidget {
           ),
           if (task.instructions != null) ...[
             const SizedBox(height: AppSpacing.xs),
-            Text(task.instructions!,
-                style: AppTypography.caption,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis),
+            Text(
+              task.instructions!,
+              style: AppTypography.caption,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
           const SizedBox(height: AppSpacing.md),
           Row(
@@ -721,25 +763,30 @@ class _TaskCard extends StatelessWidget {
               const SizedBox(width: AppSpacing.xs),
               Flexible(
                 child: Text(
-                'Due ${Fmt.relativeDay(task.dueDate)}',
-                overflow: TextOverflow.ellipsis,
-                softWrap: false,
-                style: AppTypography.caption.copyWith(
-                  color: status == TaskStatus.overdue
-                      ? AppColors.error
-                      : AppColors.textSecondary,
-                ),
+                  'Due ${Fmt.relativeDay(task.dueDate)}',
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                  style: AppTypography.caption.copyWith(
+                    color: status == TaskStatus.overdue
+                        ? AppColors.error
+                        : AppColors.textSecondary,
+                  ),
                 ),
               ),
               if (showAssignee) ...[
                 const SizedBox(width: AppSpacing.md),
-                const Icon(Icons.person_outline,
-                    size: 13, color: AppColors.textSecondary),
+                const Icon(
+                  Icons.person_outline,
+                  size: 13,
+                  color: AppColors.textSecondary,
+                ),
                 const SizedBox(width: AppSpacing.xs),
                 Flexible(
-                  child: Text(task.assignedToName,
-                      style: AppTypography.caption,
-                      overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    task.assignedToName,
+                    style: AppTypography.caption,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
               const Spacer(),
@@ -756,6 +803,140 @@ class _TaskCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+// ============================================================== new to-do ==
+
+/// A rep's own to-do (§50).
+///
+/// Structurally the same record a manager assigns — assignee and assigner are
+/// both the current user — so it lands in the same list, counts toward the
+/// same pending figure, and syncs through the same path. A separate "personal
+/// note" store would be a second source of truth for the same question.
+class NewTaskScreen extends ConsumerStatefulWidget {
+  const NewTaskScreen({super.key});
+
+  @override
+  ConsumerState<NewTaskScreen> createState() => _NewTaskScreenState();
+}
+
+class _NewTaskScreenState extends ConsumerState<NewTaskScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _title = TextEditingController();
+  final _notes = TextEditingController();
+
+  DateTime _due = DateTime.now();
+  TaskPriority _priority = TaskPriority.medium;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _submitting = true);
+
+    final me = ref.read(sessionProvider).employee;
+    await ref
+        .read(taskRepositoryProvider)
+        .create(
+          FieldTask(
+            // Client-generated so a retry after a dropped connection cannot
+            // create the same to-do twice.
+            id: const Uuid().v4(),
+            title: _title.text.trim(),
+            assignedToId: me.id,
+            assignedToName: me.name,
+            assignedById: me.id,
+            assignedByName: me.name,
+            dueDate: _due,
+            priority: _priority,
+            status: TaskStatus.assigned,
+            instructions: _notes.text.trim().isEmpty
+                ? null
+                : _notes.text.trim(),
+            createdAt: DateTime.now(),
+          ),
+        );
+
+    if (!mounted) return;
+    ref.bumpRevision();
+    setState(() => _submitting = false);
+    context.pop();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('To-do added.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('Add To-Do')),
+      bottomNavigationBar: BottomActionBar(
+        children: [
+          SecondaryButton(label: 'Cancel', onPressed: () => context.pop()),
+          PrimaryButton(
+            label: 'Add to-do',
+            isLoading: _submitting,
+            onPressed: _save,
+          ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(AppSpacing.screenH),
+          children: [
+            AppTextField(
+              label: 'To-do',
+              required: true,
+              controller: _title,
+              hint: 'What do you need to do?',
+              validator: (v) => Validate.required(v, 'To-do'),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Row(
+              children: [
+                Expanded(
+                  child: DateField(
+                    label: 'Due date',
+                    required: true,
+                    value: _due,
+                    firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                    onChanged: (d) => setState(() => _due = d),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: DropdownField<TaskPriority>(
+                    label: 'Priority',
+                    items: TaskPriority.values,
+                    value: _priority,
+                    itemLabel: (p) => p.label,
+                    onChanged: (v) =>
+                        setState(() => _priority = v ?? TaskPriority.medium),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            AppTextField(
+              label: 'Notes',
+              controller: _notes,
+              maxLines: 4,
+              hint: 'Anything you will want to remember later',
+            ),
+            const SizedBox(height: AppSpacing.xxxl),
+          ],
+        ),
       ),
     );
   }

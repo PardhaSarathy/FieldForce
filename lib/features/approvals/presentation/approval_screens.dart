@@ -8,16 +8,20 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/engagement.dart';
+import '../../../shared/widgets/motion.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
 
-final _kindFilterProvider = StateProvider.autoDispose<ApprovalKind?>((ref) => null);
+final _kindFilterProvider = StateProvider.autoDispose<ApprovalKind?>(
+  (ref) => null,
+);
 final _showDecidedProvider = StateProvider.autoDispose<bool>((ref) => false);
 
-final _approvalsProvider =
-    FutureProvider.autoDispose<List<ApprovalItem>>((ref) async {
+final _approvalsProvider = FutureProvider.autoDispose<List<ApprovalItem>>((
+  ref,
+) async {
   final session = ref.watch(sessionProvider);
   final repo = ref.watch(approvalRepositoryProvider);
   final kind = ref.watch(_kindFilterProvider);
@@ -53,7 +57,8 @@ class _ApprovalCenterScreenState extends ConsumerState<ApprovalCenterScreen> {
     final confirmed = await showConfirmDialog(
       context,
       title: 'Approve ${items.length} request${items.length == 1 ? '' : 's'}?',
-      message: 'This cannot be undone. Each decision is recorded against your '
+      message:
+          'This cannot be undone. Each decision is recorded against your '
           'name in the approval history.',
       confirmLabel: 'Approve all',
     );
@@ -104,9 +109,9 @@ class _ApprovalCenterScreenState extends ConsumerState<ApprovalCenterScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(approve
-            ? '${item.title} approved.'
-            : '${item.title} rejected.'),
+        content: Text(
+          approve ? '${item.title} approved.' : '${item.title} rejected.',
+        ),
       ),
     );
   }
@@ -118,9 +123,11 @@ class _ApprovalCenterScreenState extends ConsumerState<ApprovalCenterScreen> {
     final showDecided = ref.watch(_showDecidedProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(_isSelecting ? '${_selected.length} selected' : 'Approvals'),
+        title: Text(
+          _isSelecting ? '${_selected.length} selected' : 'Approvals',
+        ),
         leading: _isSelecting
             ? IconButton(
                 icon: const Icon(Icons.close),
@@ -182,29 +189,37 @@ class _ApprovalCenterScreenState extends ConsumerState<ApprovalCenterScreen> {
                     message: showDecided
                         ? 'Requests you approve or reject will be listed here.'
                         : 'Your team has no pending requests. '
-                            'Everything is clear.',
+                              'Everything is clear.',
                   );
                 }
 
                 return ListView.separated(
                   padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenH, 0, AppSpacing.screenH, AppSpacing.xxxl,
+                    AppSpacing.screenH,
+                    0,
+                    AppSpacing.screenH,
+                    AppSpacing.xxxl,
                   ),
                   itemCount: items.length,
                   separatorBuilder: (_, _) =>
                       const SizedBox(height: AppSpacing.cardGap),
                   itemBuilder: (context, i) {
                     final item = items[i];
-                    return _ApprovalCard(
-                      item: item,
-                      isSelected: _selected.contains(item.id),
-                      selectionMode: _isSelecting,
-                      isDecided: showDecided,
-                      onToggleSelect: () => setState(() {
-                        if (!_selected.remove(item.id)) _selected.add(item.id);
-                      }),
-                      onApprove: () => _decide(item, approve: true),
-                      onReject: () => _decide(item, approve: false),
+                    return Arrive.staggered(
+                      index: i,
+                      child: _ApprovalCard(
+                        item: item,
+                        isSelected: _selected.contains(item.id),
+                        selectionMode: _isSelecting,
+                        isDecided: showDecided,
+                        onToggleSelect: () => setState(() {
+                          if (!_selected.remove(item.id)) {
+                            _selected.add(item.id);
+                          }
+                        }),
+                        onApprove: () => _decide(item, approve: true),
+                        onReject: () => _decide(item, approve: false),
+                      ),
                     );
                   },
                 );
@@ -267,8 +282,9 @@ Future<String?> _askReason(BuildContext context) async {
                         filled: true,
                         onPressed: controller.text.trim().isEmpty
                             ? null
-                            : () => Navigator.of(sheetContext)
-                                .pop(controller.text.trim()),
+                            : () => Navigator.of(
+                                sheetContext,
+                              ).pop(controller.text.trim()),
                       ),
                     ),
                   ),
@@ -340,38 +356,51 @@ class _ApprovalCard extends StatelessWidget {
                         Row(
                           children: [
                             Expanded(
-                              child: Text(item.employeeName,
-                                  style: AppTypography.titleMd,
-                                  overflow: TextOverflow.ellipsis),
+                              child: Text(
+                                item.employeeName,
+                                style: AppTypography.titleMd,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                             if (item.amount != null)
-                              Text(Fmt.money(item.amount!),
-                                  style: AppTypography.numeric),
+                              Text(
+                                Fmt.money(item.amount!),
+                                style: AppTypography.numeric,
+                              ),
                           ],
                         ),
                         const SizedBox(height: 2),
-                        Text('${item.kind.label} · ${item.title}',
-                            style: AppTypography.bodySm,
-                            overflow: TextOverflow.ellipsis),
+                        Text(
+                          '${item.kind.label} · ${item.title}',
+                          style: AppTypography.bodySm,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         if (item.subtitle?.isNotEmpty == true) ...[
                           const SizedBox(height: AppSpacing.xs),
-                          Text(item.subtitle!,
-                              style: AppTypography.caption,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis),
+                          Text(
+                            item.subtitle!,
+                            style: AppTypography.caption,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ],
                         const SizedBox(height: AppSpacing.sm),
                         Row(
                           children: [
                             if (item.date != null) ...[
-                              const Icon(Icons.event_outlined,
-                                  size: 12, color: AppColors.textSecondary),
+                              const Icon(
+                                Icons.event_outlined,
+                                size: 12,
+                                color: AppColors.textSecondary,
+                              ),
                               const SizedBox(width: AppSpacing.xs),
                               Flexible(
-                                child: Text(Fmt.dateShort(item.date!),
-                                    style: AppTypography.caption,
-                                    overflow: TextOverflow.ellipsis,
-                                    softWrap: false),
+                                child: Text(
+                                  Fmt.dateShort(item.date!),
+                                  style: AppTypography.caption,
+                                  overflow: TextOverflow.ellipsis,
+                                  softWrap: false,
+                                ),
                               ),
                               const SizedBox(width: AppSpacing.sm),
                             ],
@@ -402,10 +431,7 @@ class _ApprovalCard extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: DangerButton(
-                      label: 'Reject',
-                      onPressed: onReject,
-                    ),
+                    child: DangerButton(label: 'Reject', onPressed: onReject),
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(

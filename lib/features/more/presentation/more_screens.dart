@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/app_providers.dart';
+import '../../../core/routing/navigate.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -11,6 +12,8 @@ import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/engagement.dart';
 import '../../../shared/models/organization.dart';
+import '../../../shared/widgets/motion.dart';
+import '../../../shared/widgets/feedback.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
@@ -34,7 +37,7 @@ class MoreScreen extends ConsumerWidget {
           (Icons.receipt_long_outlined, 'Expenses', Routes.expenses),
           (Icons.people_outline, 'Clients', Routes.clients),
           (Icons.calendar_month_outlined, 'Calendar', Routes.calendar),
-          (Icons.assignment_outlined, 'Tasks', Routes.tasks),
+          (Icons.assignment_outlined, 'To-Do', Routes.tasks),
         ],
       ),
       (
@@ -84,12 +87,14 @@ class MoreScreen extends ConsumerWidget {
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('More'), automaticallyImplyLeading: false),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('More')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenH, AppSpacing.md,
-          AppSpacing.screenH, AppSpacing.xxxl * 3,
+          AppSpacing.screenH,
+          AppSpacing.md,
+          AppSpacing.screenH,
+          AppSpacing.xxxl * 3,
         ),
         children: [
           AppCard(
@@ -126,12 +131,17 @@ class MoreScreen extends ConsumerWidget {
                     if (i > 0)
                       const Divider(height: 1, indent: AppSpacing.cardPadding),
                     ListTile(
-                      leading: Icon(items[i].$1,
-                          size: AppSizes.iconLg, color: AppColors.brand),
+                      leading: Icon(
+                        items[i].$1,
+                        size: AppSizes.iconLg,
+                        color: AppColors.brand,
+                      ),
                       title: Text(items[i].$2, style: AppTypography.titleMd),
-                      trailing: const Icon(Icons.chevron_right,
-                          color: AppColors.textSecondary),
-                      onTap: () => context.push(items[i].$3),
+                      trailing: const Icon(
+                        Icons.chevron_right,
+                        color: AppColors.textSecondary,
+                      ),
+                      onTap: () => navigateTo(context, items[i].$3),
                     ),
                   ],
                 ],
@@ -146,7 +156,8 @@ class MoreScreen extends ConsumerWidget {
               final confirmed = await showConfirmDialog(
                 context,
                 title: 'Sign out?',
-                message: 'Any work saved on this device stays safe and will '
+                message:
+                    'Any work saved on this device stays safe and will '
                     'sync the next time you sign in.',
                 confirmLabel: 'Sign out',
                 isDestructive: true,
@@ -172,7 +183,7 @@ class ProfileScreen extends ConsumerWidget {
     final employee = ref.watch(currentEmployeeProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('My Profile'),
         actions: [
@@ -226,7 +237,10 @@ class ProfileScreen extends ConsumerWidget {
             child: Column(
               children: [
                 KeyValueRow(label: 'Territory', value: employee.territoryName),
-                KeyValueRow(label: 'Headquarters', value: employee.headquarters),
+                KeyValueRow(
+                  label: 'Headquarters',
+                  value: employee.headquarters,
+                ),
                 KeyValueRow(label: 'Area', value: employee.areaName),
                 KeyValueRow(label: 'Cluster', value: employee.clusterName),
               ],
@@ -282,7 +296,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Edit Profile')),
       bottomNavigationBar: BottomActionBar(
         children: [
@@ -291,9 +305,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             label: 'Save',
             onPressed: () {
               context.pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Profile updated.')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('Profile updated.')));
             },
           ),
         ],
@@ -305,8 +319,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.info_outline,
-                    size: AppSizes.iconMd, color: AppColors.info),
+                const Icon(
+                  Icons.info_outline,
+                  size: AppSizes.iconMd,
+                  color: AppColors.info,
+                ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
@@ -360,7 +377,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     final async = ref.watch(notificationsProvider(_unreadOnly));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Notifications')),
       bottomNavigationBar: BottomActionBar(
         children: [
@@ -402,25 +419,29 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.screenH, 0,
-                        AppSpacing.screenH, AppSpacing.xxxl,
+                        AppSpacing.screenH,
+                        0,
+                        AppSpacing.screenH,
+                        AppSpacing.xxxl,
                       ),
                       itemCount: items.length,
                       separatorBuilder: (_, _) =>
                           const SizedBox(height: AppSpacing.cardGap),
-                      itemBuilder: (context, i) => _NotificationCard(
-                        notification: items[i],
-                        onTap: () async {
-                          await ref
-                              .read(notificationRepositoryProvider)
-                              .markRead(items[i].id);
-                          ref.invalidate(notificationsProvider);
-                          ref.invalidate(unreadNotificationsProvider);
-                          if (context.mounted &&
-                              items[i].deepLink != null) {
-                            context.push(items[i].deepLink!);
-                          }
-                        },
+                      itemBuilder: (context, i) => Arrive.staggered(
+                        index: i,
+                        child: _NotificationCard(
+                          notification: items[i],
+                          onTap: () async {
+                            await ref
+                                .read(notificationRepositoryProvider)
+                                .markRead(items[i].id);
+                            ref.invalidate(notificationsProvider);
+                            ref.invalidate(unreadNotificationsProvider);
+                            if (context.mounted && items[i].deepLink != null) {
+                              navigateTo(context, items[i].deepLink!);
+                            }
+                          },
+                        ),
                       ),
                     ),
             ),
@@ -442,19 +463,17 @@ class _NotificationCard extends StatelessWidget {
     return AppCard(
       onTap: onTap,
       color: notification.isRead ? AppColors.surface : AppColors.brandSoft,
-      borderColor:
-          notification.isRead ? AppColors.border : Colors.transparent,
+      borderColor: notification.isRead ? AppColors.border : Colors.transparent,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Unread gets the lit well, read gets a flat grey chip. The glow is
+          // doing real work here rather than decorating: an unread row is the
+          // only one on the screen giving off light.
           IconTile(
             icon: notification.kind.icon,
-            background: notification.isRead
-                ? AppColors.surfaceSecondary
-                : AppColors.surface,
-            color: notification.isRead
-                ? AppColors.textSecondary
-                : AppColors.brand,
+            background: notification.isRead ? AppColors.surfaceSecondary : null,
+            color: notification.isRead ? AppColors.textSecondary : null,
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -464,11 +483,15 @@ class _NotificationCard extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(notification.title,
-                          style: AppTypography.titleMd),
+                      child: Text(
+                        notification.title,
+                        style: AppTypography.titleMd,
+                      ),
                     ),
-                    Text(Fmt.timeAgo(notification.createdAt),
-                        style: AppTypography.caption),
+                    Text(
+                      Fmt.timeAgo(notification.createdAt),
+                      style: AppTypography.caption,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -497,7 +520,7 @@ class SettingsScreen extends ConsumerWidget {
     final isOnline = ref.watch(isOnlineProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
@@ -511,21 +534,24 @@ class SettingsScreen extends ConsumerWidget {
                   title: 'Push notifications',
                   subtitle: 'Approvals, tasks and reminders',
                   value: true,
-                  onChanged: (_) {},
+                  onChanged: (_) =>
+                      showComingWithBackend(context, 'Notification settings'),
                 ),
                 const Divider(height: 1, indent: AppSpacing.cardPadding),
                 _ToggleRow(
                   title: 'Visit reminders',
                   subtitle: 'Alert 15 minutes before each planned visit',
                   value: true,
-                  onChanged: (_) {},
+                  onChanged: (_) =>
+                      showComingWithBackend(context, 'Notification settings'),
                 ),
                 const Divider(height: 1, indent: AppSpacing.cardPadding),
                 _ToggleRow(
                   title: 'Daily report reminder',
                   subtitle: 'Prompt at 7 PM if the day is not submitted',
                   value: false,
-                  onChanged: (_) {},
+                  onChanged: (_) =>
+                      showComingWithBackend(context, 'Notification settings'),
                 ),
               ],
             ),
@@ -559,7 +585,8 @@ class SettingsScreen extends ConsumerWidget {
                 const KeyValueRow(label: 'Backend', value: 'Not connected'),
                 KeyValueRow(
                   label: 'Geo-fence',
-                  value: '${ref.watch(geoFenceRadiusProvider).round()} m · '
+                  value:
+                      '${ref.watch(geoFenceRadiusProvider).round()} m · '
                       '${ref.watch(geoFencePolicyProvider).name}',
                 ),
               ],
@@ -610,28 +637,28 @@ class HelpScreen extends StatelessWidget {
         'Why is my visit showing as unverified?',
         'Your phone reported a position more than 50 metres from the '
             "client's registered address. The visit is still recorded — it is "
-            'simply flagged so your manager has the context.'
+            'simply flagged so your manager has the context.',
       ),
       (
         'I lost signal during a visit. Is my work saved?',
         'Yes. Visits, expenses and orders are saved on your device first and '
-            'sync automatically once you reconnect. The Sync Center shows '
-            'anything still waiting.'
+            'sync automatically once you reconnect. The Sync Centre shows '
+            'anything still waiting.',
       ),
       (
         'My expense was rejected. What do I do?',
         'Open the expense to read the reason your manager gave, correct the '
-            'issue, and submit it again.'
+            'issue, and submit it again.',
       ),
       (
         'How far ahead can I plan tours?',
         'Up to 30 days. Submit tour plans early so your manager can approve '
-            'them before the dates arrive.'
+            'them before the dates arrive.',
       ),
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Help & Support')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
@@ -660,17 +687,21 @@ class HelpScreen extends StatelessWidget {
                 ListTile(
                   leading: const IconTile(icon: Icons.phone_outlined),
                   title: Text('Call support', style: AppTypography.titleMd),
-                  subtitle: Text('1800 200 4040 · Mon–Sat, 9 AM–7 PM',
-                      style: AppTypography.caption),
-                  onTap: () {},
+                  subtitle: Text(
+                    '1800 200 4040 · Mon–Sat, 9 AM–7 PM',
+                    style: AppTypography.caption,
+                  ),
+                  onTap: () => showComingWithBackend(context, 'Calling'),
                 ),
                 const Divider(height: 1, indent: AppSpacing.cardPadding),
                 ListTile(
                   leading: const IconTile(icon: Icons.mail_outline),
                   title: Text('Email support', style: AppTypography.titleMd),
-                  subtitle: Text('support@pharmaconnect.in',
-                      style: AppTypography.caption),
-                  onTap: () {},
+                  subtitle: Text(
+                    'support@pharmaconnect.in',
+                    style: AppTypography.caption,
+                  ),
+                  onTap: () => showComingWithBackend(context, 'Email'),
                 ),
               ],
             ),
@@ -684,7 +715,7 @@ class HelpScreen extends StatelessWidget {
 
 // ============================================================ sync center ==
 
-/// Sync Center (§137). Shows what is waiting, what failed, and lets the user
+/// Sync Centre (§137). Shows what is waiting, what failed, and lets the user
 /// retry. A field worker must always be able to answer "is my work safe?".
 class SyncCenterScreen extends ConsumerWidget {
   const SyncCenterScreen({super.key});
@@ -695,8 +726,8 @@ class SyncCenterScreen extends ConsumerWidget {
     final pending = ref.watch(pendingSyncCountProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Sync Center')),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('Sync Centre')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
         children: [
@@ -706,7 +737,9 @@ class SyncCenterScreen extends ConsumerWidget {
             child: Row(
               children: [
                 Icon(
-                  isOnline ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                  isOnline
+                      ? Icons.cloud_done_outlined
+                      : Icons.cloud_off_outlined,
                   size: 26,
                   color: isOnline ? AppColors.success : AppColors.warning,
                 ),
@@ -728,7 +761,7 @@ class SyncCenterScreen extends ConsumerWidget {
                         isOnline
                             ? 'Everything is up to date.'
                             : '$pending item${pending == 1 ? '' : 's'} saved '
-                                'on this device, waiting to sync.',
+                                  'on this device, waiting to sync.',
                         style: AppTypography.bodySm.copyWith(
                           color: isOnline
                               ? AppColors.success
@@ -762,15 +795,18 @@ class SyncCenterScreen extends ConsumerWidget {
                     ListTile(
                       leading: const IconTile(
                         icon: Icons.schedule_outlined,
-                        background: AppColors.warningSoft,
                         color: AppColors.warning,
                       ),
                       title: Text(
-                        i == 0 ? 'Visit — Dr. Anjali Sharma' : 'Expense — Travel',
+                        i == 0
+                            ? 'Visit — Dr. Anjali Sharma'
+                            : 'Expense — Travel',
                         style: AppTypography.titleMd,
                       ),
-                      subtitle: Text('Saved locally · waiting for a connection',
-                          style: AppTypography.caption),
+                      subtitle: Text(
+                        'Saved locally · waiting for a connection',
+                        style: AppTypography.caption,
+                      ),
                       trailing: const StatusBadge(
                         label: 'Pending',
                         tone: StatusTone.warning,
@@ -787,8 +823,10 @@ class SyncCenterScreen extends ConsumerWidget {
             icon: Icons.sync,
             onPressed: isOnline
                 ? () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Everything is already synced.')),
-                    )
+                    const SnackBar(
+                      content: Text('Everything is already synced.'),
+                    ),
+                  )
                 : null,
           ),
           const SizedBox(height: AppSpacing.xxxl),
@@ -824,7 +862,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final session = ref.watch(sessionProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: SearchField(
           hint: 'Search clients, activities, orders…',
@@ -837,8 +875,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       body: _query.trim().length < 2
           ? const EmptyState(
               icon: Icons.search,
-              title: 'Search PharmaConnect',
-              message: 'Find clients, visits, orders and team members. '
+              title: 'Search Mr Sales',
+              message:
+                  'Find clients, visits, orders and team members. '
                   'Type at least two characters.',
             )
           : FutureBuilder(
@@ -859,7 +898,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   padding: const EdgeInsets.all(AppSpacing.screenH),
                   children: [
                     for (final group in results.entries) ...[
-                      SectionHeader(title: '${group.key} (${group.value.length})'),
+                      SectionHeader(
+                        title: '${group.key} (${group.value.length})',
+                      ),
                       AppCard(
                         padding: EdgeInsets.zero,
                         child: Column(
@@ -867,13 +908,21 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                             for (var i = 0; i < group.value.length; i++) ...[
                               if (i > 0) const Divider(height: 1),
                               ListTile(
-                                leading: Icon(group.value[i].icon,
-                                    color: AppColors.brand, size: AppSizes.iconLg),
-                                title: Text(group.value[i].title,
-                                    style: AppTypography.titleMd),
-                                subtitle: Text(group.value[i].subtitle,
-                                    style: AppTypography.caption),
-                                onTap: () => context.push(group.value[i].route),
+                                leading: Icon(
+                                  group.value[i].icon,
+                                  color: AppColors.brand,
+                                  size: AppSizes.iconLg,
+                                ),
+                                title: Text(
+                                  group.value[i].title,
+                                  style: AppTypography.titleMd,
+                                ),
+                                subtitle: Text(
+                                  group.value[i].subtitle,
+                                  style: AppTypography.caption,
+                                ),
+                                onTap: () =>
+                                    navigateTo(context, group.value[i].route),
                               ),
                             ],
                           ],
@@ -911,8 +960,9 @@ Future<Map<String, List<_SearchHit>>> _search(
   final q = query.trim().toLowerCase();
   final results = <String, List<_SearchHit>>{};
 
-  final clients =
-      await ref.read(clientRepositoryProvider).list(session, query: q);
+  final clients = await ref
+      .read(clientRepositoryProvider)
+      .list(session, query: q);
   if (clients.isNotEmpty) {
     results['Clients'] = [
       for (final c in clients.take(6))
@@ -925,12 +975,13 @@ Future<Map<String, List<_SearchHit>>> _search(
     ];
   }
 
-  final orders =
-      await ref.read(businessRepositoryProvider).orders(session);
+  final orders = await ref.read(businessRepositoryProvider).orders(session);
   final matchedOrders = orders
-      .where((o) =>
-          o.orderNumber.toLowerCase().contains(q) ||
-          o.clientName.toLowerCase().contains(q))
+      .where(
+        (o) =>
+            o.orderNumber.toLowerCase().contains(q) ||
+            o.clientName.toLowerCase().contains(q),
+      )
       .take(5)
       .toList();
   if (matchedOrders.isNotEmpty) {
@@ -948,9 +999,11 @@ Future<Map<String, List<_SearchHit>>> _search(
   if (session.isManager) {
     final team = await ref.read(employeeRepositoryProvider).teamOf(session);
     final matched = team
-        .where((e) =>
-            e.name.toLowerCase().contains(q) ||
-            e.employeeCode.toLowerCase().contains(q))
+        .where(
+          (e) =>
+              e.name.toLowerCase().contains(q) ||
+              e.employeeCode.toLowerCase().contains(q),
+        )
         .take(5)
         .toList();
     if (matched.isNotEmpty) {

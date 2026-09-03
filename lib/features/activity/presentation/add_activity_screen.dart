@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/location/geo_math.dart';
+import '../../../core/location/location_service.dart';
 import '../../../core/providers/app_providers.dart';
-import '../../../core/routing/routes.dart';
+import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -12,107 +15,251 @@ import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/activity.dart';
 import '../../../shared/models/client.dart';
+import 'activity_detail_screen.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
+import 'widgets/geo_verification_panel.dart';
 import 'widgets/step_progress.dart';
 
-final _clientsProvider = FutureProvider.autoDispose<List<Client>>((ref) {
-  final session = ref.watch(sessionProvider);
-  return ref.watch(clientRepositoryProvider).list(session);
-});
-
-/// Add Activity (§18) — a four-step progressive form.
+/// Add New Activity (§20) — pick the client, then three steps.
 ///
-/// Split into steps because a single 15-field form is unusable on a phone in
-/// the field. Each step is independently valid, so the Continue button can tell
-/// the user exactly when they may move on rather than failing at the end (§63).
+/// The shape is deliberately the **same as the live visit flow**: client
+/// header, numbered Location / Call report / Review, Cancel-and-Continue at
+/// the foot. The two screens record the same thing — one while the rep is
+/// standing at the door, one afterwards — and a rep who has learnt one should
+/// not have to learn the other.
+///
+/// It was a single long page for a while, which was itself a reaction to an
+/// older four-step wizard whose steps were Activity → Visit → Report → Attach.
+/// That wizard was wrong because its steps were *screens*, not stages: it
+/// asked for eight fields across four pages and none of the four meant
+/// anything on its own. These three do — where you are, what happened, and
+/// what is about to be saved — and the first of them has to come first, for
+/// the same reason it does in the visit flow: discovering the call cannot be
+/// verified *after* writing the report is discovering it too late.
+///
+/// The client is chosen before any of it. Until there is a client there is no
+/// geo-fence to measure against and no history to show, so the step header
+/// would be three inert circles.
+///
+/// The client's designation, type, area and category are shown but never
+/// edited here — they belong to the client record, and a rep correcting them
+/// mid-call would silently fork the master data.
 class AddActivityScreen extends ConsumerStatefulWidget {
-  const AddActivityScreen({super.key, this.presetClientId});
+  const AddActivityScreen({super.key, this.presetClientId, this.existing});
 
   final String? presetClientId;
+
+  /// The call being corrected, or null to record a new one.
+  ///
+  /// A rep who mistypes a POB figure or a feedback note had no way to fix it —
+  /// `ActivityRepository.update` existed for the whole build and nothing called
+  /// it. Correcting goes through `update` rather than `completeVisit`
+  /// deliberately: completion also bumps the client's visit count and last-seen
+  /// date, and re-running that on an edit would inflate the client's history
+  /// every time someone fixed a typo.
+  final Activity? existing;
+
+  bool get isEditing => existing != null;
 
   @override
   ConsumerState<AddActivityScreen> createState() => _AddActivityScreenState();
 }
 
+/// Loads a call, then hands it to the same form.
+class EditActivityScreen extends ConsumerWidget {
+  const EditActivityScreen({super.key, required this.activityId});
+
+  final String activityId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ref
+        .watch(activityByIdProvider(activityId))
+        .when(
+          loading: () => const Scaffold(
+            backgroundColor: Colors.transparent,
+            body: LoadingState(message: 'Loading activity'),
+          ),
+          error: (_, _) => Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: AppBar(title: const Text('Edit Activity')),
+            body: ErrorState(
+              onRetry: () => ref.invalidate(activityByIdProvider(activityId)),
+            ),
+          ),
+          data: (activity) => AddActivityScreen(existing: activity),
+        );
+  }
+}
+
 class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _inputs = TextEditingController();
+  final _rcpa = TextEditingController();
+  final _pob = TextEditingController();
+  final _feedback = TextEditingController();
+
+  final _reason = TextEditingController();
   final _pageController = PageController();
-  int _step = 0;
-  bool _submitting = false;
-  Activity? _created;
 
-  // Step 1 — activity
-  WorkType _workType = WorkType.fieldWork;
+  List<Client> _clients = [];
+
   Client? _client;
-  VisitPurpose? _purpose;
+  DateTime _nextVisit = DateTime.now().add(const Duration(days: 14));
 
-  // Step 2 — visit
-  final _contactController = TextEditingController();
-  final _mobileController = TextEditingController();
-  DateTime _date = DateTime.now();
-  TimeOfDay _time = TimeOfDay.now();
-  DateTime? _nextVisit;
+  /// Which of Location / Call report / Review is showing. Only meaningful
+  /// once a client is picked — before that the screen is the picker.
+  int _step = 0;
 
-  // Step 3 — feedback
-  int _rcpaScore = 0;
-  final _feedbackController = TextEditingController();
-  final _popController = TextEditingController();
-  final _remarksController = TextEditingController();
+  String? _address;
+  String? _locationError;
+  bool _capturing = false;
 
-  // Step 4 — location handled at visit time; this step captures notes/photos.
-  final _locationNoteController = TextEditingController();
+  /// The fix measured against the client's registered position.
+  ///
+  /// Evaluated at capture rather than at submit, because the Location step has
+  /// to *show* the verdict — "Verified · 26 m from client" — and ask for a
+  /// reason when it is out of range. Before this the geo-fence was computed
+  /// once, silently, on save: a rep could log a call from the wrong end of the
+  /// city and find out only when a manager queried the flag.
+  GeoFenceResult? _geoResult;
+
+  bool _loading = true;
+  bool _submitting = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.presetClientId != null) {
-      _prefillClient(widget.presetClientId!);
-    }
-  }
 
-  Future<void> _prefillClient(String id) async {
-    final client = await ref.read(clientRepositoryProvider).byId(id);
-    if (!mounted) return;
-    setState(() => _selectClient(client));
+    final e = widget.existing;
+    if (e != null) {
+      _inputs.text = e.inputsGiven ?? '';
+      _rcpa.text = e.rcpaScore?.toString() ?? '';
+      _pob.text = e.pobAmount?.toStringAsFixed(0) ?? '';
+      _feedback.text = e.feedback ?? '';
+      _nextVisit = e.expectedNextVisit ?? _nextVisit;
+      _reason.text = e.outOfRangeReason ?? '';
+      // The evidence from the original call, shown read-only. A correction
+      // never re-measures: the rep is at a desk now, not at the clinic.
+      _geoResult = e.geoResult;
+    }
+
+    _load();
   }
 
   @override
   void dispose() {
+    _inputs.dispose();
+    _rcpa.dispose();
+    _pob.dispose();
+    _feedback.dispose();
+    _reason.dispose();
     _pageController.dispose();
-    _contactController.dispose();
-    _mobileController.dispose();
-    _feedbackController.dispose();
-    _popController.dispose();
-    _remarksController.dispose();
-    _locationNoteController.dispose();
     super.dispose();
   }
 
-  /// Choosing a client pre-fills what we already know about them. Re-typing a
-  /// contact name and mobile that are already on file is exactly the duplicate
-  /// entry §1 asks us to eliminate.
-  void _selectClient(Client? client) {
-    _client = client;
-    if (client != null) {
-      _contactController.text = client.contactPerson ?? '';
-      _mobileController.text = client.mobile ?? '';
+  Future<void> _load() async {
+    final session = ref.read(sessionProvider);
+
+    final clients = await ref.read(clientRepositoryProvider).list(session);
+    if (!mounted) return;
+    // Editing kept every field except the one the record is *about*. The
+    // client came only from `presetClientId`, which a correction never
+    // carries, so opening a saved call put an empty Client picker on screen
+    // and the rep had to re-choose the doctor they had already visited —
+    // with nothing stopping them choosing a different one.
+    final anchorId = widget.existing?.clientId ?? widget.presetClientId;
+
+    setState(() {
+      _clients = clients;
+      _client = clients.where((c) => c.id == anchorId).firstOrNull;
+      _loading = false;
+    });
+
+    // A correction must not re-measure: its evidence is already on the record.
+    if (!widget.isEditing) await _capture();
+  }
+
+  Future<void> _capture() async {
+    setState(() {
+      _capturing = true;
+      _locationError = null;
+    });
+
+    final service = ref.read(locationServiceProvider);
+    if (service is MockLocationService) {
+      // Anchor the simulated fix to the client so the distance is meaningful.
+      service.anchor = _client?.location;
+    }
+
+    final result = await service.currentPosition();
+    if (!mounted) return;
+
+    switch (result) {
+      case LocationSuccess(:final point):
+        final address = await ref
+            .read(dayPlanRepositoryProvider)
+            .addressFor(point, areaId: _client?.areaId);
+        if (!mounted) return;
+        setState(() {
+          _address = address;
+          _geoResult = _evaluate(point);
+          _capturing = false;
+        });
+      case LocationError(:final message):
+        setState(() {
+          _locationError = message;
+          _capturing = false;
+        });
     }
   }
 
-  bool get _canContinue => switch (_step) {
-        0 => _client != null && _purpose != null,
-        1 => _contactController.text.trim().isNotEmpty,
-        2 => true,
-        _ => true,
-      };
+  /// The captured fix measured against the client's registered position.
+  GeoFenceResult? _evaluate(GeoPoint point) {
+    final client = _client;
+    if (client == null) return null;
+    return GeoMath.evaluate(
+      captured: point,
+      registered: client.location,
+      radiusMeters: ref.read(geoFenceRadiusProvider),
+    );
+  }
 
-  void _next() {
-    if (_step >= 3) return;
-    setState(() => _step++);
-    _pageController.animateToPage(_step,
-        duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+  /// Whether the Location step will let the rep move on.
+  ///
+  /// Mirrors the visit flow exactly, and for the same reasons: under `strict`
+  /// an out-of-range call cannot proceed, and under `warn` — the default — it
+  /// proceeds only once a reason has been written. A correction skips the gate
+  /// because it is not measuring anything.
+  bool get _canLeaveLocationStep {
+    final result = _geoResult;
+
+    // A correction is not re-measuring, so there is nothing to wait for and
+    // no policy to enforce against — but it must not be a way to *delete* the
+    // justification an out-of-range call already carries.
+    if (widget.isEditing) {
+      return !(result?.requiresReason ?? false) ||
+          _reason.text.trim().isNotEmpty;
+    }
+
+    if (result == null) return false;
+    if (!GeoMath.allowsVisit(result, ref.read(geoFencePolicyProvider))) {
+      return false;
+    }
+    if (result.requiresReason && _reason.text.trim().isEmpty) return false;
+    return true;
+  }
+
+  void _goToStep(int step) {
+    setState(() => _step = step);
+    _pageController.animateToPage(
+      step,
+      duration: AppMotion.normal,
+      curve: AppMotion.curve,
+    );
   }
 
   void _back() {
@@ -120,32 +267,37 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
       context.pop();
       return;
     }
-    setState(() => _step--);
-    _pageController.animateToPage(_step,
-        duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+    _goToStep(_step - 1);
+  }
+
+  void _next() {
+    // The call-report step is the only one with fields to fail, and it is
+    // validated on the way out rather than on the way in — so a rep is never
+    // shown an error about something they have not reached yet.
+    if (_step == 1 && !_formKey.currentState!.validate()) return;
+    if (_step < 2) _goToStep(_step + 1);
   }
 
   Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
     final client = _client;
     if (client == null) return;
 
     setState(() => _submitting = true);
-
     final session = ref.read(sessionProvider);
-    final start = DateTime(
-      _date.year,
-      _date.month,
-      _date.day,
-      _time.hour,
-      _time.minute,
-    );
+    final now = DateTime.now();
 
-    final isFuture = start.isAfter(DateTime.now());
+    // Geo policy defaults to `warn`: an out-of-range call is recorded and
+    // flagged, never blocked (§9). The verdict was shown to the rep on the
+    // Location step, so this saves what they were told rather than
+    // re-measuring and possibly saving something else.
+    final geo = _geoResult;
 
-    final activity = Activity(
-      // Client-generated id so an offline create and its later sync cannot
-      // produce two records (see the idempotency note in the data layer).
-      id: const Uuid().v4(),
+    final existing = widget.existing;
+    final repository = ref.read(activityRepositoryProvider);
+    final record = Activity(
+      // Client-generated so a retry cannot duplicate the call.
+      id: existing?.id ?? const Uuid().v4(),
       employeeId: session.employee.id,
       employeeName: session.employee.name,
       clientId: client.id,
@@ -154,415 +306,515 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
       clientType: client.type,
       locationName: client.addressLine,
       areaName: client.areaName,
-      scheduledStart: start,
-      scheduledEnd: start.add(const Duration(minutes: 15)),
-      status: isFuture ? ActivityStatus.planned : ActivityStatus.upcoming,
-      workType: _workType,
-      purpose: _purpose,
-      contactPerson: _contactController.text.trim(),
-      contactMobile: _mobileController.text.trim(),
-      feedback: _feedbackController.text.trim().isEmpty
-          ? null
-          : _feedbackController.text.trim(),
-      pop: _popController.text.trim().isEmpty ? null : _popController.text.trim(),
-      remarks: _remarksController.text.trim().isEmpty
-          ? null
-          : _remarksController.text.trim(),
-      rcpaScore: _rcpaScore > 0 ? _rcpaScore : null,
+      // A correction keeps the call's real timeline. Rewriting these
+      // with `now` would move a visit logged this morning to whenever
+      // the typo was noticed.
+      scheduledStart: existing?.scheduledStart ?? now,
+      actualStart: existing?.actualStart ?? now,
+      actualEnd: existing?.actualEnd ?? now,
+      status: existing?.status ?? ActivityStatus.completed,
+      workType: WorkType.fieldWork,
+      inputsGiven: _inputs.text.trim().isEmpty ? null : _inputs.text.trim(),
+      rcpaScore: int.tryParse(_rcpa.text.trim()),
+      pobAmount: double.tryParse(_pob.text.trim()),
+      feedback: _feedback.text.trim().isEmpty ? null : _feedback.text.trim(),
       expectedNextVisit: _nextVisit,
-      syncStatus: ref.read(isOnlineProvider)
-          ? SyncStatus.synced
-          : SyncStatus.savedLocally,
-      createdAt: DateTime.now(),
+      // The geo evidence belongs to where the rep actually stood. A
+      // correction typed at the office must not overwrite it.
+      geoResult: existing?.geoResult ?? geo,
+      // Mandatory whenever the call was logged out of range (§9). It had
+      // nowhere to be entered on this screen at all before the Location step
+      // existed, so an out-of-range call recorded here carried no explanation
+      // — the one thing the warn policy is for.
+      //
+      // Taken from the field rather than from `existing`, on both paths: the
+      // field is seeded with the saved reason, so a correction that leaves it
+      // alone rewrites the same words, and one that improves them keeps the
+      // improvement. `geoResult` above is the half that stays frozen.
+      outOfRangeReason:
+          _reason.text.trim().isEmpty ? null : _reason.text.trim(),
+      createdAt: existing?.createdAt ?? now,
     );
 
-    await ref.read(activityRepositoryProvider).create(activity);
+    if (widget.isEditing) {
+      await repository.update(record);
+    } else {
+      await repository.create(record);
+    }
 
     if (!mounted) return;
+    AppHaptics.success();
     ref.bumpRevision();
-    ref.invalidate(todaySummaryProvider);
-    setState(() {
-      _submitting = false;
-      _created = activity;
-    });
+    setState(() => _submitting = false);
+    context.pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          widget.isEditing
+              ? 'Activity updated.'
+              : 'Activity recorded for ${client.name}.',
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_created != null) return _buildSuccess(_created!);
+    final client = _client;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Add Activity'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _back),
+        title: Text(widget.isEditing ? 'Edit Activity' : 'Add New Activity'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _loading || client == null ? () => context.pop() : _back,
+        ),
       ),
-      body: Column(
-        children: [
-          Container(
-            color: AppColors.surface,
-            padding: const EdgeInsets.only(top: AppSpacing.sm),
-            child: StepProgress(
-              currentStep: _step,
-              labels: const ['Activity', 'Visit', 'Report', 'Attach'],
-            ),
-          ),
-          Expanded(
-            child: PageView(
-              controller: _pageController,
-              physics: const NeverScrollableScrollPhysics(),
+      bottomNavigationBar: _loading ? null : _buildActions(),
+      body: _loading
+          ? const LoadingState()
+          : client == null
+          ? _buildClientPicker()
+          : Column(
               children: [
-                _buildActivityStep(),
-                _buildVisitStep(),
-                _buildReportStep(),
-                _buildAttachStep(),
+                _ActivityClientHeader(client: client),
+                StepProgress(
+                  currentStep: _step,
+                  labels: const ['Location', 'Call report', 'Review'],
+                ),
+                Expanded(
+                  child: PageView(
+                    controller: _pageController,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      _buildLocationStep(client),
+                      _buildReportStep(),
+                      _buildReviewStep(client),
+                    ],
+                  ),
+                ),
               ],
             ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: BottomActionBar(
-        children: [
-          SecondaryButton(
-            label: _step == 0 ? 'Cancel' : 'Back',
-            onPressed: _submitting ? null : _back,
-          ),
-          PrimaryButton(
-            label: _step == 3 ? 'Submit activity' : 'Continue',
-            isLoading: _submitting,
-            onPressed:
-                _canContinue ? (_step == 3 ? _submit : _next) : null,
-          ),
-        ],
-      ),
     );
   }
 
-  Widget _buildActivityStep() {
-    final clientsAsync = ref.watch(_clientsProvider);
+  // ------------------------------------------------------------ the client
+
+  /// Everything before the flow starts. One question, and the answer decides
+  /// what the geo-fence measures against and whose history is worth showing —
+  /// which is why it is not the first *step* but the thing in front of them.
+  Widget _buildClientPicker() {
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.screenH),
+      children: [
+        Text('Who did you call on?', style: AppTypography.h3),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'Pick the client and the call report opens.',
+          style: AppTypography.bodySm,
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        DropdownField<Client>(
+          label: 'Client',
+          required: true,
+          hint: 'Select a client',
+          items: _clients,
+          value: _client,
+          itemLabel: (c) => c.name,
+          onChanged: (v) {
+            setState(() => _client = v);
+            // The fix is anchored to the client, so it is read once there is
+            // a client to anchor it to.
+            _capture();
+          },
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------- step one
+
+  Widget _buildLocationStep(Client client) {
+    final result = _geoResult;
+    final blocked = result != null &&
+        !GeoMath.allowsVisit(result, ref.watch(geoFencePolicyProvider));
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.screenH),
       children: [
-        DropdownField<WorkType>(
-          label: 'Work type',
-          required: true,
-          items: WorkType.values,
-          value: _workType,
-          itemLabel: (w) => w.label,
-          onChanged: (v) => setState(() => _workType = v ?? WorkType.fieldWork),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-
-        clientsAsync.when(
-          loading: () => const Skeleton(height: 48),
-          error: (_, _) => Text('Could not load clients',
-              style: AppTypography.caption.copyWith(color: AppColors.error)),
-          data: (clients) => DropdownField<Client>(
-            label: 'Client',
-            required: true,
-            hint: 'Select a client',
-            items: clients,
-            value: _client,
-            itemLabel: (c) => '${c.name} · ${c.areaName}',
-            onChanged: (v) => setState(() => _selectClient(v)),
-          ),
+        GeoVerificationPanel(
+          result: result,
+          isCapturing: _capturing,
+          clientName: client.name,
+          registeredAddress: client.fullAddress,
+          errorMessage: _locationError,
+          // A correction shows the original evidence and offers no way to
+          // replace it: the rep is at a desk now, and a re-measure would
+          // claim they were standing at the clinic.
+          onRetry: widget.isEditing ? null : _capture,
         ),
 
-        if (_client != null) ...[
+        if (widget.isEditing) ...[
           const SizedBox(height: AppSpacing.md),
+          Text(
+            'Where you were standing when the call was logged. A correction '
+            'keeps it — you can still change what you wrote about it.',
+            style: AppTypography.caption,
+          ),
+        ],
+
+        // The reason, on a new call and on a correction alike.
+        //
+        // The two halves of this step are frozen differently on purpose. The
+        // *position* is evidence and never moves: re-measuring at a desk would
+        // have the record claim the rep was at the clinic. The *reason* is the
+        // rep's own account of that position, and improving a hurried
+        // one-liner is exactly what a correction is for — freezing that half
+        // was the wrong way round, and it left the step with nothing on it a
+        // rep could act on.
+        if (result != null && result.requiresReason) ...[
+          const SizedBox(height: AppSpacing.lg),
           AppCard(
-            color: AppColors.brandSoft,
-            borderColor: Colors.transparent,
-            padding: const EdgeInsets.all(AppSpacing.md),
+            borderColor: AppColors.warning.withValues(alpha: 0.4),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                KeyValueRow(
-                    label: 'Type', value: _client!.type.label,
-                    labelWidth: 96, dense: true),
-                KeyValueRow(
-                    label: 'Specialty', value: _client!.specialty,
-                    labelWidth: 96, dense: true),
-                KeyValueRow(
-                    label: 'Category', value: _client!.category.label,
-                    labelWidth: 96, dense: true),
-                KeyValueRow(
-                    label: 'Area', value: _client!.areaName,
-                    labelWidth: 96, dense: true),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.edit_note_outlined,
+                      size: AppSizes.iconMd,
+                      color: AppColors.warning,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text('Reason required', style: AppTypography.titleSm),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  widget.isEditing
+                      ? 'This call was logged outside the verified range. The '
+                            'explanation stays on the record — correct it here '
+                            'if it needs to be clearer.'
+                      : 'You are outside the verified range for this client. '
+                            'Explain why so your manager has the context — the '
+                            'call will be recorded as unverified.',
+                  style: AppTypography.bodySm,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                AppTextField(
+                  hint: 'e.g. Doctor asked to meet at the OPD block',
+                  controller: _reason,
+                  maxLines: 3,
+                  onChanged: (_) => setState(() {}),
+                ),
               ],
             ),
           ),
         ],
 
-        const SizedBox(height: AppSpacing.lg),
-        DropdownField<VisitPurpose>(
-          label: 'Visit purpose',
-          required: true,
-          hint: 'Why are you meeting?',
-          items: VisitPurpose.values,
-          value: _purpose,
-          itemLabel: (p) => p.label,
-          onChanged: (v) => setState(() => _purpose = v),
-        ),
+        if (blocked) ...[
+          const SizedBox(height: AppSpacing.lg),
+          AppCard(
+            borderColor: AppColors.error.withValues(alpha: 0.4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.block,
+                  size: AppSizes.iconMd,
+                  color: AppColors.error,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Your organisation requires calls to be logged within '
+                    '${result.radiusMeters.round()} m of the client. Move '
+                    'closer and refresh your location.',
+                    style: AppTypography.bodySm.copyWith(
+                      color: AppColors.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: AppSpacing.xxxl),
       ],
     );
   }
 
-  Widget _buildVisitStep() {
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.screenH),
-      children: [
-        AppTextField(
-          label: 'Contact person',
-          required: true,
-          controller: _contactController,
-          prefixIcon: Icons.person_outline,
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        AppTextField(
-          label: 'Mobile number',
-          controller: _mobileController,
-          keyboardType: TextInputType.phone,
-          prefixIcon: Icons.phone_outlined,
-          validator: (v) => Validate.mobile(v, isRequired: false),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        Row(
-          children: [
-            Expanded(
-              child: DateField(
-                label: 'Visit date',
-                required: true,
-                value: _date,
-                onChanged: (d) => setState(() => _date = d),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: TimeField(
-                label: 'Visit time',
-                required: true,
-                value: _time,
-                onChanged: (t) => setState(() => _time = t),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        DateField(
-          label: 'Expected next visit',
-          value: _nextVisit,
-          firstDate: DateTime.now(),
-          onChanged: (d) => setState(() => _nextVisit = d),
-          helper: 'Used to prompt you for the follow-up.',
-        ),
-        const SizedBox(height: AppSpacing.xxxl),
-      ],
-    );
-  }
+  // ---------------------------------------------------------- step two
 
   Widget _buildReportStep() {
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.screenH),
-      children: [
-        Text(
-          'If this visit already happened, record the call report now. '
-          'For a planned visit you can leave this blank and fill it in when '
-          'you start the visit.',
-          style: AppTypography.caption,
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        Text('RCPA score', style: AppTypography.bodySm),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          children: [
-            for (var i = 1; i <= 5; i++)
-              IconButton(
-                onPressed: () =>
-                    setState(() => _rcpaScore = i == _rcpaScore ? 0 : i),
-                padding: const EdgeInsets.only(right: AppSpacing.xs),
-                constraints: const BoxConstraints(),
-                iconSize: 28,
-                icon: Icon(
-                  i <= _rcpaScore
-                      ? Icons.star_rounded
-                      : Icons.star_outline_rounded,
-                  color: i <= _rcpaScore ? AppColors.sand : AppColors.border,
+    return Form(
+      key: _formKey,
+      child: ListView(
+        padding: const EdgeInsets.all(AppSpacing.screenH),
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: AppTextField(
+                  label: 'Input',
+                  controller: _inputs,
+                  hint: 'Samples',
                 ),
               ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        AppTextField(
-          label: 'Feedback',
-          controller: _feedbackController,
-          maxLines: 4,
-          hint: 'Doctor response, objections, commitments…',
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        AppTextField(
-          label: 'POP / material shared',
-          controller: _popController,
-          maxLines: 2,
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        AppTextField(
-          label: 'Remarks',
-          controller: _remarksController,
-          maxLines: 2,
-        ),
-        const SizedBox(height: AppSpacing.xxxl),
-      ],
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: AppTextField(
+                  label: 'RCPA',
+                  controller: _rcpa,
+                  hint: '1–5',
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return null;
+                    final n = int.tryParse(v.trim());
+                    return (n == null || n < 1 || n > 5) ? '1–5' : null;
+                  },
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: AppTextField(
+                  label: 'POB',
+                  controller: _pob,
+                  hint: '₹',
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          AppTextField(
+            label: 'Feedback',
+            controller: _feedback,
+            maxLines: 4,
+            hint: 'What the client said, and what you promised',
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          DateField(
+            label: 'Next visit date',
+            required: true,
+            value: _nextVisit,
+            firstDate: DateTime.now(),
+            onChanged: (d) => setState(() => _nextVisit = d),
+          ),
+          const SizedBox(height: AppSpacing.xxxl),
+        ],
+      ),
     );
   }
 
-  Widget _buildAttachStep() {
+  // -------------------------------------------------------- step three
+
+  /// What is about to be written, before it is written.
+  ///
+  /// The client's own record and their visit history sit here rather than
+  /// beside the picker: this is the step where "did I choose the right
+  /// doctor?" is worth answering, because it is the last moment it can be
+  /// answered for free.
+  Widget _buildReviewStep(Client client) {
+    final rcpa = int.tryParse(_rcpa.text.trim());
+    final pob = double.tryParse(_pob.text.trim());
+    final feedback = _feedback.text.trim();
+    final inputs = _inputs.text.trim();
+
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.screenH),
       children: [
         AppCard(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
             children: [
-              const Icon(Icons.info_outline,
-                  size: AppSizes.iconMd, color: AppColors.info),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  'Location is captured when you start the visit, not now — '
-                  'that is what makes the geo-fence meaningful.',
-                  style: AppTypography.bodySm,
+              KeyValueRow(label: 'Client', value: client.name),
+              KeyValueRow(
+                label: 'Location',
+                valueWidget: StatusBadge.geo(
+                  _geoResult?.verification ?? GeoVerification.unavailable,
                 ),
+              ),
+              if (_address != null)
+                KeyValueRow(label: 'Captured at', value: _address),
+              KeyValueRow(label: 'Input', value: inputs.isEmpty ? null : inputs),
+              KeyValueRow(label: 'RCPA', value: rcpa?.toString()),
+              KeyValueRow(
+                label: 'POB value',
+                value: pob == null ? null : Fmt.money(pob),
+              ),
+              KeyValueRow(
+                label: 'Next visit',
+                value: Fmt.date(_nextVisit),
+              ),
+              KeyValueRow(
+                label: 'Feedback',
+                value: feedback.isEmpty ? null : feedback,
               ),
             ],
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
-        Text('Photos & attachments', style: AppTypography.bodySm),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          children: [
-            Expanded(
-              child: _AttachTile(
-                icon: Icons.photo_camera_outlined,
-                label: 'Camera',
-                onTap: () => _notYet(context),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: _AttachTile(
-                icon: Icons.photo_library_outlined,
-                label: 'Gallery',
-                onTap: () => _notYet(context),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: _AttachTile(
-                icon: Icons.attach_file_outlined,
-                label: 'File',
-                onTap: () => _notYet(context),
-              ),
-            ),
-          ],
-        ),
+        _ClientFacts(client: client),
         const SizedBox(height: AppSpacing.lg),
-        AppTextField(
-          label: 'Location note',
-          controller: _locationNoteController,
-          maxLines: 2,
-          hint: 'e.g. Meet at the OPD block, second floor',
-        ),
+        _VisitHistory(client: client),
         const SizedBox(height: AppSpacing.xxxl),
       ],
     );
   }
 
-  void _notYet(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('File capture is wired up with the backend integration.'),
-      ),
+  Widget _buildActions() {
+    if (_client == null) {
+      return BottomActionBar(
+        children: [
+          SecondaryButton(label: 'Cancel', onPressed: () => context.pop()),
+        ],
+      );
+    }
+
+    final isLast = _step == 2;
+    final canProceed = _step == 0 ? _canLeaveLocationStep : true;
+
+    return BottomActionBar(
+      children: [
+        SecondaryButton(
+          label: _step == 0 ? 'Cancel' : 'Back',
+          onPressed: _submitting ? null : _back,
+        ),
+        PrimaryButton(
+          label: isLast
+              ? (widget.isEditing ? 'Save changes' : 'Submit')
+              : 'Continue',
+          isLoading: _submitting,
+          onPressed: canProceed ? (isLast ? _submit : _next) : null,
+        ),
+      ],
     );
   }
+}
 
-  Widget _buildSuccess(Activity activity) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: SuccessState(
-          title: 'Activity added',
-          message: '${activity.clientName} has been added to your plan for '
-              '${Fmt.relativeDay(activity.scheduledStart).toLowerCase()}.',
-          details: AppCard(
+/// The client the report is being written about, above the step header — the
+/// same block, in the same place, as the live visit flow's.
+class _ActivityClientHeader extends StatelessWidget {
+  const _ActivityClientHeader({required this.client});
+
+  final Client client;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: AppColors.surface,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenH,
+        0,
+        AppSpacing.screenH,
+        AppSpacing.lg,
+      ),
+      child: Row(
+        children: [
+          AppAvatar(name: client.name, size: AppSizes.avatarLg),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                KeyValueRow(label: 'Client', value: activity.clientName),
-                KeyValueRow(
-                    label: 'When',
-                    value: '${Fmt.date(activity.scheduledStart)} · '
-                        '${Fmt.time(activity.scheduledStart)}'),
-                KeyValueRow(
-                  label: 'Status',
-                  valueWidget: StatusBadge.activity(activity.status, dense: true),
-                ),
-                KeyValueRow(
-                  label: 'Sync',
-                  valueWidget: StatusBadge.sync(activity.syncStatus, dense: true),
-                ),
+                Text(client.name, style: AppTypography.h3),
+                const SizedBox(height: 2),
+                Text(client.subtitle, style: AppTypography.bodySm),
               ],
             ),
           ),
-          primaryLabel: 'Done',
-          onPrimary: () => context.go(Routes.activity),
-          secondaryLabel: 'Add another',
-          onSecondary: () => setState(() {
-            _created = null;
-            _step = 0;
-            _pageController.jumpToPage(0);
-            _client = null;
-            _purpose = null;
-            _feedbackController.clear();
-            _popController.clear();
-            _remarksController.clear();
-            _rcpaScore = 0;
-          }),
-        ),
+        ],
       ),
     );
   }
 }
 
-class _AttachTile extends StatelessWidget {
-  const _AttachTile({required this.icon, required this.label, required this.onTap});
+/// The selected client's own record. Read-only by design — see the class doc
+/// on [AddActivityScreen].
+class _ClientFacts extends StatelessWidget {
+  const _ClientFacts({required this.client});
 
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+  final Client client;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadius.md),
-      child: Container(
-        height: 78,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 22, color: AppColors.brand),
-            const SizedBox(height: AppSpacing.sm),
-            Text(label, style: AppTypography.caption),
+    final facts = <(String, String)>[
+      if (client.designation != null) ('Designation', client.designation!),
+      ('Client type', client.type.label),
+      ('Territory / Area', client.areaName),
+      ('Category', client.category.label),
+    ];
+
+    return AppCard(
+      color: AppColors.surfaceSecondary,
+      borderColor: Colors.transparent,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < facts.length; i++) ...[
+            if (i > 0) const AppDivider(height: AppSpacing.md),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 116,
+                  child: Text(facts[i].$1, style: AppTypography.caption),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(facts[i].$2, style: AppTypography.titleSm),
+                ),
+              ],
+            ),
           ],
-        ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VisitHistory extends ConsumerWidget {
+  const _VisitHistory({required this.client});
+
+  final Client client;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.cardPadding),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.history,
+            size: AppSizes.iconSm,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(child: Text('Visit history', style: AppTypography.overline)),
+          const SizedBox(width: AppSpacing.sm),
+          Flexible(
+            child: Text(
+              client.lastVisitAt == null
+                  ? Fmt.count(client.totalVisits, 'visit')
+                  : '${Fmt.count(client.totalVisits, 'visit')} · last '
+                        '${Fmt.relativeDay(client.lastVisitAt!)}',
+              style: AppTypography.titleSm,
+              textAlign: TextAlign.right,
+              maxLines: 2,
+            ),
+          ),
+        ],
       ),
     );
   }

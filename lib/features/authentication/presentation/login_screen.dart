@@ -56,10 +56,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-    await ref.read(authControllerProvider.notifier).login(
-          _codeController.text,
-          _passwordController.text,
-        );
+    await ref
+        .read(authControllerProvider.notifier)
+        .login(_codeController.text, _passwordController.text);
   }
 
   @override
@@ -70,7 +69,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final notice = state is AuthUnauthenticated ? state.message : null;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -97,7 +96,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xs),
                     Text(
-                      'Sign in to continue to PharmaConnect.',
+                      'Sign in to continue to Mr Sales.',
                       style: AppTypography.bodySm,
                       textAlign: TextAlign.center,
                     ),
@@ -259,13 +258,17 @@ class _DemoAccountsHint extends StatelessWidget {
                   children: [
                     SizedBox(
                       width: 72,
-                      child: Text(code,
-                          style:
-                              AppTypography.numeric.copyWith(fontSize: 12)),
+                      child: Text(
+                        code,
+                        style: AppTypography.numeric.copyWith(fontSize: 12),
+                      ),
                     ),
                     Expanded(child: Text(role, style: AppTypography.caption)),
-                    const Icon(Icons.arrow_forward,
-                        size: 14, color: AppColors.brand),
+                    const Icon(
+                      Icons.arrow_forward,
+                      size: 14,
+                      color: AppColors.brand,
+                    ),
                   ],
                 ),
               ),

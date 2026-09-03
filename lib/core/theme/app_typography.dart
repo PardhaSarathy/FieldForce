@@ -2,16 +2,23 @@ import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
 
-/// Type scale for PharmaConnect.
+/// Type scale for Mr Sales.
 ///
-/// Font choice: we deliberately use the *platform* UI face (SF Pro on iOS,
-/// Roboto on Android) rather than a webfont. This is an offline-first field
-/// application (§8) — `google_fonts` resolves faces over the network on first
-/// use, which is exactly wrong for a rep standing in a hospital basement. To
-/// adopt a bundled brand face later, drop the .ttf files into `assets/fonts/`,
-/// declare them in pubspec.yaml, and set [fontFamily] — nothing else changes.
+/// Font choice: **Plus Jakarta Sans, bundled** — a 172 KB variable TTF in
+/// `assets/fonts/`, shipped inside the APK.
+///
+/// This replaces an earlier rule that said to use the platform UI face and
+/// fetch nothing. The offline reasoning was right and the conclusion was
+/// wrong: `google_fonts` resolving a face over the network is indeed wrong for
+/// a rep in a hospital basement, but a *bundled* font is not a fetch. It works
+/// on a plane. The rule was written against the wrong risk, and it cost the app
+/// its identity — the platform face is the same one every default Android form
+/// uses, and nothing reads as generic faster.
+///
+/// It is a variable font, so one file covers 200–800 and `FontWeight` works
+/// across the whole range without shipping a file per weight.
 abstract final class AppTypography {
-  static const String? fontFamily = null;
+  static const String fontFamily = 'PlusJakartaSans';
 
   /// Tabular figures keep numeric columns (amounts, targets, distances) from
   /// jittering as values change. Applied to metrics and money, not prose.
@@ -62,6 +69,7 @@ abstract final class AppTypography {
     height: 1.35,
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
+    fontFeatures: _tabular,
   );
 
   static const titleSm = TextStyle(
@@ -70,6 +78,7 @@ abstract final class AppTypography {
     height: 1.35,
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
+    fontFeatures: _tabular,
   );
 
   // ------------------------------------------------------------------ body
@@ -87,6 +96,7 @@ abstract final class AppTypography {
     height: 1.45,
     fontWeight: FontWeight.w400,
     color: AppColors.textPrimary,
+    fontFeatures: _tabular,
   );
 
   static const bodySm = TextStyle(
@@ -95,6 +105,7 @@ abstract final class AppTypography {
     height: 1.40,
     fontWeight: FontWeight.w400,
     color: AppColors.textSecondary,
+    fontFeatures: _tabular,
   );
 
   // ----------------------------------------------------------- supporting
@@ -105,6 +116,7 @@ abstract final class AppTypography {
     height: 1.35,
     fontWeight: FontWeight.w400,
     color: AppColors.textSecondary,
+    fontFeatures: _tabular,
   );
 
   /// Section headers and eyebrow labels. Always uppercase at call site.
@@ -133,6 +145,15 @@ abstract final class AppTypography {
     fontWeight: FontWeight.w600,
     letterSpacing: 0.1,
   );
+
+  // Digits are tabular across the text styles too, not only the metrics.
+  //
+  // Half the figures in this app sit inside sentences in rows — "3 of 10
+  // visits today", "12/16", a money column — and with proportional digits a 1
+  // is narrower than a 7, so the numbers shift sideways as the data changes
+  // and a column of them never lines up. It is the cheapest thing that
+  // separates a data-dense screen that looks considered from one that does
+  // not.
 
   // -------------------------------------------------------------- numerics
   /// Hero metric on a MetricCard.

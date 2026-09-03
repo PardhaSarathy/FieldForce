@@ -1,3 +1,4 @@
+import '../../core/theme/app_colors.dart';
 import '../enums/app_enums.dart';
 import 'activity.dart';
 
@@ -205,13 +206,9 @@ class Target {
   double get achievementPercent =>
       targetAmount <= 0 ? 0 : (achievedAmount / targetAmount) * 100;
 
-  StatusTone get tone {
-    final pct = achievementPercent;
-    if (pct >= 100) return StatusTone.success;
-    if (pct >= 75) return StatusTone.brand;
-    if (pct >= 50) return StatusTone.warning;
-    return StatusTone.error;
-  }
+  /// Where this target sits on the ladder. The same rungs Home uses, so a rep
+  /// who is "Ahead" on Home is "Ahead" in Business rather than "warning".
+  GameTier get tier => GameTier.of(achievementPercent);
 }
 
 /// A time-series point for the simple charts used in Business and Reports.

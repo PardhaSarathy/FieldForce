@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/app_providers.dart';
+import '../../../core/routing/navigate.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -31,7 +32,7 @@ class ManagerDashboardScreen extends ConsumerWidget {
     final unread = ref.watch(unreadNotificationsProvider).valueOrNull ?? 0;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
@@ -73,7 +74,7 @@ class ManagerDashboardScreen extends ConsumerWidget {
                 SectionHeader(
                   title: 'This month',
                   actionLabel: 'Reports',
-                  onAction: () => context.push(Routes.reports),
+                  onAction: () => navigateTo(context, Routes.reports),
                 ),
                 _MonthPerformance(data: data),
                 const SizedBox(height: AppSpacing.section),
@@ -132,9 +133,10 @@ class _ManagerHeader extends ConsumerWidget {
                   const SizedBox(width: AppSpacing.sm),
                   Flexible(
                     child: Text(
-                      'PharmaConnect',
-                      style: AppTypography.titleMd
-                          .copyWith(letterSpacing: -0.2),
+                      'Mr Sales',
+                      style: AppTypography.titleMd.copyWith(
+                        letterSpacing: -0.2,
+                      ),
                       overflow: TextOverflow.ellipsis,
                       softWrap: false,
                     ),
@@ -190,48 +192,57 @@ class _ExceptionList extends StatelessWidget {
       final breakdown = data.pendingByKind.entries
           .map((e) => '${e.value} ${e.key.label.toLowerCase()}')
           .join(' · ');
-      rows.add(_ExceptionRow(
-        icon: Icons.pending_actions_outlined,
-        tone: StatusTone.warning,
-        count: '${data.pendingApprovals}',
-        title: 'Awaiting your approval',
-        subtitle: breakdown,
-        onTap: () => context.push(Routes.approvals),
-      ));
+      rows.add(
+        _ExceptionRow(
+          icon: Icons.pending_actions_outlined,
+          tone: StatusTone.warning,
+          count: '${data.pendingApprovals}',
+          title: 'Awaiting your approval',
+          subtitle: breakdown,
+          onTap: () => context.push(Routes.approvals),
+        ),
+      );
     }
 
     if (data.behindPlanCount > 0) {
-      rows.add(_ExceptionRow(
-        icon: Icons.trending_down,
-        tone: StatusTone.error,
-        count: '${data.behindPlanCount}',
-        title: 'Team members behind plan',
-        subtitle: 'Completion is below the expected pace for this time of day',
-        onTap: () => context.push(Routes.team),
-      ));
+      rows.add(
+        _ExceptionRow(
+          icon: Icons.trending_down,
+          tone: StatusTone.error,
+          count: '${data.behindPlanCount}',
+          title: 'Team members behind plan',
+          subtitle:
+              'Completion is below the expected pace for this time of day',
+          onTap: () => navigateTo(context, Routes.team),
+        ),
+      );
     }
 
     if (data.teamSize > 0 && data.presentToday < data.teamSize) {
       final absent = data.teamSize - data.presentToday;
-      rows.add(_ExceptionRow(
-        icon: Icons.person_off_outlined,
-        tone: StatusTone.info,
-        count: '$absent',
-        title: 'No field activity recorded today',
-        subtitle: 'Out of ${data.teamSize} team members',
-        onTap: () => context.push(Routes.teamActivity),
-      ));
+      rows.add(
+        _ExceptionRow(
+          icon: Icons.person_off_outlined,
+          tone: StatusTone.info,
+          count: '$absent',
+          title: 'No field activity recorded today',
+          subtitle: 'Out of ${data.teamSize} team members',
+          onTap: () => context.push(Routes.teamActivity),
+        ),
+      );
     }
 
     if (data.unverifiedVisits > 0) {
-      rows.add(_ExceptionRow(
-        icon: Icons.location_off_outlined,
-        tone: StatusTone.warning,
-        count: '${data.unverifiedVisits}',
-        title: 'Visits completed out of range',
-        subtitle: 'Location could not be verified against the client address',
-        onTap: () => context.push(Routes.teamActivity),
-      ));
+      rows.add(
+        _ExceptionRow(
+          icon: Icons.location_off_outlined,
+          tone: StatusTone.warning,
+          count: '${data.unverifiedVisits}',
+          title: 'Visits completed out of range',
+          subtitle: 'Location could not be verified against the client address',
+          onTap: () => context.push(Routes.teamActivity),
+        ),
+      );
     }
 
     return AppCard(
@@ -290,27 +301,37 @@ class _ExceptionRow extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(count,
-                          style: AppTypography.titleMd
-                              .copyWith(color: tone.foreground)),
+                      Text(
+                        count,
+                        style: AppTypography.titleMd.copyWith(
+                          color: tone.foreground,
+                        ),
+                      ),
                       const SizedBox(width: AppSpacing.xs),
                       Flexible(
-                        child: Text(title,
-                            style: AppTypography.titleSm,
-                            overflow: TextOverflow.ellipsis),
+                        child: Text(
+                          title,
+                          style: AppTypography.titleSm,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: AppTypography.caption,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
+                  Text(
+                    subtitle,
+                    style: AppTypography.caption,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right,
-                size: AppSizes.iconMd, color: AppColors.textSecondary),
+            const Icon(
+              Icons.chevron_right,
+              size: AppSizes.iconMd,
+              color: AppColors.textSecondary,
+            ),
           ],
         ),
       ),
@@ -326,7 +347,7 @@ class _TeamTodayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      onTap: () => context.push(Routes.team),
+      onTap: () => navigateTo(context, Routes.team),
       child: Column(
         children: [
           Row(
@@ -349,7 +370,8 @@ class _TeamTodayCard extends StatelessWidget {
               Expanded(
                 child: _MiniMetric(
                   label: 'Visits done',
-                  value: '${data.visitsCompleted}'
+                  value:
+                      '${data.visitsCompleted}'
                       ' / ${data.visitsPlanned}',
                 ),
               ),
@@ -367,13 +389,15 @@ class _TeamTodayCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   data.visitGap > 0
-                      ? '${data.visitGap} visits still to complete today'
+                      ? '${Fmt.count(data.visitGap, 'visit')} still to complete today'
                       : 'All planned visits complete',
                   style: AppTypography.caption,
                 ),
               ),
-              Text('View team',
-                  style: AppTypography.caption.copyWith(color: AppColors.brand)),
+              Text(
+                'View team',
+                style: AppTypography.caption.copyWith(color: AppColors.brand),
+              ),
             ],
           ),
         ],
@@ -477,7 +501,11 @@ class _MetricCard extends StatelessWidget {
 }
 
 class _MiniMetric extends StatelessWidget {
-  const _MiniMetric({required this.label, required this.value, this.valueColor});
+  const _MiniMetric({
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
 
   final String label;
   final String value;
@@ -497,11 +525,8 @@ class _MiniMetric extends StatelessWidget {
 
 class _VDivider extends StatelessWidget {
   @override
-  Widget build(BuildContext context) => Container(
-        width: 1,
-        height: 34,
-        color: AppColors.border,
-      );
+  Widget build(BuildContext context) =>
+      Container(width: 1, height: 34, color: AppColors.border);
 }
 
 class _ManagerActions extends StatelessWidget {

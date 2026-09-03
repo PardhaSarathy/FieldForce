@@ -49,12 +49,91 @@ class MockDataset {
     Area(id: 'ar-6', name: 'Kothrud', territoryId: 'ter-3'),
   ];
 
+  // Every area carries at least two clusters. The day-plan form asks for one
+  // after the HQ, so an area with none would open a dropdown with nothing in
+  // it — which reads as a broken screen rather than an empty territory.
   late final List<Cluster> clusters = const [
     Cluster(id: 'cl-1', name: 'Chakala', areaId: 'ar-1'),
     Cluster(id: 'cl-2', name: 'MIDC', areaId: 'ar-1'),
     Cluster(id: 'cl-3', name: 'Linking Road', areaId: 'ar-2'),
-    Cluster(id: 'cl-4', name: 'Shivaji Park', areaId: 'ar-3'),
+    Cluster(id: 'cl-4', name: 'Pali Hill', areaId: 'ar-2'),
+    Cluster(id: 'cl-5', name: 'Shivaji Park', areaId: 'ar-3'),
+    Cluster(id: 'cl-6', name: 'Prabhadevi', areaId: 'ar-3'),
+    Cluster(id: 'cl-7', name: 'Aarey Road', areaId: 'ar-4'),
+    Cluster(id: 'cl-8', name: 'Film City', areaId: 'ar-4'),
+    Cluster(id: 'cl-9', name: 'IC Colony', areaId: 'ar-5'),
+    Cluster(id: 'cl-10', name: 'Eksar', areaId: 'ar-5'),
+    Cluster(id: 'cl-11', name: 'Karve Road', areaId: 'ar-6'),
+    Cluster(id: 'cl-12', name: 'Paud Road', areaId: 'ar-6'),
   ];
+
+  /// Street addresses a captured position resolves to, per area. A geocoder
+  /// replaces this behind `DayPlanRepository.addressFor`; until then the day
+  /// plan needs a plausible address to stamp, not a bare pair of coordinates.
+  static const _areaAddresses = {
+    'ar-1': '44, Commercial Terrace Colony, Andheri East, Mumbai 400069 / MH',
+    'ar-2': '12, Turner Road, Bandra West, Mumbai 400050 / MH',
+    'ar-3': '7, Gokhale Road, Dadar West, Mumbai 400028 / MH',
+    'ar-4': '218, Aarey Road, Goregaon East, Mumbai 400063 / MH',
+    'ar-5': '9, Chandavarkar Lane, Borivali West, Mumbai 400092 / MH',
+    'ar-6': '31, Karve Road, Kothrud, Pune 411038 / MH',
+  };
+
+  /// The address for a captured point. Falls back to coordinates when the area
+  /// is unknown — never to a wrong address, which would be worse than none.
+  String addressFor({String? areaId, GeoPoint? point}) {
+    final match = _areaAddresses[areaId];
+    if (match != null) return match;
+    if (point == null) return 'Address unavailable';
+    return '${point.latitude.toStringAsFixed(5)}, '
+        '${point.longitude.toStringAsFixed(5)}';
+  }
+
+  /// Ten working days of submitted intimations per field user.
+  ///
+  /// Today is deliberately left undeclared: the day plan's primary state is
+  /// the empty form a rep fills in each morning, and a demo that opens on an
+  /// already-submitted day never shows it.
+  late final List<DayPlan> dayPlans = _buildDayPlans();
+
+  List<DayPlan> _buildDayPlans() {
+    final result = <DayPlan>[];
+    var n = 0;
+
+    for (final employee in fieldForce) {
+      final area = areas.firstWhere(
+        (a) => a.id == employee.areaId,
+        orElse: () => areas.first,
+      );
+      final areaClusters = clusters.where((c) => c.areaId == area.id).toList();
+
+      // Two months back, not ten days. The expense claim screen shows a
+      // month of declared days, and a seed that only intimated the last
+      // fortnight left the first half of every month blank — which reads as
+      // a broken screen rather than as a rep who did not travel.
+      for (var back = 1; back <= 70; back++) {
+        final date = today.subtract(Duration(days: back));
+        if (date.weekday == DateTime.sunday) continue;
+
+        n++;
+        result.add(
+          DayPlan(
+            id: 'dp-$n',
+            employeeId: employee.id,
+            date: date,
+            workType: n % 9 == 0 ? WorkType.meeting : WorkType.fieldWork,
+            areaId: area.id,
+            areaName: area.name,
+            clusterName: areaClusters[n % areaClusters.length].name,
+            status: ApprovalStatus.submitted,
+            capturedAddress: addressFor(areaId: area.id),
+            submittedAt: DateTime(date.year, date.month, date.day, 9, 12),
+          ),
+        );
+      }
+    }
+    return result;
+  }
 
   /// The signed-in field user for the default demo session.
   late final Employee currentUser = employees.first;
@@ -483,6 +562,23 @@ class MockDataset {
           totalVisits: 4 + (i * 3) % 17,
           ownerEmployeeId: employees[i % 5].id,
           createdAt: today.subtract(Duration(days: 120 + i * 11)),
+          // Most of the master is verified; a couple are still unlisted so
+          // both states are visible in a demo.
+          listing: i % 9 == 0 ? ClientListing.unlisted : ClientListing.listed,
+          // A date is useless without knowing what it marks. Every third
+          // doctor keeps an anniversary instead of a birthday, and one in
+          // seven something of their own, so all three cases are on screen in
+          // a demo. Two doctors' dates are pulled onto this week so the
+          // countdown is not always "in 200 days".
+          specialDate: i < 2
+              ? DateTime(1980 + i, today.month, today.day + i)
+              : DateTime(1975 + i % 20, 1 + i % 12, 1 + i % 27),
+          specialOccasion: i % 7 == 3
+              ? SpecialOccasion.other
+              : i % 3 == 0
+                  ? SpecialOccasion.anniversary
+                  : SpecialOccasion.birthday,
+          specialOccasionNote: i % 7 == 3 ? 'Clinic founding day' : null,
         ),
       );
     }
@@ -609,11 +705,20 @@ class MockDataset {
 
       for (var dayOffset = -56; dayOffset <= 6; dayOffset++) {
         final date = today.add(Duration(days: dayOffset));
-        if (date.weekday == DateTime.sunday) continue;
+
+        // Sunday is a week off — except today. Whichever day the app is
+        // opened on has to have a real plan behind it, otherwise Home, the
+        // day plan and the next action all read as empty one day in seven.
+        if (dayOffset != 0 && date.weekday == DateTime.sunday) continue;
 
         // Managers are in the field roughly every other day; the rest is
-        // office and review work.
-        if (isManager && (dayOffset + date.day) % 2 != 0) continue;
+        // office and review work. Today is always one of the field days: the
+        // parity above depends on the calendar date, so on half the days of
+        // the month a manager's Home, day plan and attendance all opened
+        // empty — on the one screen a demo always starts from.
+        if (isManager && dayOffset != 0 && (dayOffset + date.day) % 2 != 0) {
+          continue;
+        }
 
         final visitCount = isManager
             ? managerVisits
@@ -804,15 +909,24 @@ class MockDataset {
         final date = today.add(Duration(days: dayOffset));
         if (date.weekday == DateTime.sunday) continue;
 
-        final category =
-            ExpenseCategory.values[n % ExpenseCategory.values.length];
-        final amount = switch (category) {
-          ExpenseCategory.travel => 250.0 + (n % 8) * 50,
-          ExpenseCategory.food => 180.0 + (n % 6) * 40,
-          ExpenseCategory.lodging => 1200.0 + (n % 4) * 250,
-          ExpenseCategory.fuel => 400.0 + (n % 5) * 60,
-          ExpenseCategory.other => 300.0 + (n % 7) * 45,
-        };
+        // Roughly one day in four goes above the allowance; the rest are the
+        // flat ₹250. The seed used to give every day its own figure, which
+        // made every row an exception and left the amber "above allowance"
+        // rail meaning nothing — a demo where everything is flagged shows the
+        // same as one where nothing is.
+        final isExcess = n % 4 == 0;
+        final category = isExcess
+            ? ExpenseCategory.values[n % ExpenseCategory.values.length]
+            : ExpenseCategory.other;
+        final amount = isExcess
+            ? switch (category) {
+                ExpenseCategory.travel => 620.0 + (n % 8) * 50,
+                ExpenseCategory.food => 480.0 + (n % 6) * 40,
+                ExpenseCategory.lodging => 1450.0 + (n % 4) * 250,
+                ExpenseCategory.fuel => 700.0 + (n % 5) * 60,
+                ExpenseCategory.other => 560.0 + (n % 7) * 45,
+              }
+            : 250.0;
 
         // Recent claims are still moving through approval; older ones settled.
         final status = dayOffset > -4
@@ -820,6 +934,19 @@ class MockDataset {
             : dayOffset > -10
                 ? ApprovalStatus.submitted
                 : (n % 11 == 0 ? ApprovalStatus.rejected : ApprovalStatus.approved);
+
+        // The intimation this claim belongs to. A claim with no plan behind
+        // it cannot exist under the rule the app now enforces, so the seed
+        // must not create one either — those dates are simply left unclaimed,
+        // which is also the more useful demo.
+        final plan = dayPlans
+            .where((p) =>
+                p.employeeId == mr.id &&
+                p.date.year == date.year &&
+                p.date.month == date.month &&
+                p.date.day == date.day)
+            .firstOrNull;
+        if (plan == null) continue;
 
         result.add(
           Expense(
@@ -830,11 +957,18 @@ class MockDataset {
             category: category,
             amount: amount,
             status: status,
-            description: descriptions[category],
+            dayPlanId: plan.id,
+            allowance: 250,
+            scope: amount > 900 ? ClaimScope.outOfTerritory : ClaimScope.local,
+            place: amount > 900 ? 'Nalgonda' : null,
+            // Every excess carries its bill, because the app will not let one
+            // be filed without. A seed that breaks its own rule is a seed
+            // that demos a state the product cannot reach.
+            receiptPaths: isExcess ? const ['bill-1.jpg'] : const [],
+            description: isExcess ? descriptions[category] : 'Daily allowance',
             remarks: category == ExpenseCategory.travel
                 ? '${mr.areaName} — 4 client visits'
                 : null,
-            receiptPaths: status == ApprovalStatus.draft ? const [] : const ['receipt'],
             travelMode: category == ExpenseCategory.travel ? TravelMode.auto : null,
             fromLocation: category == ExpenseCategory.travel ? mr.headquarters : null,
             toLocation: category == ExpenseCategory.travel ? mr.areaName : null,
@@ -1316,10 +1450,14 @@ class MockDataset {
             achievedAmount: achieved,
             areaId: mr.areaId,
             areaName: mr.areaName,
-            visitTarget: 132,
+            // ~7 calls a day across a working month. The old 132 was below
+            // what the seed itself generates (a rep logs 5-9 visits a day),
+            // so every rep showed "166 of 132" — a target you cannot miss is
+            // not a target, and it read as a bug.
+            visitTarget: _monthlyVisitTarget,
             visitsAchieved: monthsBack == 0
                 ? _monthVisitCount(mr.id, month)
-                : 96 + (n * 5) % 40,
+                : 150 + (n * 5) % 45,
           ),
         );
       }
@@ -1357,6 +1495,11 @@ class MockDataset {
         .fold<double>(0, (sum, o) => sum + o.grandTotal);
   }
 
+  /// A month's visit target: roughly seven calls a day across the working
+  /// days a rep actually has. Kept as one constant so the seed, the targets it
+  /// generates and the assignment screen's default cannot drift apart.
+  static const _monthlyVisitTarget = 182;
+
   int _monthVisitCount(String employeeId, DateTime month) {
     return activities
         .where((a) =>
@@ -1368,6 +1511,32 @@ class MockDataset {
   }
 
   late final List<SalesRecord> salesRecords = _buildSales();
+
+  /// A product's share of a month's sales, by its rank in the catalogue.
+  ///
+  /// Derived from the catalogue's own length, not read out of a table. It was
+  /// `[0.29, 0.24, 0.19, 0.16, 0.12][i]` — five literals indexed by the
+  /// product's position — and the catalogue has held **twelve** products for a
+  /// while. The sixth one threw a `RangeError` while [salesRecords] was being
+  /// built, and because that is a `late final`, the failure was permanent for
+  /// the session: every screen reading sales showed "Something went wrong",
+  /// which is why Sales looked like it did not exist.
+  ///
+  /// The render smoke tests could not see it — an `ErrorState` lays out
+  /// perfectly well. `navigation_test.dart` now taps the tile and asserts on a
+  /// figure, which is the only thing that separates a working screen from a
+  /// broken one.
+  ///
+  /// The weights decay with rank and are normalised, so the split is
+  /// Pareto-shaped, always sums to the month's total, and cannot run off the
+  /// end of anything.
+  late final List<double> _productShares = () {
+    final raw = [for (var i = 0; i < products.length; i++) 1 / (i + 1.6)];
+    final sum = raw.fold<double>(0, (s, w) => s + w);
+    return [for (final w in raw) w / sum];
+  }();
+
+  double _productShare(int i) => _productShares[i];
 
   List<SalesRecord> _buildSales() {
     final result = <SalesRecord>[];
@@ -1397,11 +1566,10 @@ class MockDataset {
                 ProductSales(
                   productId: products[i].id,
                   productName: products[i].name,
-                  amount: amount * [0.29, 0.24, 0.19, 0.16, 0.12][i],
-                  units: ((amount * [0.29, 0.24, 0.19, 0.16, 0.12][i]) /
-                          products[i].mrp)
+                  amount: amount * _productShare(i),
+                  units: ((amount * _productShare(i)) / products[i].mrp)
                       .round(),
-                  sharePercent: [29, 24, 19, 16, 12][i].toDouble(),
+                  sharePercent: _productShare(i) * 100,
                 ),
             ],
           ),
@@ -1479,7 +1647,7 @@ class MockDataset {
     AppNotification(
       id: 'n-1',
       kind: NotificationKind.approvalCompleted,
-      title: 'Travel plan approved',
+      title: 'Tour plan approved',
       body: 'Your tour plan for ${_fmtShort(today.add(const Duration(days: 3)))} '
           'was approved by Ramesh Iyer.',
       createdAt: today.add(const Duration(hours: 10, minutes: 30)),

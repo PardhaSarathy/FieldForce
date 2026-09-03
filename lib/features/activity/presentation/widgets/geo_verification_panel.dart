@@ -88,14 +88,16 @@ class GeoVerificationPanel extends StatelessWidget {
                     children: [
                       Text(
                         data.verification.label,
-                        style: AppTypography.titleMd
-                            .copyWith(color: tone.foreground),
+                        style: AppTypography.titleMd.copyWith(
+                          color: tone.foreground,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         errorMessage ?? data.message,
-                        style: AppTypography.caption
-                            .copyWith(color: tone.foreground),
+                        style: AppTypography.caption.copyWith(
+                          color: tone.foreground,
+                        ),
                       ),
                     ],
                   ),
@@ -151,30 +153,38 @@ class GeoVerificationPanel extends StatelessWidget {
                   dense: true,
                 ),
 
-                const SizedBox(height: AppSpacing.md),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SecondaryButton(
-                        label: 'Refresh location',
-                        icon: Icons.refresh,
-                        small: true,
-                        onPressed: onRetry,
-                      ),
-                    ),
-                    if (onOpenSettings != null) ...[
-                      const SizedBox(width: AppSpacing.md),
+                // No retry, no button. Passing `onPressed: null` renders a
+                // *disabled* Refresh, which on a correction is a grey control
+                // sitting under evidence that is not meant to be re-measured
+                // at all — it reads as "this is broken" rather than "this is
+                // settled". The panel is read-only when there is nothing to
+                // retry.
+                if (onRetry != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Row(
+                    children: [
                       Expanded(
                         child: SecondaryButton(
-                          label: 'Settings',
-                          icon: Icons.settings_outlined,
+                          label: 'Refresh location',
+                          icon: Icons.refresh,
                           small: true,
-                          onPressed: onOpenSettings,
+                          onPressed: onRetry,
                         ),
                       ),
+                      if (onOpenSettings != null) ...[
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: SecondaryButton(
+                            label: 'Settings',
+                            icon: Icons.settings_outlined,
+                            small: true,
+                            onPressed: onOpenSettings,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -237,16 +247,31 @@ class _DistanceGauge extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // "26 m" at metric size beside "from client" overflows a 320pt phone
+        // by 78pt at maximum text scale — the figure is the hero of this panel
+        // and it was the half being cut. The distance is held whole and the
+        // caption gives way, which is the rule everywhere else in the app.
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Text(
-              GeoMath.formatDistance(distanceMeters) ?? '—',
-              style: AppTypography.metric.copyWith(color: tone.foreground),
+            Flexible(
+              child: Text(
+                GeoMath.formatDistance(distanceMeters) ?? '—',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.metric.copyWith(color: tone.foreground),
+              ),
             ),
             const SizedBox(width: AppSpacing.sm),
-            Text('from client', style: AppTypography.bodySm),
+            Flexible(
+              child: Text(
+                'from client',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.bodySm,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: AppSpacing.md),
@@ -271,7 +296,11 @@ class _DistanceGauge extends StatelessWidget {
                   Positioned(
                     left: constraints.maxWidth * 0.6 - 1,
                     top: 2,
-                    child: Container(width: 2, height: 20, color: AppColors.textPrimary),
+                    child: Container(
+                      width: 2,
+                      height: 20,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                   Positioned(
                     left: constraints.maxWidth * 0.6 + 4,

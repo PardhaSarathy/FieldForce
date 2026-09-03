@@ -1,4 +1,4 @@
-# PharmaConnect — working agreements
+# Mr Sales — working agreements
 
 Guardrails for anyone (human or AI) extending this codebase. These are the
 rules the existing code already follows; breaking them creates inconsistency
@@ -10,12 +10,108 @@ that is expensive to unwind later.
   `AppColors`, `AppTypography`, `AppSpacing`, `AppRadius`, `AppSizes` from
   `lib/core/theme/`. If a token is missing, add it there — do not inline a
   `Color(0x...)` or a `fontSize:`.
-- The palette is **warm ivory + deep teal + sand + graphite**. Deep teal means
-  action/active/verified. Sand means secondary/planned. Semantic colours mean
-  real states, never decoration.
+- The palette is **Dr.Swift's own brand sheet**, on white. The values are not
+  sampled from screenshots or invented: they are the CSS custom properties
+  published on drswift.in (`--color-blue`, `--color-ink`, `--color-muted`,
+  `--color-line`, `--color-hero-purple`, `--color-green-bright-text`,
+  `--concern-accent`, …), and each token names the variable it came from. Where
+  the site publishes both a colour and a *text* variant of it, use the text
+  one — that is the variant Dr.Swift themselves darkened to be readable.
+  **Exactly one hue is off-sheet** (`ModulePalette.hr`) and the token says why.
+- The ground is near-white (`--color-soft`), **not `#FFFFFF`**: a white card on
+  a pure-white page is 1.0:1, and the card stack on Home is the product.
+  Colour arrives through the six **modules**; the chrome — buttons, active tab,
+  progress — stays `brand` blue, so there is one action colour and six identity
+  colours. `design/palettes/` keeps the previous deep-teal-on-green palette
+  whole, with a README on restoring it.
+- **Anything carrying meaning clears 4.5:1** against the surface behind it.
+  Check before adding a colour — `AppColors` documents the ratios that matter.
+- **A fill is not a foreground.** `sand`, `star` and `mint` are light
+  enough to carry dark ink and nothing else; as an icon or a word they measure
+  under 3:1. Each has a paired deep ink for that job.
+- **A module states its hue once — on the chip.** Not the card, not the label.
+  An earlier version tinted all three: eighteen colour statements on Home, and
+  beside the apps this is measured against it read as a paint box rather than a
+  system. Apple and Uber Eats are close to monochrome; their colour lives in
+  content, and the little that sits in chrome is confined to small marks.
+- **Hierarchy comes from the neutral ramp, never from hue.** `grey50`–`grey900`
+  is the palette's spine and `textPrimary`, `textSecondary` and
+  `surfaceSecondary` are aliases into it, so there is one set of values. If you
+  are reaching for a colour to separate two things, reach for a grey step.
+- **Each module owns a hue (`ModulePalette`); the semantic set means state.**
+  A quick-action tile carries its hue three times — pastel card, saturated
+  chip, label in the same ink — which is what makes the grid read as six
+  *places* rather than six icons. This was collapsed to a single green once, on
+  the argument that the icon and the word already say which module; that
+  produced six identical squares, which is a list. Do not collapse it again
+  without reading why it came back.
+- **A module hue and a semantic colour may share a value.** `travel` is `brand`
+  green and `clients` sits beside `warning` amber. They stay legible because a
+  badge is a pill with a word in it and a tile is a chip with a label under it
+  — never because of hue.
 - **Never communicate state by colour alone** — every badge carries text.
+- **A well is a circle.** `IconWell` defaults to `size / 2` and nothing should
+  override it. Home's tiles were discs and the other twenty-six wells were
+  rounded squares — one object, two shapes, and the odd one out was the screen
+  the app gets judged on. A circle already means *a person* here (`AppAvatar`
+  is a disc with initials); the two coexist because they never carry the same
+  content and a client row shows one of each side by side. The corollary is a
+  rule: **never put a letter in a well, or an icon in an avatar.**
+  - The `SkeletonList` placeholder was already a pill, so the loading state
+    now matches what it is standing in for — it did not before.
+- **Module icons go through `IconWell`, and the well is dark.** A gradient from
+  the module ink to a darkened copy of it, a **pure white** glyph, one tight
+  bloom on the glyph's strokes and a halo in its own colour. Three things are
+  load-bearing and all three are easy to undo by accident:
+  - The gradient runs **deep → deeper**, never mid-tone → deep. A mockup draws
+    a light fill with a white glyph; that measures 2.2:1 on amber and 2.0:1 on
+    lime. Anchoring the light end at the ink puts the floor at the top of the
+    well, where every hue clears 4.5:1.
+  - The glyph is **white**, not near-white. It was lerped 0.94 toward white on
+    the argument that a tinted glyph reads as *lit* rather than as
+    white-on-a-dark-chip. On a 42pt chip what it actually read as was a white
+    that had gone slightly grey. A review said the icons were "not clear
+    white"; it was right. (The old floor still applies and is now trivially
+    met: 0.88 put the tightest inks at 4.25:1, 0.94 cleared 4.5:1, white is the
+    maximum.)
+  - The bloom is **one** stop at `glyphSize * 0.22`. It was two, the wider at
+    0.70 — which on a 21pt mark is a halo larger than the glyph, so it stopped
+    reading as light off the strokes and started reading as out of focus. That
+    haze was the other half of the "not clear white" verdict.
+  Do not "fix" the well back to a pale chip with a dark icon either: light does
+  not come off a dark line on a pale ground, and every attempt to make that
+  bloom visible fogged the square and washed the icon out.
+- **Pass `color` to re-tint the well, `background` to switch it off.** A tint
+  rebuilds the whole well from that ink (deep amber well, pale amber glyph), so
+  a warning still reads as a warning; every semantic ink clears 4.5:1 at the
+  light end of its own gradient. `background` gives the flat pale chip instead,
+  and is reserved for the quiet half of a state pair — a notification already
+  read, a phone not reporting a position. **Lit means live**; do not spend it
+  on decoration that has no off state.
+- **The app bar is transparent, and so is any header strip under it.** The
+  page's wash runs from the top of the screen. A white bar on a tinted ground
+  draws a hard edge under every title, and it was the main thing that made an
+  inner screen look unrelated to Home. A search field or date strip is white
+  against a ground that is not, which is all the separation it needs. A
+  translucent panel with a hairline was tried as a middle ground and rejected.
+- **A filled control gets a sheen** (`AppGlow.sheen`) — a whisper of white
+  along its top lip, gone by 40% of the height. It is the difference between
+  glass catching light and a flat block. Not on anything under ~40pt tall: on
+  a small pill the band covers most of it and reads as a gradient fault.
 - Typography uses the platform UI face deliberately (offline-first field app;
   no webfont fetch). Change it only via `AppTypography.fontFamily`.
+- **Two or three options go in a `SegmentedField`, not a dropdown.** Both
+  answers on screen, no tap spent revealing them. A dropdown for a two-value
+  field costs three taps to express one bit. Past three the row runs out of
+  width and the labels ellipsise — that is where [DropdownField] starts.
+- **Options open in a bottom sheet, never in an anchored menu.** `DropdownField`
+  opens `showModalBottomSheet`, and every dropdown in the app goes through it.
+  A rep fills these forms one-handed in the street: an anchored menu opens
+  wherever the field happens to sit — often the top of a long form, out of
+  thumb reach — it can open behind the keyboard mid-edit, and the cascading
+  pairs here (territory → area, HQ → cluster, the client list) are long enough
+  that a popup becomes a cramped scroller. Past eight options the sheet grows a
+  search box.
 - Icons are Material outlined at 13/16/20/24. Keep one icon per metadata row —
   two glyphs competing in a caption row reads as noise.
 
@@ -41,12 +137,236 @@ that is expensive to unwind later.
   are recorded with a mandatory reason and flagged unverified. Blocking pushes
   real work out of the system.
 - **Rejection always requires a reason.** Approval history is append-only.
+- **A control that cannot act must still answer.** `onPressed: () {}` renders
+  an *enabled* button that swallows the tap — on a demo, indistinguishable from
+  a broken app. Where the backing service is not in this build, call
+  `showComingWithBackend(context, 'Calling')`. An audit found nineteen of these
+  and `no_dead_controls_test.dart` now fails on the next one.
+- **A route constant with no `GoRoute` behind it is a dead end**, not a
+  placeholder: pushing it lands on the router's "no screen at …" page. Same
+  test guards it.
+- **Data a rep enters must be shown back somewhere.** An audit found six fields
+  captured by a form and rendered on no screen at all — joint work, inputs
+  given, POB value, the tour's planned clients, the day plan's GPS address.
+  Before adding a field to a form, name the screen that will display it.
+  Joint work has since been **removed outright** — the field, both pickers and
+  both display rows — because the answer to "who rode along" turned out to be
+  nobody's question. The corollary of the rule: a field no one reads is not
+  fixed by finding somewhere to print it.
+- **A seed that indexes a literal by position will outlive the literal.** The
+  product split in `_buildSales` was `[0.29, 0.24, 0.19, 0.16, 0.12][i]`
+  indexed by the product's rank; the catalogue grew to twelve, the sixth threw
+  a `RangeError` inside a `late final`, and every screen reading sales showed
+  "Something went wrong" for the rest of the session. Derive from
+  `products.length`, never from a table that has to be kept in step by hand.
+- **A render test cannot tell a screen from an error state** — both lay out
+  perfectly. Any screen whose worth is its data needs a `navigation_test` that
+  taps through to it and asserts on a *figure*. That is what the Sales bug got
+  past for the whole build.
+- **A claim hangs off a worked day.** Every `Expense` carries a `dayPlanId`,
+  and `ExpenseRepository.claimMonth` joins day plans to what has been filed
+  against them. No intimation, no claim — enforced at the repository so there
+  is one answer to "can this be claimed" whichever screen asks. Leave and
+  holidays are never claimable; `ClaimDay.isClaimable` is the single edit when
+  the client rules on whether Meeting and Training days earn the allowance.
+- **The allowance is flat, and it is per *day*.** ₹250 a worked day whatever
+  the distance, so the ordinary day is a confirmation rather than a
+  calculation. Territory explains an excess; it never prices one — an earlier
+  draft gave out-of-territory its own higher rate, which would quietly pay two
+  reps differently for the same day.
+  - The excess is measured against `ClaimDay.remainingAllowance`, **never**
+    against the full allowance. Against the full figure a rep could file ₹250
+    twice on one day — each line at the allowance, each needing no bill — and
+    take ₹500 for a ₹250 day.
+  - Above the allowance, the bill and the reason are **enforced, not hinted**.
+    The old form suggested a receipt over ₹500. A hint is not a rule.
+- **Never trust a `ClaimDay` handed to a repository.** It is a snapshot from
+  when the screen loaded. `confirmStandardDays` originally skipped days whose
+  passed-in copy said `isOpen`, which after the first confirm still said yes —
+  so a second tap paid every day again. It asks the store now. The comment
+  above the guard claimed protection the code did not have, and only a unit
+  test found it: **a comment is not a test.**
+- **The month never shuts.** Submitting sends what is claimed so far; a day
+  remembered in November can still be claimed against September. The screen
+  says so out loud, which is what stops a rep guessing a figure on the 30th
+  rather than losing the day.
+- **A claimed day must say where it stands.** Draft, submitted, approved and
+  rejected all rendered as one green tick once — and when money moves monthly,
+  "has this been approved" is the question the screen exists to answer. Where
+  a day carries several claims the **worst news wins**: a rejected line is the
+  one the rep has to act on.
+- **Only a draft is editable.** Clients edit freely; a travel plan or an
+  expense stops being editable the moment it is submitted, because an approver
+  is looking at it and changing it underneath them is how an approval comes to
+  mean nothing. The detail screens only offer Edit on a draft.
+- **An edit rewrites the record, it does not fork it.** Keep the id, the
+  `createdAt`, the owner and the append-only `approvalHistory`; rebuilding the
+  object from form fields alone drops them and leaves the original behind.
+- **Correcting a record is not repeating it.** An activity edit goes through
+  `ActivityRepository.update`, never `completeVisit`: completion also bumps the
+  client's visit count and last-seen date, so re-running it on a typo fix would
+  credit a second visit. It also keeps the original timestamps and the geo
+  evidence — a correction typed at the office must not claim the rep was
+  standing at the clinic.
+- **A detail screen loads its record by id.** Complaint detail used to fetch
+  the whole list and filter in the widget, which made any record outside the
+  caller's list scope render as "not found" even though it exists.
+- **A record a rep can create, a rep can correct.** `ClientRepository.update`
+  existed and was called by nothing for the whole build — a doctor who changed
+  clinic or number could only be re-registered as a duplicate. The client form
+  takes an optional `existing` and switches mode; do not fork a second screen
+  for editing, because the fields and the territory→area cascade would drift
+  apart the first time either changed.
+- **`copyWith` must pass every field.** The client's dropped `listing` and
+  `specialDate` silently, so any copy reset the category and wiped the date. It
+  went unnoticed only because nothing called it yet. When you add a field to a
+  model, add it to `copyWith` in the same edit.
+- **Reference data comes from the repository, never from a literal in a
+  screen.** Specialties were a hardcoded list inside the admin master-data
+  screen, where the client form could not reach them — two lists that would
+  have disagreed the first time either was edited. They are
+  `ClientRepository.specialties()` now, and both read it. Anything a company
+  maintains rather than a rep creates belongs there.
+- **A field with a closed set of answers is a picker, not a text box.** Typed
+  free text arrives as "Cardiologist", "cardiologist" and "Cardio" — the same
+  thing to a rep, three rows in any report that groups by it.
 - **Reports are derived from transactional records**, never stored alongside
   them. If you add a report figure, compute it.
 - **Scope is resolved once at login** into a `DataScope` and applied at the
   repository layer. Never filter by employee in a screen.
 - Offline-capable records use **client-generated UUIDs** so a retry cannot
   duplicate them.
+
+## Navigation
+
+- The bottom bar's tabs differ by role, but the shell's **branches do not**:
+  each branch holds exactly one route, and a `NavDestination` names its branch
+  by index (`ShellBranch`). Never put two routes in one branch — the branch's
+  default location becomes whichever is declared first, and the other role's
+  tab silently opens the wrong screen.
+- **Never `context.push` a tab root.** It lands the screen on a branch
+  navigator the indexed stack is not showing: nothing throws, nothing is
+  logged, the tap just does nothing. Menus, tiles and cards call
+  `navigateTo(context, route)`, which picks `go` for the roots listed in
+  `Routes.shellRoots` and `push` for everything else.
+- A screen that is pushed needs its back button — do not leave
+  `automaticallyImplyLeading: false` on a screen that stops being a tab. A
+  screen that *becomes* a tab root needs the drawer button instead, since it
+  has nothing to pop back to. **`DrawerMenuButton` decides this itself** by
+  asking the navigator whether it can pop, because the same screen is a tab
+  for one role and a pushed screen for another.
+- **"A tab root" is a question about the *user*, not the route.**
+  `Routes.shellRoots` lists every route that is a tab for somebody, and the bar
+  differs by role — My Activity is a manager's tab and a rep reaches it from
+  the module grid. `navigateTo` therefore checks the signed-in user's own
+  destinations, not the global set. Sending a rep to a branch outside their bar
+  with `go` left them with no tab lit, no back arrow and nothing to pop.
+- **`indexWhere` answers -1, and -1 is not zero.** The shell read
+  `selected <= 0` as "we are on the first tab", so `canPop` was true on any
+  branch outside the role's bar and the Android back gesture **closed the app**
+  from a screen the user had navigated into. Only a genuine `0` is the first
+  tab.
+
+## Home
+
+Home answers one question: *what do I need to do today?* (§15, §78 — it is not
+an analytics dashboard.) Two rules have already been re-learned the hard way:
+
+- **One fact, one place.** A goal card saying "7 of 10 done" and a status strip
+  saying "1 visit behind schedule" are the same fact stated twice; they now
+  share a card. Before adding a figure here, check it is not already on screen
+  in another form. This is not a Home rule — a client row used to print its
+  category in the subtitle *and* in the badge beside it, and on a narrow card
+  the badge squeezed the duplicate until it ellipsised mid-word. Where a badge
+  states something, the sentence next to it should not restate it.
+- **The day's progress is a bar, not a ring.** A ring spent an 84pt square to
+  say one number and squeezed the count, the caption and the pace line into
+  the half-width column beside it. Flat, it costs 12pt of height, the text
+  above it gets the full width, and it has somewhere to glow.
+- **The light on the bar is a knob at the leading edge, not a lit segment.**
+  Light track, a segment that **ramps light → deep across whatever it has
+  filled**, and a green knob in a white ring standing proud of the channel. It
+  sits half on the deep segment and half on the light track, which is the one
+  place on a white card where a glow has something to register against — a glow
+  smeared along the whole segment reads as a coloured fill, and a *dark*
+  channel (also tried) makes the bar the loudest object on the screen instead
+  of an instrument sitting in a card.
+  - The ramp is complete at **5% as much as at 100%** — it spans the fill, not
+    the track. Two deep stops (what it was) is a flat blue block; the ramp is
+    what turns a fill into distance travelled.
+  - The knob is **green and the bar is not**. The bar says how far, the knob
+    says *moving* — a different fact, so it gets the one second colour allowed
+    on a control in this app. Never widen it into a green fill: green means
+    done here, and a green bar at 20% says the opposite of the truth. The white
+    ring is not decoration — the knob crosses from the deep fill onto the light
+    track as the day runs and would lose its edge against one end or the other.
+- **Progress is a rung on `GameTier`, not a bare percentage.** Four rungs —
+  Getting started / On pace / Ahead / Target met — and the bar, the knob and
+  the chip beside it all take that rung's ink, so they cannot disagree. The
+  label always ships with the colour: an earlier bar changed colour with the
+  pace on its own and read as a warning light rather than as progress, because
+  nothing named what the amber meant. Naming it is the whole difference.
+- **`TierBadge` for achievement, `StatusBadge` for state.** The old mapping ran
+  the *state* palette over targets and painted a rep at 40% in **error red**,
+  which tells someone at 11am that their morning is a failure. A target that is
+  half done is a position, not a warning.
+- **"Plan" means intimating, not viewing.** My Day Plan is the morning
+  declaration — work type, HQ, cluster, GPS stamp. The schedule timeline it
+  once opened was deleted; the full list is My Day Activity, and Home shows
+  today's in full.
+- **The day starts when the rep says it does, not when the clock says so.**
+  `DaySummary.dayStatusLabel()` reads the day plan's `declaredAt` first and the
+  hour second. The line used to be pure clock arithmetic, so it told a rep who
+  had declared and driven out at seven that their day had not started, and told
+  one who had done nothing at 09:01 that they were on track. On a declared
+  meeting or training day it names the work type instead of pacing against a
+  visit target that does not exist.
+- **Home lists the whole day, and the list is what the count counts.** Every
+  visit, completed ones included, in order. It was three rows with the next
+  call skipped — because a card above repeated it — and the done ones dropped,
+  so a rep with ten visits saw three, none of them the one they were about to
+  make, under a figure reading "1 out of 10". The next call is the row with the
+  rail and the button on it; that row **is** the deleted "Next action" card,
+  and re-adding the card would put the same appointment on screen twice.
+- **Never name a widget in the UI.** "Quick actions", "Overview", "At a
+  glance", "Key metrics" — these name the *pattern*, not the content, and a
+  screen full of them reads as assembled rather than written. The review's word
+  for it was "AI generated", and the fix is to say what is in the box:
+  "Today's planned visits". Six labelled tiles need no label of their own; the
+  `+` button adds things, so it is called Add.
+
+## Motion and feedback
+
+The app once had five animated widgets and sixty-eight places where a skeleton
+became data in a single frame. That was the largest single difference between
+it and the apps it is measured against — those are defined by continuous
+motion, not by their palettes.
+
+- **The vocabulary is five patterns, and no more.** Arrival (`Arrive`),
+  cross-fade (`Swap`), press (`Pressable`), value motion (`CountUp`,
+  `AppProgressBar`, `AnimatedContainer`) and continuity (`Hero` on a record's
+  avatar). Reusing five is what makes the app feel like one thing; a sixth
+  invented for one screen is how a motion system becomes noise.
+- **Content arrives, it never appears.** Wrap the data branch of an async build
+  in `Arrive`; use `Arrive.staggered(index:)` in a list. It plays **once**, so
+  scrolling or a filter change does not re-animate what is already on screen.
+- **Everything is 120–260ms** (`AppMotion`), decelerating, never bouncy. Motion
+  that draws attention to itself is the failure: this exists to make the app
+  feel *quick*, not animated.
+- **A spinner must never flash.** `LoadingState` stays blank for 300ms first.
+  Most reads here resolve in ~260ms, so almost none should ever draw one — a
+  spinner that comes and goes inside a third of a second reads as a stutter.
+- **Some lists must not stagger.** A chat thread opens at its newest message;
+  animating rows in replays a conversation the reader has already had.
+- **Three haptics, no more**: `selection` on choosing, `success` on a saved
+  record, `failure` on a refusal. Never on validation — a form that buzzes
+  while you fill it in is punishing. And never on merely arriving at a screen,
+  which teaches the rep to ignore the one that means their work was saved.
+- **Digits are tabular** in every text style that carries a figure. With
+  proportional digits a `1` is narrower than a `7`, so columns of numbers
+  shift as data changes.
+- **`Fmt.count` for anything counted.** "1 visits" appeared in eight places;
+  it is the smallest defect in an app and one of the most damaging.
 
 ## Layout traps this codebase has already hit
 
@@ -62,11 +382,22 @@ why the widget smoke suite exists:
 
 ## Testing
 
-- `flutter test` must stay green. 132 tests.
+- `flutter test` must stay green. 339 tests.
+- **The palette's floors are a test** (`test/unit/palette_contrast_test.dart`),
+  not a comment. It recomputes every ratio from the tokens, so a nudged hex
+  fails the suite instead of shipping to a rep reading the screen in the sun.
+  It has already caught four values that had drifted under 4.5:1.
 - Business logic gets unit tests (`test/unit/`). UI gets render smoke tests
   (`test/widget/`) — `testWidgets` fails on any layout exception, which is the
   only thing that catches the traps above.
+- Navigation gets `navigation_test.dart`, which boots the **real router** and
+  taps. A dead tab or a menu item that opens nothing throws no exception, so a
+  test that only renders screens cannot see it — these tap, then assert on
+  what is on screen.
 - When you add a screen, add it to `screen_smoke_test.dart`. It is one line.
+  Tapping something far down a page in a test needs a taller viewport: the
+  bottom bar covers the last ~60pt, and a tap that lands on it is a silent
+  no-op that reads as "the route is broken".
 
 ## Deliberate non-choices
 
@@ -76,9 +407,10 @@ Rejected on purpose; re-open only with a reason:
   ~150 usages; swapping adds a dependency and a migration for no user benefit.
 - **`flutter_svg`** — there are no SVG assets. The brand mark is drawn in code
   so it scales and re-colours with the palette.
-- **`flutter_animate`** — motion here is deliberately minimal (§11: calm,
-  professional, not flashy). The few transitions use built-in
-  `AnimatedContainer`. A dependency for chained entrance animations would
-  fight the product's character.
+- **`flutter_animate`** — still rejected, but not because motion is unwanted.
+  The motion system in `app_motion.dart` and `motion.dart` is built from
+  `AnimationController`, `TweenAnimationBuilder` and the implicit animations,
+  which is all this needs. A dependency would buy chaining the app does not
+  use.
 - **Code generation (freezed/json_serializable/drift)** — deferred until the
   API lands, to keep builds fast while the UI is being iterated.

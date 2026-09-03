@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_glow.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_typography.dart';
 
-/// The PharmaConnect mark.
+/// The Mr Sales mark.
 ///
 /// Drawn rather than shipped as an asset: it is a simple geometric form (a
 /// shield enclosing a connective node) and keeping it as code means it scales
@@ -30,18 +31,33 @@ class BrandMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment:
-          centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: centered
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: size,
-          height: size,
-          child: CustomPaint(painter: BrandMarkPainter()),
+        // The mark is a deep green shield, so by the app's own rule it glows.
+        // Ambient rather than tight: this is the one place the brand is the
+        // subject of the page rather than a label on it, and a wide soft bloom
+        // behind it makes the sign-in screen feel like an entrance. Only where
+        // the mark is the subject — the 22px one in a header stays flat, since
+        // a glow on a header glyph is just noise beside a title.
+        DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: centered
+                ? AppGlow.halo(AppColors.brand, size * 1.6)
+                : const [],
+          ),
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: CustomPaint(painter: BrandMarkPainter()),
+          ),
         ),
         if (showWordmark) ...[
           SizedBox(height: size * 0.32),
           Text(
-            'PharmaConnect',
+            'Mr Sales',
             style: AppTypography.h2.copyWith(
               fontSize: size * 0.42,
               letterSpacing: -0.4,
@@ -95,10 +111,13 @@ class BrandMarkPainter extends CustomPainter {
       w * 0.085,
       Paint()..color = AppColors.surface,
     );
+    // The accent node is [AppColors.star] rather than [AppColors.sand]: on the
+    // blue shield the amber measures 2.86:1 and goes muddy at the 22px the
+    // Home bar draws this at, where the brighter yellow holds at 3.72:1.
     canvas.drawCircle(
       Offset(w * 0.66, h * 0.36),
       w * 0.085,
-      Paint()..color = AppColors.sand,
+      Paint()..color = AppColors.star,
     );
   }
 

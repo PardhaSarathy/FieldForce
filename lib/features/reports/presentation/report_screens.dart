@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/app_providers.dart';
+import '../../../features/shell/presentation/app_shell.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -11,6 +12,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../data/repositories/repositories.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/organization.dart';
+import '../../../shared/widgets/motion.dart';
 import '../../../shared/widgets/charts.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
@@ -28,8 +30,9 @@ final reportEmployeeProvider = StateProvider<String?>((ref) => null);
 
 /// Employees the current user may filter by. An MR sees only themselves, so
 /// the selector hides itself rather than showing a pointless single option.
-final reportEmployeesProvider =
-    FutureProvider.autoDispose<List<Employee>>((ref) async {
+final reportEmployeesProvider = FutureProvider.autoDispose<List<Employee>>((
+  ref,
+) async {
   final session = ref.watch(sessionProvider);
   if (!session.isManager) return const [];
   return ref.watch(employeeRepositoryProvider).teamOf(session);
@@ -43,25 +46,49 @@ class ReportsHomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     const reports = [
-      (Icons.today_outlined, 'Daily Report',
-          'Visits, coverage, orders and expenses by day', Routes.dailyReport),
-      (Icons.event_note_outlined, 'Visit Report',
-          'Completion, coverage and verification', Routes.visitReport),
-      (Icons.trending_up, 'Sales Report',
-          'Sales versus target, primary and secondary', Routes.salesReport),
-      (Icons.flag_outlined, 'Target Report',
-          'Target, actual, achievement and gap', Routes.targetReport),
-      (Icons.receipt_long_outlined, 'Expense Report',
-          'Category split and approval status', Routes.expenseReport),
-      (Icons.insights_outlined, 'Overview Report',
-          'Everything for the month in one view', Routes.overviewReport),
+      (
+        Icons.today_outlined,
+        'Daily Report',
+        'Visits, coverage, orders and expenses by day',
+        Routes.dailyReport,
+      ),
+      (
+        Icons.event_note_outlined,
+        'Visit Report',
+        'Completion, coverage and verification',
+        Routes.visitReport,
+      ),
+      (
+        Icons.trending_up,
+        'Sales Report',
+        'Sales versus target, primary and secondary',
+        Routes.salesReport,
+      ),
+      (
+        Icons.flag_outlined,
+        'Target Report',
+        'Target, actual, achievement and gap',
+        Routes.targetReport,
+      ),
+      (
+        Icons.receipt_long_outlined,
+        'Expense Report',
+        'Category split and approval status',
+        Routes.expenseReport,
+      ),
+      (
+        Icons.insights_outlined,
+        'Overview Report',
+        'Everything for the month in one view',
+        Routes.overviewReport,
+      ),
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Reports'),
-        automaticallyImplyLeading: false,
+        leading: const DrawerMenuButton(),
       ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
@@ -78,10 +105,11 @@ class ReportsHomeScreen extends ConsumerWidget {
                   ListTile(
                     leading: IconTile(icon: reports[i].$1),
                     title: Text(reports[i].$2, style: AppTypography.titleMd),
-                    subtitle:
-                        Text(reports[i].$3, style: AppTypography.caption),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppColors.textSecondary),
+                    subtitle: Text(reports[i].$3, style: AppTypography.caption),
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: AppColors.textSecondary,
+                    ),
                     onTap: () => context.push(reports[i].$4),
                   ),
                 ],
@@ -128,7 +156,7 @@ class ReportFilterBar extends ConsumerWidget {
                 icon: const Icon(Icons.chevron_right),
                 onPressed: month.isBefore(DateTime(now.year, now.month))
                     ? () => ref.read(reportMonthProvider.notifier).state =
-                        DateTime(month.year, month.month + 1)
+                          DateTime(month.year, month.month + 1)
                     : null,
               ),
             ],
@@ -171,7 +199,7 @@ class _ReportScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: Text(title)),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
@@ -199,7 +227,8 @@ class MetricGrid extends StatelessWidget {
     // childAspectRatio the tile height follows the device width, so a narrow
     // phone or a large system font size overflowed the card.
     final scale = MediaQuery.textScalerOf(context);
-    final extent = AppSpacing.md * 2 +
+    final extent =
+        AppSpacing.md * 2 +
         scale.scale(AppTypography.overline.fontSize!) * 1.3 +
         AppSpacing.xs +
         scale.scale(AppTypography.metricSm.fontSize!) * 1.3;
@@ -216,26 +245,29 @@ class MetricGrid extends StatelessWidget {
       ),
       itemBuilder: (context, i) {
         final m = metrics[i];
-        return AppCard(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                m.label.toUpperCase(),
-                style: AppTypography.overline,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                m.value,
-                style: AppTypography.metricSm.copyWith(color: m.color),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+        return Arrive.staggered(
+          index: i,
+          child: AppCard(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  m.label.toUpperCase(),
+                  style: AppTypography.overline,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  m.value,
+                  style: AppTypography.metricSm.copyWith(color: m.color),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -248,11 +280,14 @@ class MetricGrid extends StatelessWidget {
 final _dailyProvider = FutureProvider.autoDispose<DailyReport>((ref) {
   final session = ref.watch(sessionProvider);
   final month = ref.watch(reportMonthProvider);
-  return ref.watch(reportRepositoryProvider).daily(
+  return ref
+      .watch(reportRepositoryProvider)
+      .daily(
         session,
         from: DateTime(month.year, month.month, 1),
         to: DateTime(month.year, month.month + 1, 0),
-        employeeId: ref.watch(reportEmployeeProvider) ??
+        employeeId:
+            ref.watch(reportEmployeeProvider) ??
             (session.isManager ? null : session.employee.id),
       );
 });
@@ -272,38 +307,52 @@ class DailyReportScreen extends ConsumerWidget {
           error: (_, _) => const ErrorState(compact: true),
           data: (r) => Column(
             children: [
-              MetricGrid(metrics: [
-                (label: 'Working days', value: '${r.workingDays}', color: null),
-                (label: 'Field days', value: '${r.fieldDays}', color: null),
-                (label: 'Total visits', value: '${r.totalVisits}', color: null),
-                (
-                  label: 'Completed',
-                  value: '${r.completed}',
-                  color: AppColors.success
-                ),
-                (label: 'Missed', value: '${r.missed}', color: AppColors.error),
-                (
-                  label: 'Clients covered',
-                  value: '${r.clientsCovered}',
-                  color: null
-                ),
-                (label: 'Orders', value: '${r.orders}', color: null),
-                (
-                  label: 'Order value',
-                  value: Fmt.moneyCompact(r.orderValue),
-                  color: null
-                ),
-                (
-                  label: 'Expenses',
-                  value: Fmt.moneyCompact(r.expenseTotal),
-                  color: null
-                ),
-                (
-                  label: 'Distance',
-                  value: '${r.distanceKm.round()} km',
-                  color: null
-                ),
-              ]),
+              MetricGrid(
+                metrics: [
+                  (
+                    label: 'Working days',
+                    value: '${r.workingDays}',
+                    color: null,
+                  ),
+                  (label: 'Field days', value: '${r.fieldDays}', color: null),
+                  (
+                    label: 'Total visits',
+                    value: '${r.totalVisits}',
+                    color: null,
+                  ),
+                  (
+                    label: 'Completed',
+                    value: '${r.completed}',
+                    color: AppColors.success,
+                  ),
+                  (
+                    label: 'Missed',
+                    value: '${r.missed}',
+                    color: AppColors.error,
+                  ),
+                  (
+                    label: 'Clients covered',
+                    value: '${r.clientsCovered}',
+                    color: null,
+                  ),
+                  (label: 'Orders', value: '${r.orders}', color: null),
+                  (
+                    label: 'Order value',
+                    value: Fmt.moneyCompact(r.orderValue),
+                    color: null,
+                  ),
+                  (
+                    label: 'Expenses',
+                    value: Fmt.moneyCompact(r.expenseTotal),
+                    color: null,
+                  ),
+                  (
+                    label: 'Distance',
+                    value: '${r.distanceKm.round()} km',
+                    color: null,
+                  ),
+                ],
+              ),
               const SizedBox(height: AppSpacing.section),
               const SectionHeader(title: 'Completion rate'),
               AppCard(
@@ -312,11 +361,15 @@ class DailyReportScreen extends ConsumerWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text('${r.completionRate.round()}% completed',
-                              style: AppTypography.titleMd),
+                          child: Text(
+                            '${r.completionRate.round()}% completed',
+                            style: AppTypography.titleMd,
+                          ),
                         ),
-                        Text('${r.completed} of ${r.totalVisits}',
-                            style: AppTypography.caption),
+                        Text(
+                          '${r.completed} of ${r.totalVisits}',
+                          style: AppTypography.caption,
+                        ),
                       ],
                     ),
                     const SizedBox(height: AppSpacing.md),
@@ -326,9 +379,7 @@ class DailyReportScreen extends ConsumerWidget {
               ),
               const SizedBox(height: AppSpacing.section),
               const SectionHeader(title: 'Daily visit trend'),
-              AppCard(
-                child: TrendChart(points: r.trend, compactValues: false),
-              ),
+              AppCard(child: TrendChart(points: r.trend, compactValues: false)),
             ],
           ),
         ),
@@ -342,11 +393,14 @@ class DailyReportScreen extends ConsumerWidget {
 final _visitProvider = FutureProvider.autoDispose<VisitReport>((ref) {
   final session = ref.watch(sessionProvider);
   final month = ref.watch(reportMonthProvider);
-  return ref.watch(reportRepositoryProvider).visits(
+  return ref
+      .watch(reportRepositoryProvider)
+      .visits(
         session,
         from: DateTime(month.year, month.month, 1),
         to: DateTime(month.year, month.month + 1, 0),
-        employeeId: ref.watch(reportEmployeeProvider) ??
+        employeeId:
+            ref.watch(reportEmployeeProvider) ??
             (session.isManager ? null : session.employee.id),
       );
 });
@@ -366,30 +420,36 @@ class VisitReportScreen extends ConsumerWidget {
           error: (_, _) => const ErrorState(compact: true),
           data: (r) => Column(
             children: [
-              MetricGrid(metrics: [
-                (label: 'Total visits', value: '${r.total}', color: null),
-                (
-                  label: 'Completed',
-                  value: '${r.completed}',
-                  color: AppColors.success
-                ),
-                (label: 'Missed', value: '${r.missed}', color: AppColors.error),
-                (
-                  label: 'Rescheduled',
-                  value: '${r.rescheduled}',
-                  color: AppColors.warning
-                ),
-                (
-                  label: 'Avg duration',
-                  value: Fmt.duration(r.averageDuration),
-                  color: null
-                ),
-                (
-                  label: 'Unique clients',
-                  value: '${r.uniqueClients}',
-                  color: null
-                ),
-              ]),
+              MetricGrid(
+                metrics: [
+                  (label: 'Total visits', value: '${r.total}', color: null),
+                  (
+                    label: 'Completed',
+                    value: '${r.completed}',
+                    color: AppColors.success,
+                  ),
+                  (
+                    label: 'Missed',
+                    value: '${r.missed}',
+                    color: AppColors.error,
+                  ),
+                  (
+                    label: 'Rescheduled',
+                    value: '${r.rescheduled}',
+                    color: AppColors.warning,
+                  ),
+                  (
+                    label: 'Avg duration',
+                    value: Fmt.duration(r.averageDuration),
+                    color: null,
+                  ),
+                  (
+                    label: 'Unique clients',
+                    value: '${r.uniqueClients}',
+                    color: null,
+                  ),
+                ],
+              ),
               const SizedBox(height: AppSpacing.section),
 
               const SectionHeader(title: 'Coverage & verification'),
@@ -399,13 +459,15 @@ class VisitReportScreen extends ConsumerWidget {
                     _RateRow(
                       label: 'Coverage',
                       percent: r.coverage,
-                      detail: '${r.completed} of ${r.total} visits completed',
+                      detail: '${r.completed} of '
+                          '${Fmt.count(r.total, 'visit')} completed',
                     ),
                     const AppDivider(),
                     _RateRow(
                       label: 'Geo-verified',
                       percent: r.verificationRate,
-                      detail: '${r.verifiedCount} of ${r.completed} completed '
+                      detail:
+                          '${r.verifiedCount} of ${r.completed} completed '
                           'visits verified within the fence',
                       color: r.verificationRate >= 85
                           ? AppColors.success
@@ -459,8 +521,10 @@ class _RateRow extends StatelessWidget {
         Row(
           children: [
             Expanded(child: Text(label, style: AppTypography.titleSm)),
-            Text('${percent.round()}%',
-                style: AppTypography.titleMd.copyWith(color: color)),
+            Text(
+              '${percent.round()}%',
+              style: AppTypography.titleMd.copyWith(color: color),
+            ),
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -476,10 +540,13 @@ class _RateRow extends StatelessWidget {
 
 final _salesReportProvider = FutureProvider.autoDispose<SalesReport>((ref) {
   final session = ref.watch(sessionProvider);
-  return ref.watch(reportRepositoryProvider).salesReport(
+  return ref
+      .watch(reportRepositoryProvider)
+      .salesReport(
         session,
         year: ref.watch(reportMonthProvider).year,
-        employeeId: ref.watch(reportEmployeeProvider) ??
+        employeeId:
+            ref.watch(reportEmployeeProvider) ??
             (session.isManager ? null : session.employee.id),
       );
 });
@@ -499,31 +566,37 @@ class SalesReportScreen extends ConsumerWidget {
           error: (_, _) => const ErrorState(compact: true),
           data: (r) => Column(
             children: [
-              MetricGrid(metrics: [
-                (label: 'Sales', value: Fmt.moneyCompact(r.total), color: null),
-                (
-                  label: 'Target',
-                  value: Fmt.moneyCompact(r.target),
-                  color: null
-                ),
-                (
-                  label: 'Achievement',
-                  value: '${r.achievement.round()}%',
-                  color: r.achievement >= 75
-                      ? AppColors.success
-                      : AppColors.warning
-                ),
-                (
-                  label: 'Primary',
-                  value: Fmt.moneyCompact(r.primary),
-                  color: null
-                ),
-                (
-                  label: 'Secondary',
-                  value: Fmt.moneyCompact(r.secondary),
-                  color: null
-                ),
-              ]),
+              MetricGrid(
+                metrics: [
+                  (
+                    label: 'Sales',
+                    value: Fmt.moneyCompact(r.total),
+                    color: null,
+                  ),
+                  (
+                    label: 'Target',
+                    value: Fmt.moneyCompact(r.target),
+                    color: null,
+                  ),
+                  (
+                    label: 'Achievement',
+                    value: '${r.achievement.round()}%',
+                    color: r.achievement >= 75
+                        ? AppColors.success
+                        : AppColors.warning,
+                  ),
+                  (
+                    label: 'Primary',
+                    value: Fmt.moneyCompact(r.primary),
+                    color: null,
+                  ),
+                  (
+                    label: 'Secondary',
+                    value: Fmt.moneyCompact(r.secondary),
+                    color: null,
+                  ),
+                ],
+              ),
               const SizedBox(height: AppSpacing.section),
               const SectionHeader(title: 'Sales vs target'),
               AppCard(
@@ -552,10 +625,13 @@ class SalesReportScreen extends ConsumerWidget {
 
 final _targetReportProvider = FutureProvider.autoDispose<TargetReport>((ref) {
   final session = ref.watch(sessionProvider);
-  return ref.watch(reportRepositoryProvider).targetReport(
+  return ref
+      .watch(reportRepositoryProvider)
+      .targetReport(
         session,
         month: ref.watch(reportMonthProvider),
-        employeeId: ref.watch(reportEmployeeProvider) ??
+        employeeId:
+            ref.watch(reportEmployeeProvider) ??
             (session.isManager ? null : session.employee.id),
       );
 });
@@ -589,8 +665,11 @@ class TargetReportScreen extends ConsumerWidget {
               const SizedBox(height: AppSpacing.section),
               const SectionHeader(title: 'Six-month trend'),
               AppCard(
-                child: TrendChart(points: r.trend, showComparison: true,
-                    valueLabel: 'Achieved'),
+                child: TrendChart(
+                  points: r.trend,
+                  showComparison: true,
+                  valueLabel: 'Achieved',
+                ),
               ),
               if (r.rows.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.section),
@@ -609,8 +688,10 @@ class TargetReportScreen extends ConsumerWidget {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(r.rows[i].employeeName,
-                                        style: AppTypography.titleSm),
+                                    Text(
+                                      r.rows[i].employeeName,
+                                      style: AppTypography.titleSm,
+                                    ),
                                     Text(
                                       '${Fmt.moneyCompact(r.rows[i].achievedAmount)}'
                                       ' of ${Fmt.moneyCompact(r.rows[i].targetAmount)}',
@@ -619,11 +700,11 @@ class TargetReportScreen extends ConsumerWidget {
                                   ],
                                 ),
                               ),
-                              StatusBadge(
-                                label:
-                                    '${r.rows[i].achievementPercent.round()}%',
-                                tone: r.rows[i].tone,
-                                dense: true,
+                              Flexible(
+                                child: TierBadge(
+                                  tier: r.rows[i].tier,
+                                  percent: r.rows[i].achievementPercent,
+                                ),
                               ),
                             ],
                           ),
@@ -645,10 +726,13 @@ class TargetReportScreen extends ConsumerWidget {
 
 final _expenseReportProvider = FutureProvider.autoDispose<ExpenseReport>((ref) {
   final session = ref.watch(sessionProvider);
-  return ref.watch(reportRepositoryProvider).expenseReport(
+  return ref
+      .watch(reportRepositoryProvider)
+      .expenseReport(
         session,
         month: ref.watch(reportMonthProvider),
-        employeeId: ref.watch(reportEmployeeProvider) ??
+        employeeId:
+            ref.watch(reportEmployeeProvider) ??
             (session.isManager ? null : session.employee.id),
       );
 });
@@ -668,24 +752,26 @@ class ExpenseReportScreen extends ConsumerWidget {
           error: (_, _) => const ErrorState(compact: true),
           data: (r) => Column(
             children: [
-              MetricGrid(metrics: [
-                (label: 'Total', value: Fmt.money(r.total), color: null),
-                (
-                  label: 'Approved',
-                  value: Fmt.money(r.approved),
-                  color: AppColors.success
-                ),
-                (
-                  label: 'Pending',
-                  value: Fmt.money(r.pending),
-                  color: AppColors.warning
-                ),
-                (
-                  label: 'Rejected',
-                  value: Fmt.money(r.rejected),
-                  color: AppColors.error
-                ),
-              ]),
+              MetricGrid(
+                metrics: [
+                  (label: 'Total', value: Fmt.money(r.total), color: null),
+                  (
+                    label: 'Approved',
+                    value: Fmt.money(r.approved),
+                    color: AppColors.success,
+                  ),
+                  (
+                    label: 'Pending',
+                    value: Fmt.money(r.pending),
+                    color: AppColors.warning,
+                  ),
+                  (
+                    label: 'Rejected',
+                    value: Fmt.money(r.rejected),
+                    color: AppColors.error,
+                  ),
+                ],
+              ),
               const SizedBox(height: AppSpacing.section),
               const SectionHeader(title: 'By category'),
               AppCard(
@@ -712,10 +798,13 @@ class ExpenseReportScreen extends ConsumerWidget {
 
 final _overviewProvider = FutureProvider.autoDispose<OverviewReport>((ref) {
   final session = ref.watch(sessionProvider);
-  return ref.watch(reportRepositoryProvider).overview(
+  return ref
+      .watch(reportRepositoryProvider)
+      .overview(
         session,
         month: ref.watch(reportMonthProvider),
-        employeeId: ref.watch(reportEmployeeProvider) ??
+        employeeId:
+            ref.watch(reportEmployeeProvider) ??
             (session.isManager ? null : session.employee.id),
       );
 });
@@ -736,33 +825,41 @@ class OverviewReportScreen extends ConsumerWidget {
           data: (r) => Column(
             children: [
               const SectionHeader(title: 'Days'),
-              MetricGrid(metrics: [
-                (label: 'Working', value: '${r.workingDays}', color: null),
-                (
-                  label: 'Field',
-                  value: '${r.fieldDays}',
-                  color: AppColors.success
-                ),
-                (
-                  label: 'Leave',
-                  value: '${r.leaveDays}',
-                  color: AppColors.warning
-                ),
-                (label: 'Non-field', value: '${r.nonFieldDays}', color: null),
-              ]),
+              MetricGrid(
+                metrics: [
+                  (label: 'Working', value: '${r.workingDays}', color: null),
+                  (
+                    label: 'Field',
+                    value: '${r.fieldDays}',
+                    color: AppColors.success,
+                  ),
+                  (
+                    label: 'Leave',
+                    value: '${r.leaveDays}',
+                    color: AppColors.warning,
+                  ),
+                  (label: 'Non-field', value: '${r.nonFieldDays}', color: null),
+                ],
+              ),
               const SizedBox(height: AppSpacing.section),
 
               const SectionHeader(title: 'Coverage'),
-              MetricGrid(metrics: [
-                (label: 'Visits', value: '${r.visits}', color: null),
-                (label: 'Completed', value: '${r.completedVisits}', color: null),
-                (
-                  label: 'Hospitals covered',
-                  value: '${r.hospitalCoverage}',
-                  color: null
-                ),
-                (label: 'New clients', value: '${r.newClients}', color: null),
-              ]),
+              MetricGrid(
+                metrics: [
+                  (label: 'Visits', value: '${r.visits}', color: null),
+                  (
+                    label: 'Completed',
+                    value: '${r.completedVisits}',
+                    color: null,
+                  ),
+                  (
+                    label: 'Hospitals covered',
+                    value: '${r.hospitalCoverage}',
+                    color: null,
+                  ),
+                  (label: 'New clients', value: '${r.newClients}', color: null),
+                ],
+              ),
               const SizedBox(height: AppSpacing.section),
 
               const SectionHeader(title: 'Commercial'),
@@ -783,7 +880,9 @@ class OverviewReportScreen extends ConsumerWidget {
                     ),
                     const AppDivider(),
                     KeyValueRow(
-                        label: 'Expenses', value: Fmt.money(r.expenses)),
+                      label: 'Expenses',
+                      value: Fmt.money(r.expenses),
+                    ),
                   ],
                 ),
               ),

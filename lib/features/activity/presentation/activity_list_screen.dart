@@ -3,13 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/app_providers.dart';
+import '../../../features/shell/presentation/app_shell.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_glow.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/activity.dart';
+import '../../../shared/widgets/motion.dart';
+import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/states.dart';
 import 'widgets/activity_card.dart';
@@ -26,28 +30,34 @@ enum ActivityFilter {
   final String label;
 
   bool matches(Activity a) => switch (this) {
-        all => true,
-        upcoming => a.status == ActivityStatus.upcoming ||
-            a.status == ActivityStatus.inProgress,
-        planned => a.status == ActivityStatus.planned,
-        completed => a.status == ActivityStatus.completed,
-        missed => a.status == ActivityStatus.missed,
-      };
+    all => true,
+    upcoming =>
+      a.status == ActivityStatus.upcoming ||
+          a.status == ActivityStatus.inProgress,
+    planned => a.status == ActivityStatus.planned,
+    completed => a.status == ActivityStatus.completed,
+    missed => a.status == ActivityStatus.missed,
+  };
 }
 
-final _activityFilterProvider =
-    StateProvider.autoDispose<ActivityFilter>((ref) => ActivityFilter.all);
+final _activityFilterProvider = StateProvider.autoDispose<ActivityFilter>(
+  (ref) => ActivityFilter.all,
+);
 
-final _activityDateProvider =
-    StateProvider.autoDispose<DateTime>((ref) => DateTime.now());
+final _activityDateProvider = StateProvider.autoDispose<DateTime>(
+  (ref) => DateTime.now(),
+);
 
-final _activityListProvider =
-    FutureProvider.autoDispose<List<Activity>>((ref) async {
+final _activityListProvider = FutureProvider.autoDispose<List<Activity>>((
+  ref,
+) async {
   final session = ref.watch(sessionProvider);
   final date = ref.watch(_activityDateProvider);
   ref.watch(dataRevisionProvider);
 
-  return ref.watch(activityRepositoryProvider).list(
+  return ref
+      .watch(activityRepositoryProvider)
+      .list(
         session,
         date: date,
         employeeId: session.isManager ? null : session.employee.id,
@@ -64,10 +74,10 @@ class ActivityListScreen extends ConsumerWidget {
     final listAsync = ref.watch(_activityListProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('My Activity'),
-        automaticallyImplyLeading: false,
+        leading: const DrawerMenuButton(),
         actions: [
           IconButton(
             tooltip: 'Calendar',
@@ -75,6 +85,13 @@ class ActivityListScreen extends ConsumerWidget {
             onPressed: () => context.push(Routes.calendar),
           ),
         ],
+      ),
+      // Recording a call is the reason a rep opens this screen, so the action
+      // is on it rather than only in the shell's "+" sheet.
+      floatingActionButton: AppFab(
+        onPressed: () => context.push(Routes.addActivity),
+        icon: Icons.add,
+        label: 'Add New Activity',
       ),
       body: Column(
         children: [
@@ -115,7 +132,8 @@ class ActivityListScreen extends ConsumerWidget {
 
                 if (filtered.isEmpty) {
                   return RefreshIndicator(
-                    onRefresh: () async => ref.invalidate(_activityListProvider),
+                    onRefresh: () async =>
+                        ref.invalidate(_activityListProvider),
                     child: ListView(
                       children: [
                         EmptyState(
@@ -125,7 +143,7 @@ class ActivityListScreen extends ConsumerWidget {
                               : 'No ${filter.label.toLowerCase()} activities',
                           message: items.isEmpty
                               ? 'Add an activity to build your plan for '
-                                  '${Fmt.relativeDay(date).toLowerCase()}.'
+                                    '${Fmt.relativeDay(date).toLowerCase()}.'
                               : 'Try a different filter to see other visits.',
                           actionLabel: items.isEmpty ? 'Add activity' : null,
                           onAction: () => context.push(Routes.addActivity),
@@ -147,9 +165,12 @@ class ActivityListScreen extends ConsumerWidget {
                     itemCount: filtered.length,
                     separatorBuilder: (_, _) =>
                         const SizedBox(height: AppSpacing.cardGap),
-                    itemBuilder: (context, i) => ActivityCard(
-                      activity: filtered[i],
-                      showEmployee: ref.watch(sessionProvider).isManager,
+                    itemBuilder: (context, i) => Arrive.staggered(
+                      index: i,
+                      child: ActivityCard(
+                        activity: filtered[i],
+                        showEmployee: ref.watch(sessionProvider).isManager,
+                      ),
                     ),
                   ),
                 );
@@ -178,8 +199,9 @@ class _DateStrip extends StatelessWidget {
         DateTime(today.year, today.month, today.day + i),
     ];
 
-    return Container(
-      color: AppColors.surface,
+    // On the wash: the day cells are white cards and read as cards against
+    // it, where on a white strip they needed their own borders to exist.
+    return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Column(
         children: [
@@ -191,17 +213,21 @@ class _DateStrip extends StatelessWidget {
             child: Row(
               children: [
                 Flexible(
-                  child: Text(Fmt.relativeDay(selected),
-                      style: AppTypography.titleMd,
-                      overflow: TextOverflow.ellipsis,
-                      softWrap: false),
+                  child: Text(
+                    Fmt.relativeDay(selected),
+                    style: AppTypography.titleMd,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                  ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Flexible(
-                  child: Text(Fmt.date(selected),
-                      style: AppTypography.caption,
-                      overflow: TextOverflow.ellipsis,
-                      softWrap: false),
+                  child: Text(
+                    Fmt.date(selected),
+                    style: AppTypography.caption,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                  ),
                 ),
                 const Spacer(),
                 TextButton(
@@ -215,7 +241,9 @@ class _DateStrip extends StatelessWidget {
             height: 62,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenH),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.screenH,
+              ),
               itemCount: days.length,
               separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
               itemBuilder: (context, i) {
@@ -228,15 +256,21 @@ class _DateStrip extends StatelessWidget {
                   child: Container(
                     width: 50,
                     decoration: BoxDecoration(
-                      color: isSelected ? AppColors.brand : AppColors.surface,
+                      color: isSelected ? null : AppColors.surface,
+                      gradient: isSelected
+                          ? AppGlow.fill(AppColors.brand)
+                          : null,
                       borderRadius: BorderRadius.circular(AppRadius.md),
                       border: Border.all(
                         color: isSelected
-                            ? AppColors.brand
+                            ? Colors.transparent
                             : isToday
-                                ? AppColors.brand.withValues(alpha: 0.4)
-                                : AppColors.border,
+                            ? AppColors.brand.withValues(alpha: 0.4)
+                            : AppColors.border,
                       ),
+                      boxShadow: isSelected
+                          ? AppGlow.halo(AppColors.brand, 50, strength: 0.6)
+                          : null,
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_glow.dart';
+import 'motion.dart';
+import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 
@@ -30,22 +33,63 @@ class PrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final height = small ? AppSizes.buttonHeightSmall : AppSizes.buttonHeight;
-    final button = ElevatedButton(
-      onPressed: isLoading ? null : onPressed,
-      style: ElevatedButton.styleFrom(
-        minimumSize: expand ? Size.fromHeight(height) : Size(0, height),
-        padding: EdgeInsets.symmetric(
-          horizontal: small ? AppSpacing.lg : AppSpacing.xl,
-        ),
-        textStyle: small
-            ? AppTypography.button.copyWith(fontSize: 14)
-            : AppTypography.button,
+    final enabled = onPressed != null && !isLoading;
+
+    // The most-tapped control on any screen, so it is the one that looks
+    // pressable: a vertical gradient down the brand family and a *coloured*
+    // shadow rather than a grey one. Only three things in the app get a
+    // coloured shadow — this, the quick-add button and the active tab — which
+    // is what keeps it meaning something.
+    final button = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        gradient: enabled
+            ? const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [AppColors.brandLight, AppColors.brand],
+              )
+            : null,
+        boxShadow: enabled
+            ? const [
+                BoxShadow(
+                  color: AppColors.brandGlow,
+                  blurRadius: 16,
+                  spreadRadius: -4,
+                  offset: Offset(0, 6),
+                ),
+              ]
+            : null,
       ),
-      child: _ButtonContent(
-        label: label,
-        icon: icon,
-        isLoading: isLoading,
-        spinnerColor: AppColors.textOnBrand,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          gradient: enabled ? AppGlow.sheen : null,
+        ),
+        child: ElevatedButton(
+          onPressed: isLoading ? null : onPressed,
+          style: ElevatedButton.styleFrom(
+            minimumSize: expand ? Size.fromHeight(height) : Size(0, height),
+            padding: EdgeInsets.symmetric(
+              horizontal: small ? AppSpacing.lg : AppSpacing.xl,
+            ),
+            // The gradient above paints the fill, so the button itself is
+            // transparent — with the shadow suppressed, or it would double up.
+            backgroundColor: enabled ? Colors.transparent : null,
+            shadowColor: Colors.transparent,
+            elevation: 0,
+            shape: const StadiumBorder(),
+            textStyle: small
+                ? AppTypography.button.copyWith(fontSize: 14)
+                : AppTypography.button,
+          ),
+          child: _ButtonContent(
+            label: label,
+            icon: icon,
+            isLoading: isLoading,
+            spinnerColor: AppColors.textOnBrand,
+          ),
+        ),
       ),
     );
 
@@ -80,6 +124,7 @@ class SecondaryButton extends StatelessWidget {
       onPressed: isLoading ? null : onPressed,
       style: OutlinedButton.styleFrom(
         minimumSize: expand ? Size.fromHeight(height) : Size(0, height),
+        shape: const StadiumBorder(),
         padding: EdgeInsets.symmetric(
           horizontal: small ? AppSpacing.lg : AppSpacing.xl,
         ),
@@ -184,7 +229,19 @@ class _ButtonContent extends StatelessWidget {
       );
     }
 
-    if (icon == null) return Text(label);
+    // A button label never wraps. Left to itself it does: in a narrow pair
+    // like Details / Start visit the shorter button gets a third of the row,
+    // "Details" breaks over two lines, and the whole row grows from 36pt to
+    // 48pt — a button silently changing height because of its own text.
+    if (icon == null) {
+      return Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+        textAlign: TextAlign.center,
+      );
+    }
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -192,7 +249,14 @@ class _ButtonContent extends StatelessWidget {
       children: [
         Icon(icon, size: AppSizes.iconMd),
         const SizedBox(width: AppSpacing.sm),
-        Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+          ),
+        ),
       ],
     );
   }
@@ -217,7 +281,8 @@ class BottomActionBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: padding ??
+          padding:
+              padding ??
               const EdgeInsets.fromLTRB(
                 AppSpacing.screenH,
                 AppSpacing.md,
@@ -231,6 +296,75 @@ class BottomActionBar extends StatelessWidget {
                 Expanded(child: children[i]),
               ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The screen-level "add" action, and the fourth thing in the app that is lit.
+///
+/// Material's own extended FAB draws a grey drop shadow, which on a deep green
+/// fill reads as dirt under the button rather than as light off it. This is the
+/// same fill and the same halo the primary button and the active tab use, so
+/// the one control a screen wants you to find looks like it belongs to the
+/// same light as everything else — and its glyph blooms, the way every glyph
+/// on a dark fill in this app does.
+class AppFab extends StatelessWidget {
+  const AppFab({
+    super.key,
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+
+  static const _height = 48.0;
+
+  @override
+  Widget build(BuildContext context) {
+    // Scales in rather than being painted in place: it sits on top of a page
+    // that is itself arriving, and a thing landing over settled content is
+    // allowed weight. The short delay lets the list underneath move first.
+    return PopIn(
+      delay: AppMotion.stagger,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          gradient: AppGlow.fill(AppColors.brand),
+          boxShadow: AppGlow.halo(AppColors.brand, _height),
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            gradient: AppGlow.sheen,
+          ),
+          child: FloatingActionButton.extended(
+            onPressed: onPressed,
+            // The decoration above paints the fill and the light, so the button
+            // itself contributes neither — otherwise both shadows stack.
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            focusElevation: 0,
+            hoverElevation: 0,
+            highlightElevation: 0,
+            icon: Icon(
+              icon,
+              size: AppSizes.iconMd,
+              color: AppColors.wellGlyph,
+              shadows: AppGlow.bloom(AppColors.brand, AppSizes.iconMd),
+            ),
+            label: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              style: AppTypography.button.copyWith(color: AppColors.wellGlyph),
+            ),
           ),
         ),
       ),

@@ -9,6 +9,13 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # Archived palettes, kept verbatim so one can be restored by copying the
+    # files back. They reference tokens the live palette no longer has, which
+    # is the point — they are a snapshot, not compiled source.
+    - design/palettes/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

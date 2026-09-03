@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/routing/app_router.dart';
+import 'core/theme/app_background.dart';
 import 'core/theme/app_theme.dart';
 
 void main() {
@@ -23,7 +24,7 @@ class PharmaConnectApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp.router(
-      title: 'PharmaConnect',
+      title: 'Mr Sales',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       routerConfig: ref.watch(routerProvider),
@@ -37,7 +38,9 @@ class PharmaConnectApp extends ConsumerWidget {
         );
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(textScaler: scale),
-          child: child!,
+          // Wraps the navigator, so every route sits on the same wash and a
+          // push never flashes a different ground on the way in.
+          child: AppBackground(child: child!),
         );
       },
     );

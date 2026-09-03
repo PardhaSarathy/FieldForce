@@ -30,11 +30,7 @@ class Area {
 }
 
 class Cluster {
-  const Cluster({
-    required this.id,
-    required this.name,
-    required this.areaId,
-  });
+  const Cluster({required this.id, required this.name, required this.areaId});
 
   final String id;
   final String name;

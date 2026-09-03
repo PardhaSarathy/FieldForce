@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mr-sales-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        ".claude/serve.py",
+        "8899",
+        "build/web"
+      ],
+      "port": 8899
+    }
+  ]
+}

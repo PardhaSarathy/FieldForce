@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/app_providers.dart';
+import '../../../features/shell/presentation/app_shell.dart';
 import '../../../core/location/geo_math.dart';
+import '../../../core/routing/navigate.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -14,6 +16,8 @@ import '../../../shared/models/activity.dart';
 import '../../../shared/models/business.dart';
 import '../../../shared/models/client.dart';
 import '../../../shared/models/organization.dart';
+import '../../../shared/widgets/motion.dart';
+import '../../../shared/widgets/feedback.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/mock_map.dart';
@@ -22,13 +26,13 @@ import '../../../shared/widgets/states.dart';
 import '../../activity/presentation/widgets/activity_card.dart';
 
 /// Today's activity for one team member, used to compute per-person progress.
-final _memberDayProvider =
-    FutureProvider.autoDispose.family<DaySummary, String>((ref, employeeId) {
-  ref.watch(dataRevisionProvider);
-  return ref
-      .watch(activityRepositoryProvider)
-      .daySummary(employeeId, DateTime.now());
-});
+final _memberDayProvider = FutureProvider.autoDispose
+    .family<DaySummary, String>((ref, employeeId) {
+      ref.watch(dataRevisionProvider);
+      return ref
+          .watch(activityRepositoryProvider)
+          .daySummary(employeeId, DateTime.now());
+    });
 
 // ============================================================== team list ==
 
@@ -40,10 +44,10 @@ class MyTeamScreen extends ConsumerWidget {
     final async = ref.watch(teamProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('My Team'),
-        automaticallyImplyLeading: false,
+        leading: const DrawerMenuButton(),
         actions: [
           IconButton(
             tooltip: 'Team map',
@@ -59,7 +63,8 @@ class MyTeamScreen extends ConsumerWidget {
       ),
       body: async.when(
         loading: () => const SkeletonList(),
-        error: (_, _) => ErrorState(onRetry: () => ref.invalidate(teamProvider)),
+        error: (_, _) =>
+            ErrorState(onRetry: () => ref.invalidate(teamProvider)),
         data: (team) => team.isEmpty
             ? const EmptyState(
                 icon: Icons.groups_outlined,
@@ -70,14 +75,18 @@ class MyTeamScreen extends ConsumerWidget {
                 onRefresh: () async => ref.invalidate(teamProvider),
                 child: ListView.separated(
                   padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenH, AppSpacing.screenH,
-                    AppSpacing.screenH, AppSpacing.xxxl * 3,
+                    AppSpacing.screenH,
+                    AppSpacing.screenH,
+                    AppSpacing.screenH,
+                    AppSpacing.xxxl * 3,
                   ),
                   itemCount: team.length,
                   separatorBuilder: (_, _) =>
                       const SizedBox(height: AppSpacing.cardGap),
-                  itemBuilder: (context, i) =>
-                      _TeamMemberCard(employee: team[i]),
+                  itemBuilder: (context, i) => Arrive.staggered(
+                    index: i,
+                    child: _TeamMemberCard(employee: team[i]),
+                  ),
                 ),
               ),
       ),
@@ -103,7 +112,8 @@ class _TeamMemberCard extends ConsumerWidget {
               AppAvatar(
                 name: employee.name,
                 showOnlineDot: true,
-                isOnline: dayAsync.valueOrNull?.completed != null &&
+                isOnline:
+                    dayAsync.valueOrNull?.completed != null &&
                     (dayAsync.valueOrNull?.completed ?? 0) > 0,
               ),
               const SizedBox(width: AppSpacing.md),
@@ -141,7 +151,7 @@ class _TeamMemberCard extends ConsumerWidget {
                         child: Text(
                           day.planned == 0
                               ? 'No visits planned today'
-                              : '${day.completed} of ${day.planned} visits today',
+                              : '${day.completed} of ${Fmt.count(day.planned, 'visit')} today',
                           style: AppTypography.caption,
                         ),
                       ),
@@ -171,20 +181,20 @@ class _TeamMemberCard extends ConsumerWidget {
 
 // ========================================================= employee detail ==
 
-final _employeeProvider =
-    FutureProvider.autoDispose.family<Employee, String>((ref, id) {
+final _employeeProvider = FutureProvider.autoDispose.family<Employee, String>((
+  ref,
+  id,
+) {
   return ref.watch(employeeRepositoryProvider).byId(id);
 });
 
-final _employeeTargetProvider =
-    FutureProvider.autoDispose.family<List<Target>, String>((ref, id) {
-  final session = ref.watch(sessionProvider);
-  return ref.watch(businessRepositoryProvider).targets(
-        session,
-        employeeId: id,
-        month: DateTime.now(),
-      );
-});
+final _employeeTargetProvider = FutureProvider.autoDispose
+    .family<List<Target>, String>((ref, id) {
+      final session = ref.watch(sessionProvider);
+      return ref
+          .watch(businessRepositoryProvider)
+          .targets(session, employeeId: id, month: DateTime.now());
+    });
 
 class EmployeeDetailScreen extends ConsumerWidget {
   const EmployeeDetailScreen({super.key, required this.employeeId});
@@ -198,8 +208,8 @@ class EmployeeDetailScreen extends ConsumerWidget {
     final targetAsync = ref.watch(_employeeTargetProvider(employeeId));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Employee')),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('Employee Detail')),
       body: employeeAsync.when(
         loading: () => const LoadingState(),
         error: (_, _) => const ErrorState(),
@@ -219,8 +229,10 @@ class EmployeeDetailScreen extends ConsumerWidget {
                           children: [
                             Text(employee.name, style: AppTypography.h3),
                             const SizedBox(height: 2),
-                            Text(employee.subtitle,
-                                style: AppTypography.bodySm),
+                            Text(
+                              employee.subtitle,
+                              style: AppTypography.bodySm,
+                            ),
                           ],
                         ),
                       ),
@@ -233,14 +245,15 @@ class EmployeeDetailScreen extends ConsumerWidget {
                         child: _ContactAction(
                           icon: Icons.phone_outlined,
                           label: 'Call',
-                          onTap: () {},
+                          onTap: () =>
+                              showComingWithBackend(context, 'Calling'),
                         ),
                       ),
                       Expanded(
                         child: _ContactAction(
                           icon: Icons.chat_bubble_outline,
                           label: 'Message',
-                          onTap: () => context.push(Routes.chat),
+                          onTap: () => navigateTo(context, Routes.chat),
                         ),
                       ),
                       Expanded(
@@ -268,7 +281,9 @@ class EmployeeDetailScreen extends ConsumerWidget {
                       children: [
                         Expanded(
                           child: _MiniStat(
-                              label: 'Planned', value: '${day.planned}'),
+                            label: 'Planned',
+                            value: '${day.planned}',
+                          ),
                         ),
                         Expanded(
                           child: _MiniStat(
@@ -318,31 +333,40 @@ class EmployeeDetailScreen extends ConsumerWidget {
                       Row(
                         children: [
                           Expanded(
-                            child: Text('Sales target',
-                                style: AppTypography.titleSm),
+                            child: Text(
+                              'Sales target',
+                              style: AppTypography.titleSm,
+                            ),
                           ),
-                          StatusBadge(
-                            label: '${t.achievementPercent.round()}%',
-                            tone: t.tone,
-                            dense: true,
+                          Flexible(
+                            child: TierBadge(
+                              tier: t.tier,
+                              percent: t.achievementPercent,
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: AppSpacing.md),
                       AppProgressBar(
                         value: t.achievementPercent / 100,
-                        color: t.tone.foreground,
+                        color: t.tier.ink,
                       ),
                       const SizedBox(height: AppSpacing.sm),
                       Row(
                         children: [
-                          Text(Fmt.money(t.achievedAmount),
-                              style: AppTypography.caption),
-                          Text(' of ${Fmt.money(t.targetAmount)}',
-                              style: AppTypography.caption),
+                          Text(
+                            Fmt.money(t.achievedAmount),
+                            style: AppTypography.caption,
+                          ),
+                          Text(
+                            ' of ${Fmt.money(t.targetAmount)}',
+                            style: AppTypography.caption,
+                          ),
                           const Spacer(),
-                          Text('${t.visitsAchieved}/${t.visitTarget} visits',
-                              style: AppTypography.caption),
+                          Text(
+                            '${t.visitsAchieved}/${Fmt.count(t.visitTarget, 'visit')}',
+                            style: AppTypography.caption,
+                          ),
                         ],
                       ),
                     ],
@@ -357,9 +381,14 @@ class EmployeeDetailScreen extends ConsumerWidget {
               child: Column(
                 children: [
                   KeyValueRow(
-                      label: 'Employee ID', value: employee.employeeCode),
+                    label: 'Employee ID',
+                    value: employee.employeeCode,
+                  ),
                   KeyValueRow(label: 'Role', value: employee.role.label),
-                  KeyValueRow(label: 'Territory', value: employee.territoryName),
+                  KeyValueRow(
+                    label: 'Territory',
+                    value: employee.territoryName,
+                  ),
                   KeyValueRow(label: 'Area', value: employee.areaName),
                   KeyValueRow(label: 'HQ', value: employee.headquarters),
                   KeyValueRow(label: 'Mobile', value: employee.mobile),
@@ -394,7 +423,8 @@ class EmployeeDetailScreen extends ConsumerWidget {
                         for (final a in day.activities.take(5))
                           Padding(
                             padding: const EdgeInsets.only(
-                                bottom: AppSpacing.cardGap),
+                              bottom: AppSpacing.cardGap,
+                            ),
                             child: ActivityCard(activity: a),
                           ),
                       ],
@@ -448,18 +478,19 @@ class _MiniStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        children: [
-          Text(value, style: AppTypography.metricSm.copyWith(color: color)),
-          const SizedBox(height: 2),
-          Text(label, style: AppTypography.caption),
-        ],
-      );
+    children: [
+      Text(value, style: AppTypography.metricSm.copyWith(color: color)),
+      const SizedBox(height: 2),
+      Text(label, style: AppTypography.caption),
+    ],
+  );
 }
 
 // =========================================================== team activity ==
 
-final _teamActivityProvider =
-    FutureProvider.autoDispose<List<Activity>>((ref) async {
+final _teamActivityProvider = FutureProvider.autoDispose<List<Activity>>((
+  ref,
+) async {
   final session = ref.watch(sessionProvider);
   ref.watch(dataRevisionProvider);
   return ref
@@ -483,7 +514,7 @@ class _TeamActivityScreenState extends ConsumerState<TeamActivityScreen> {
     const filters = ['All', 'Completed', 'Pending', 'Unverified'];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Team Activity')),
       body: Column(
         children: [
@@ -500,13 +531,17 @@ class _TeamActivityScreenState extends ConsumerState<TeamActivityScreen> {
               loading: () => const SkeletonList(),
               error: (_, _) => const ErrorState(),
               data: (all) {
-                final items = all.where((a) => switch (_filter) {
-                      'Completed' => a.status == ActivityStatus.completed,
-                      'Pending' => a.status.isOpen,
-                      'Unverified' =>
-                        a.status == ActivityStatus.completed && !a.isVerified,
-                      _ => true,
-                    }).toList();
+                final items = all
+                    .where(
+                      (a) => switch (_filter) {
+                        'Completed' => a.status == ActivityStatus.completed,
+                        'Pending' => a.status.isOpen,
+                        'Unverified' =>
+                          a.status == ActivityStatus.completed && !a.isVerified,
+                        _ => true,
+                      },
+                    )
+                    .toList();
 
                 if (items.isEmpty) {
                   return EmptyState(
@@ -514,20 +549,25 @@ class _TeamActivityScreenState extends ConsumerState<TeamActivityScreen> {
                     title: 'Nothing here',
                     message: _filter == 'Unverified'
                         ? 'Every completed visit today passed location '
-                            'verification.'
+                              'verification.'
                         : 'No $_filter activity recorded today.',
                   );
                 }
 
                 return ListView.separated(
                   padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenH, 0, AppSpacing.screenH, AppSpacing.xxxl,
+                    AppSpacing.screenH,
+                    0,
+                    AppSpacing.screenH,
+                    AppSpacing.xxxl,
                   ),
                   itemCount: items.length,
                   separatorBuilder: (_, _) =>
                       const SizedBox(height: AppSpacing.cardGap),
-                  itemBuilder: (context, i) =>
-                      ActivityCard(activity: items[i], showEmployee: true),
+                  itemBuilder: (context, i) => Arrive.staggered(
+                    index: i,
+                    child: ActivityCard(activity: items[i], showEmployee: true),
+                  ),
                 );
               },
             ),
@@ -570,7 +610,7 @@ class _TeamMapScreenState extends ConsumerState<TeamMapScreen> {
     final clientsAsync = ref.watch(_mapClientsProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Team Map'),
         actions: [
@@ -587,8 +627,9 @@ class _TeamMapScreenState extends ConsumerState<TeamMapScreen> {
         loading: () => const SkeletonList(),
         error: (_, _) => const ErrorState(),
         data: (team) {
-          final located =
-              team.where((e) => e.lastKnownLatitude != null).toList();
+          final located = team
+              .where((e) => e.lastKnownLatitude != null)
+              .toList();
 
           final markers = <MapMarker>[
             if (_showClients)
@@ -628,7 +669,8 @@ class _TeamMapScreenState extends ConsumerState<TeamMapScreen> {
                     compact: true,
                     icon: Icons.location_off_outlined,
                     title: 'No positions reported',
-                    message: 'Positions appear once your team records visits '
+                    message:
+                        'Positions appear once your team records visits '
                         'with location enabled.',
                   ),
                 )
@@ -638,8 +680,9 @@ class _TeamMapScreenState extends ConsumerState<TeamMapScreen> {
                   selectedId: _selectedId,
                   height: 340,
                   onSelect: (marker) => setState(
-                    () => _selectedId =
-                        _selectedId == marker.id ? null : marker.id,
+                    () => _selectedId = _selectedId == marker.id
+                        ? null
+                        : marker.id,
                   ),
                 ),
 
@@ -669,8 +712,9 @@ class _TeamMapScreenState extends ConsumerState<TeamMapScreen> {
                     employee: member,
                     isSelected: member.id == _selectedId,
                     onTap: () => setState(
-                      () => _selectedId =
-                          _selectedId == member.id ? null : member.id,
+                      () => _selectedId = _selectedId == member.id
+                          ? null
+                          : member.id,
                     ),
                   ),
                 ),
@@ -814,8 +858,8 @@ class _SelectedMemberCard extends ConsumerWidget {
                     label: day.inProgress != null
                         ? 'On a visit'
                         : day.planned == 0
-                            ? 'No plan today'
-                            : '${day.completed}/${day.planned} visits done',
+                        ? 'No plan today'
+                        : '${day.completed}/${Fmt.count(day.planned, 'visit')} done',
                     tone: day.inProgress != null
                         ? StatusTone.success
                         : StatusTone.neutral,
@@ -825,7 +869,8 @@ class _SelectedMemberCard extends ConsumerWidget {
           if (current != null)
             KeyValueRow(
               label: day?.inProgress != null ? 'At' : 'Next',
-              value: '${current.clientName} · '
+              value:
+                  '${current.clientName} · '
                   '${Fmt.time(current.scheduledStart)}',
             ),
           KeyValueRow(
@@ -833,7 +878,7 @@ class _SelectedMemberCard extends ConsumerWidget {
             value: employee.lastKnownLatitude == null
                 ? 'Not reported'
                 : '${employee.lastKnownLatitude!.toStringAsFixed(4)}, '
-                    '${employee.lastKnownLongitude!.toStringAsFixed(4)}',
+                      '${employee.lastKnownLongitude!.toStringAsFixed(4)}',
           ),
           KeyValueRow(
             label: 'Last seen',
@@ -849,7 +894,7 @@ class _SelectedMemberCard extends ConsumerWidget {
                   label: 'Call',
                   icon: Icons.phone_outlined,
                   small: true,
-                  onPressed: () {},
+                  onPressed: () => showComingWithBackend(context, 'Calling'),
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -894,10 +939,11 @@ class _MapMemberCard extends ConsumerWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Lit when the phone is reporting a position, flat when it is not —
+          // the glow says "live" without another word on an already dense row.
           IconTile(
             icon: hasPosition ? Icons.location_on : Icons.location_off,
-            background:
-                hasPosition ? AppColors.successSoft : AppColors.surfaceSecondary,
+            background: hasPosition ? null : AppColors.surfaceSecondary,
             color: hasPosition ? AppColors.success : AppColors.textSecondary,
           ),
           const SizedBox(width: AppSpacing.md),
@@ -910,7 +956,7 @@ class _MapMemberCard extends ConsumerWidget {
                 Text(
                   hasPosition
                       ? '${employee.lastKnownLatitude!.toStringAsFixed(4)}, '
-                          '${employee.lastKnownLongitude!.toStringAsFixed(4)}'
+                            '${employee.lastKnownLongitude!.toStringAsFixed(4)}'
                       : 'No position reported',
                   style: AppTypography.caption,
                 ),
@@ -922,9 +968,10 @@ class _MapMemberCard extends ConsumerWidget {
                       current == null
                           ? 'No active visit'
                           : '${day.inProgress != null ? 'At' : 'Next'}: '
-                              '${current.clientName}',
-                      style: AppTypography.caption
-                          .copyWith(color: AppColors.textPrimary),
+                                '${current.clientName}',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
                     );
                   },
                   orElse: () => const SizedBox.shrink(),
@@ -933,8 +980,10 @@ class _MapMemberCard extends ConsumerWidget {
             ),
           ),
           if (employee.lastSeenAt != null)
-            Text(Fmt.timeAgo(employee.lastSeenAt!),
-                style: AppTypography.caption),
+            Text(
+              Fmt.timeAgo(employee.lastSeenAt!),
+              style: AppTypography.caption,
+            ),
         ],
       ),
     );
@@ -952,7 +1001,7 @@ class TeamPerformanceScreen extends ConsumerWidget {
     final async = ref.watch(_teamTargetsProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Team Performance')),
       body: async.when(
         loading: () => const SkeletonList(),
@@ -967,13 +1016,18 @@ class TeamPerformanceScreen extends ConsumerWidget {
           }
 
           final ranked = [...targets]
-            ..sort((a, b) =>
-                b.achievementPercent.compareTo(a.achievementPercent));
+            ..sort(
+              (a, b) => b.achievementPercent.compareTo(a.achievementPercent),
+            );
 
-          final totalTarget =
-              ranked.fold<double>(0, (s, t) => s + t.targetAmount);
-          final totalAchieved =
-              ranked.fold<double>(0, (s, t) => s + t.achievedAmount);
+          final totalTarget = ranked.fold<double>(
+            0,
+            (s, t) => s + t.targetAmount,
+          );
+          final totalAchieved = ranked.fold<double>(
+            0,
+            (s, t) => s + t.achievedAmount,
+          );
 
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.screenH),
@@ -981,9 +1035,11 @@ class TeamPerformanceScreen extends ConsumerWidget {
               AppCard(
                 child: Column(
                   children: [
-                    Text('${session.employee.territoryName} · '
-                        '${Fmt.monthYear(DateTime.now())}',
-                        style: AppTypography.caption),
+                    Text(
+                      '${session.employee.territoryName} · '
+                      '${Fmt.monthYear(DateTime.now())}',
+                      style: AppTypography.caption,
+                    ),
                     const SizedBox(height: AppSpacing.md),
                     Row(
                       children: [
@@ -1018,8 +1074,9 @@ class TeamPerformanceScreen extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.cardGap),
                   child: AppCard(
-                    onTap: () =>
-                        context.push(Routes.employeeDetail(ranked[i].employeeId)),
+                    onTap: () => context.push(
+                      Routes.employeeDetail(ranked[i].employeeId),
+                    ),
                     child: Column(
                       children: [
                         Row(
@@ -1034,28 +1091,33 @@ class TeamPerformanceScreen extends ConsumerWidget {
                                     : AppColors.surfaceSecondary,
                                 shape: BoxShape.circle,
                               ),
-                              child: Text('${i + 1}',
-                                  style: AppTypography.badge.copyWith(
-                                      fontSize: 12,
-                                      color: AppColors.textPrimary)),
+                              child: Text(
+                                '${i + 1}',
+                                style: AppTypography.badge.copyWith(
+                                  fontSize: 12,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
                             ),
                             const SizedBox(width: AppSpacing.md),
                             Expanded(
-                              child: Text(ranked[i].employeeName,
-                                  style: AppTypography.titleMd),
+                              child: Text(
+                                ranked[i].employeeName,
+                                style: AppTypography.titleMd,
+                              ),
                             ),
-                            StatusBadge(
-                              label:
-                                  '${ranked[i].achievementPercent.round()}%',
-                              tone: ranked[i].tone,
-                              dense: true,
+                            Flexible(
+                              child: TierBadge(
+                                tier: ranked[i].tier,
+                                percent: ranked[i].achievementPercent,
+                              ),
                             ),
                           ],
                         ),
                         const SizedBox(height: AppSpacing.md),
                         AppProgressBar(
                           value: ranked[i].achievementPercent / 100,
-                          color: ranked[i].tone.foreground,
+                          color: ranked[i].tier.ink,
                           height: 5,
                         ),
                         const SizedBox(height: AppSpacing.sm),
@@ -1073,7 +1135,7 @@ class TeamPerformanceScreen extends ConsumerWidget {
                             Flexible(
                               child: Text(
                                 '${ranked[i].visitsAchieved} / '
-                                '${ranked[i].visitTarget} visits',
+                                '${Fmt.count(ranked[i].visitTarget, 'visit')}',
                                 style: AppTypography.caption,
                                 overflow: TextOverflow.ellipsis,
                                 softWrap: false,

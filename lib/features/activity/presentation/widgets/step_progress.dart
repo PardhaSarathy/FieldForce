@@ -36,15 +36,24 @@ class StepProgress extends StatelessWidget {
               Expanded(
                 child: Container(
                   height: 2,
+                  constraints: const BoxConstraints(minWidth: AppSpacing.md),
                   margin: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                   color: i <= currentStep ? AppColors.brand : AppColors.border,
                 ),
               ),
-            _StepDot(
-              index: i,
-              label: labels[i],
-              isComplete: i < currentStep,
-              isCurrent: i == currentStep,
+            // Flexible, not intrinsic. The dots size to their labels, and at
+            // maximum text size "Call report" is wide enough that three of
+            // them plus two connectors overflow a 320pt phone by 43pt — the
+            // label is simply cut off, which is the one thing a step header
+            // must never do. Now the labels share what is left after the
+            // connectors and ellipsise rather than overflowing.
+            Flexible(
+              child: _StepDot(
+                index: i,
+                label: labels[i],
+                isComplete: i < currentStep,
+                isCurrent: i == currentStep,
+              ),
             ),
           ],
         ],
@@ -81,8 +90,8 @@ class _StepDot extends StatelessWidget {
             color: isComplete
                 ? AppColors.brand
                 : isCurrent
-                    ? AppColors.brandSoft
-                    : AppColors.surfaceSecondary,
+                ? AppColors.brandSoft
+                : AppColors.surfaceSecondary,
             shape: BoxShape.circle,
             border: Border.all(
               color: active ? AppColors.brand : AppColors.border,
@@ -94,7 +103,9 @@ class _StepDot extends StatelessWidget {
               : Text(
                   '${index + 1}',
                   style: AppTypography.badge.copyWith(
-                    color: isCurrent ? AppColors.brand : AppColors.textSecondary,
+                    color: isCurrent
+                        ? AppColors.brand
+                        : AppColors.textSecondary,
                     fontSize: 12,
                   ),
                 ),
@@ -102,6 +113,9 @@ class _StepDot extends StatelessWidget {
         const SizedBox(height: AppSpacing.xs),
         Text(
           label,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: AppTypography.caption.copyWith(
             fontSize: 10,
             color: active ? AppColors.textPrimary : AppColors.textSecondary,

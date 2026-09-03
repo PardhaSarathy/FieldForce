@@ -1,15 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import 'buttons.dart';
+import 'primitives.dart';
 
 /// Intentional empty state (§57). Every list in the app uses this — never a
 /// blank white screen.
 ///
 /// The [message] should tell the user what would put content here, not merely
 /// restate that there is none.
+/// The well behind an empty screen's icon. A circle, so it does not read
+/// as one more module tile.
+const _emptyWell = 64.0;
+
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -39,14 +46,14 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: const BoxDecoration(
-                color: AppColors.surfaceSecondary,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 28, color: AppColors.textSecondary),
+            // A lit well, not a grey disc. An empty screen is the one a user
+            // is most likely to read as broken, and a dead grey circle in the
+            // middle of it does nothing to argue otherwise — this says the
+            // screen is working and simply has nothing in it yet.
+            IconWell(
+              icon: icon,
+              size: _emptyWell,
+              glyphSize: 28,
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(title, style: AppTypography.h3, textAlign: TextAlign.center),
@@ -95,20 +102,22 @@ class ErrorState extends StatelessWidget {
     this.onRetry,
     this.retryLabel = 'Try again',
     this.compact = false,
-  })  : title = 'No connection',
-        message = 'Check your network and try again. '
-            'Anything you have entered is saved on this device.',
-        icon = Icons.wifi_off_outlined;
+  }) : title = 'No connection',
+       message =
+           'Check your network and try again. '
+           'Anything you have entered is saved on this device.',
+       icon = Icons.wifi_off_outlined;
 
   const ErrorState.server({
     super.key,
     this.onRetry,
     this.retryLabel = 'Try again',
     this.compact = false,
-  })  : title = 'Server unavailable',
-        message = 'We could not reach PharmaConnect. This is not your fault — '
-            'please try again in a moment.',
-        icon = Icons.cloud_off_outlined;
+  }) : title = 'Server unavailable',
+       message =
+           'We could not reach Mr Sales. This is not your fault — '
+           'please try again in a moment.',
+       icon = Icons.cloud_off_outlined;
 
   final String title;
   final String? message;
@@ -128,14 +137,11 @@ class ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: const BoxDecoration(
-                color: AppColors.errorSoft,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 28, color: AppColors.error),
+            IconWell(
+              icon: icon,
+              size: _emptyWell,
+              glyphSize: 28,
+              color: AppColors.error,
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(title, style: AppTypography.h3, textAlign: TextAlign.center),
@@ -194,20 +200,20 @@ class PermissionState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: const BoxDecoration(
-                color: AppColors.warningSoft,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 28, color: AppColors.warning),
+            IconWell(
+              icon: icon,
+              size: _emptyWell,
+              glyphSize: 28,
+              color: AppColors.warning,
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(title, style: AppTypography.h3, textAlign: TextAlign.center),
             const SizedBox(height: AppSpacing.sm),
-            Text(message,
-                style: AppTypography.bodySm, textAlign: TextAlign.center),
+            Text(
+              message,
+              style: AppTypography.bodySm,
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: AppSpacing.xl),
             if (isPermanentlyDenied)
               PrimaryButton(
@@ -230,13 +236,49 @@ class PermissionState extends StatelessWidget {
 
 /// Full-screen loading. Prefer [SkeletonList] where the shape of the incoming
 /// content is known — a spinner tells the user nothing about what is coming.
-class LoadingState extends StatelessWidget {
-  const LoadingState({super.key, this.message});
+class LoadingState extends StatefulWidget {
+  const LoadingState({super.key, this.message, this.delay = _spinnerDelay});
 
   final String? message;
 
+  /// How long to stay blank before showing anything.
+  ///
+  /// A spinner that appears and disappears inside a third of a second is worse
+  /// than no spinner: the eye catches the flash and reads it as a stutter, not
+  /// as progress. Most reads in this app resolve in ~260ms, so almost none of
+  /// them should ever draw one. This is the single cheapest thing that makes
+  /// an app feel fast — Apple's frameworks do the same.
+  final Duration delay;
+
+  @override
+  State<LoadingState> createState() => _LoadingStateState();
+}
+
+const _spinnerDelay = Duration(milliseconds: 300);
+
+class _LoadingStateState extends State<LoadingState> {
+  bool _visible = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(widget.delay, () {
+      if (mounted) setState(() => _visible = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Blank, not a shrunken spinner: anything drawn here would still flash.
+    if (!_visible) return const SizedBox.shrink();
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -246,9 +288,9 @@ class LoadingState extends StatelessWidget {
             height: 26,
             child: CircularProgressIndicator(strokeWidth: 2.5),
           ),
-          if (message != null) ...[
+          if (widget.message != null) ...[
             const SizedBox(height: AppSpacing.lg),
-            Text(message!, style: AppTypography.bodySm),
+            Text(widget.message!, style: AppTypography.bodySm),
           ],
         ],
       ),
@@ -372,22 +414,29 @@ class OfflineBanner extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const Icon(Icons.cloud_off_outlined,
-                  size: AppSizes.iconMd, color: AppColors.warning),
+              const Icon(
+                Icons.cloud_off_outlined,
+                size: AppSizes.iconMd,
+                color: AppColors.warning,
+              ),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
                   pendingCount > 0
                       ? "You're offline · $pendingCount item"
-                          "${pendingCount == 1 ? '' : 's'} waiting to sync"
+                            "${pendingCount == 1 ? '' : 's'} waiting to sync"
                       : "You're offline · your work is saved on this device",
-                  style: AppTypography.caption
-                      .copyWith(color: AppColors.warning),
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.warning,
+                  ),
                 ),
               ),
               if (onTap != null)
-                const Icon(Icons.chevron_right,
-                    size: AppSizes.iconMd, color: AppColors.warning),
+                const Icon(
+                  Icons.chevron_right,
+                  size: AppSizes.iconMd,
+                  color: AppColors.warning,
+                ),
             ],
           ),
         ),
@@ -411,7 +460,11 @@ Future<bool> showConfirmDialog(
       title: Text(title),
       content: Text(message, style: AppTypography.body),
       actionsPadding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.lg,
+      ),
       actions: [
         Row(
           children: [
@@ -480,20 +533,23 @@ class SuccessState extends StatelessWidget {
               color: AppColors.successSoft,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.check_rounded,
-                size: 40, color: AppColors.success),
+            child: const Icon(
+              Icons.check_rounded,
+              size: 40,
+              color: AppColors.success,
+            ),
           ),
           const SizedBox(height: AppSpacing.xl),
           Text(title, style: AppTypography.h2, textAlign: TextAlign.center),
           if (message != null) ...[
             const SizedBox(height: AppSpacing.sm),
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
               child: Text(
                 message!,
-                style: AppTypography.body
-                    .copyWith(color: AppColors.textSecondary),
+                style: AppTypography.body.copyWith(
+                  color: AppColors.textSecondary,
+                ),
                 textAlign: TextAlign.center,
               ),
             ),

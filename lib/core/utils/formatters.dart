@@ -7,6 +7,14 @@ import 'package:intl/intl.dart';
 /// grouping convention (1,25,000 rather than 125,000) — getting this wrong is
 /// immediately noticeable to the intended users.
 abstract final class Fmt {
+  /// "1 visit", "2 visits" — the difference between finished and unfinished.
+  ///
+  /// The app said "1 visits" in eight places. It is the smallest possible
+  /// defect and one of the most damaging: everything else on the screen can be
+  /// immaculate and a reader still registers that nobody checked.
+  static String count(int n, String singular, [String? plural]) =>
+      '$n ${n == 1 ? singular : (plural ?? '${singular}s')}';
+
   static final _currency = NumberFormat.currency(
     locale: 'en_IN',
     symbol: '₹',

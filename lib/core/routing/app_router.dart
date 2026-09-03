@@ -15,6 +15,8 @@ import '../../features/business/presentation/order_screens.dart';
 import '../../features/clients/presentation/client_screens.dart';
 import '../../features/communication/presentation/communication_screens.dart';
 import '../../features/day_plan/presentation/day_plan_screens.dart';
+import '../../features/day_plan/presentation/my_day_plan_screen.dart';
+import '../../features/expenses/presentation/claim_screens.dart';
 import '../../features/expenses/presentation/expense_screens.dart';
 import '../../features/home/presentation/home_screen.dart';
 import '../../features/hr/presentation/hr_screens.dart';
@@ -23,16 +25,21 @@ import '../../features/manager/presentation/team_screens.dart';
 import '../../features/more/presentation/more_screens.dart';
 import '../../features/reports/presentation/report_screens.dart';
 import '../../features/shell/presentation/app_shell.dart';
+import '../../features/travel/presentation/travel_hub_screen.dart';
 import '../../features/travel/presentation/travel_screens.dart';
 import '../providers/app_providers.dart';
 import 'routes.dart';
 
 final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+
+/// One navigator per shell branch. There are more branches than visible tabs
+/// because the tab set differs by role: giving each destination its own branch
+/// keeps every branch's default location unambiguous, so switching to a tab
+/// always lands on that tab's screen rather than on whichever route happened
+/// to be declared first in a shared branch.
 final _shellKeys = [
-  GlobalKey<NavigatorState>(debugLabel: 'tab0'),
-  GlobalKey<NavigatorState>(debugLabel: 'tab1'),
-  GlobalKey<NavigatorState>(debugLabel: 'tab2'),
-  GlobalKey<NavigatorState>(debugLabel: 'tab3'),
+  for (var i = 0; i < 10; i++)
+    GlobalKey<NavigatorState>(debugLabel: 'branch$i'),
 ];
 
 /// Application router.
@@ -104,20 +111,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       // -------------------------------------------------- tabbed shell
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => AppShell(navigationShell: shell),
+        // Branch order must match `ShellBranch` in app_shell.dart — a
+        // NavDestination names its branch by index.
         branches: [
-          // Tab 0 — Home (or Admin dashboard)
+          // 0 — Home (rep and manager)
           StatefulShellBranch(
             navigatorKey: _shellKeys[0],
             routes: [
               GoRoute(path: Routes.home, builder: (_, _) => const HomeScreen()),
-              GoRoute(
-                path: Routes.admin,
-                builder: (_, _) => const AdminDashboardScreen(),
-              ),
             ],
           ),
 
-          // Tab 1 — Activity (or Users for admin)
+          // 1 — Activity (manager tab; a rep reaches it from Quick actions)
           StatefulShellBranch(
             navigatorKey: _shellKeys[1],
             routes: [
@@ -125,30 +130,18 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: Routes.activity,
                 builder: (_, _) => const ActivityListScreen(),
               ),
-              GoRoute(
-                path: Routes.adminUsers,
-                builder: (_, _) => const AdminUsersScreen(),
-              ),
             ],
           ),
 
-          // Tab 2 — Business / Team / Master data
+          // 2 — Team (manager)
           StatefulShellBranch(
             navigatorKey: _shellKeys[2],
             routes: [
-              GoRoute(
-                path: Routes.business,
-                builder: (_, _) => const BusinessDashboardScreen(),
-              ),
               GoRoute(path: Routes.team, builder: (_, _) => const MyTeamScreen()),
-              GoRoute(
-                path: Routes.adminMasterData,
-                builder: (_, _) => const AdminMasterDataScreen(),
-              ),
             ],
           ),
 
-          // Tab 3 — Reports
+          // 3 — Reports (everyone)
           StatefulShellBranch(
             navigatorKey: _shellKeys[3],
             routes: [
@@ -159,6 +152,68 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
+          // 4 — Chat (rep)
+          StatefulShellBranch(
+            navigatorKey: _shellKeys[4],
+            routes: [
+              GoRoute(path: Routes.chat, builder: (_, _) => const ChatListScreen()),
+            ],
+          ),
+
+          // 5 — Resources (rep)
+          StatefulShellBranch(
+            navigatorKey: _shellKeys[5],
+            routes: [
+              GoRoute(
+                path: Routes.resources,
+                builder: (_, _) => const ResourceListScreen(),
+              ),
+            ],
+          ),
+
+          // 6 — Admin dashboard
+          StatefulShellBranch(
+            navigatorKey: _shellKeys[6],
+            routes: [
+              GoRoute(
+                path: Routes.admin,
+                builder: (_, _) => const AdminDashboardScreen(),
+              ),
+            ],
+          ),
+
+          // 7 — Admin users
+          StatefulShellBranch(
+            navigatorKey: _shellKeys[7],
+            routes: [
+              GoRoute(
+                path: Routes.adminUsers,
+                builder: (_, _) => const AdminUsersScreen(),
+              ),
+            ],
+          ),
+
+          // 8 — Admin master data
+          StatefulShellBranch(
+            navigatorKey: _shellKeys[8],
+            routes: [
+              GoRoute(
+                path: Routes.adminMasterData,
+                builder: (_, _) => const AdminMasterDataScreen(),
+              ),
+            ],
+          ),
+
+          // 9 — To-Do (rep tab; a manager reaches it from the side menu)
+          StatefulShellBranch(
+            navigatorKey: _shellKeys[9],
+            routes: [
+              GoRoute(
+                path: Routes.tasks,
+                builder: (_, _) => const TaskListScreen(),
+              ),
+            ],
+          ),
         ],
       ),
 
@@ -168,7 +223,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // No longer a tab, but still a useful index of every module.
       GoRoute(path: Routes.more, builder: (_, _) => const MoreScreen()),
 
-      GoRoute(path: Routes.dayPlan, builder: (_, _) => const DayPlanScreen()),
+      GoRoute(path: Routes.dayPlan, builder: (_, _) => const MyDayPlanScreen()),
 
       GoRoute(
         path: Routes.addActivity,
@@ -180,6 +235,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/activity/detail/:id',
         builder: (_, state) =>
             ActivityDetailScreen(activityId: state.pathParameters['id']!),
+        routes: [
+          GoRoute(
+            path: 'edit',
+            builder: (_, state) =>
+                EditActivityScreen(activityId: state.pathParameters['id']!),
+          ),
+        ],
       ),
       GoRoute(
         path: '/activity/visit/:id',
@@ -199,11 +261,22 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, state) =>
                 ClientHistoryScreen(clientId: state.pathParameters['id']!),
           ),
+          // Nested under the record it edits, so the back button lands on the
+          // detail screen and the edit is never a top-level destination.
+          GoRoute(
+            path: 'edit',
+            builder: (_, state) =>
+                EditClientScreen(clientId: state.pathParameters['id']!),
+          ),
         ],
       ),
 
       GoRoute(
         path: Routes.travel,
+        builder: (_, _) => const TravelHubScreen(),
+      ),
+      GoRoute(
+        path: Routes.travelPlans,
         builder: (_, _) => const TravelDashboardScreen(),
       ),
       GoRoute(
@@ -214,14 +287,36 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/travel/detail/:id',
         builder: (_, state) =>
             TravelDetailScreen(planId: state.pathParameters['id']!),
+        routes: [
+          GoRoute(
+            path: 'edit',
+            builder: (_, state) =>
+                EditTravelPlanScreen(planId: state.pathParameters['id']!),
+          ),
+        ],
       ),
 
-      GoRoute(path: Routes.expenses, builder: (_, _) => const ExpenseListScreen()),
-      GoRoute(path: Routes.newExpense, builder: (_, _) => const NewExpenseScreen()),
+      GoRoute(
+        path: Routes.expenses,
+        builder: (_, _) => const ExpenseClaimScreen(),
+      ),
+      GoRoute(
+        path: '/expenses/day/:date',
+        builder: (_, state) => ClaimDayScreen(
+          date: DateTime.parse(state.pathParameters['date']!),
+        ),
+      ),
       GoRoute(
         path: '/expenses/detail/:id',
         builder: (_, state) =>
             ExpenseDetailScreen(expenseId: state.pathParameters['id']!),
+        routes: [
+          GoRoute(
+            path: 'edit',
+            builder: (_, state) =>
+                EditExpenseScreen(expenseId: state.pathParameters['id']!),
+          ),
+        ],
       ),
 
       GoRoute(path: Routes.hr, builder: (_, _) => const HrHomeScreen()),
@@ -239,20 +334,25 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       GoRoute(path: Routes.calendar, builder: (_, _) => const CalendarScreen()),
 
-      GoRoute(path: Routes.chat, builder: (_, _) => const ChatListScreen()),
+      // Chat and Resources themselves are shell branches; their detail screens
+      // are pushed above the shell so they own the whole viewport.
       GoRoute(
         path: '/chat/:id',
         builder: (_, state) =>
             ChatDetailScreen(threadId: state.pathParameters['id']!),
       ),
-
-      GoRoute(path: Routes.resources, builder: (_, _) => const ResourceListScreen()),
       GoRoute(
         path: '/resources/:id',
         builder: (_, state) =>
             ResourceDetailScreen(resourceId: state.pathParameters['id']!),
       ),
 
+      // Business is opened from Quick actions rather than a tab, so it is a
+      // pushed screen with a back button like every other module.
+      GoRoute(
+        path: Routes.business,
+        builder: (_, _) => const BusinessDashboardScreen(),
+      ),
       GoRoute(path: Routes.sales, builder: (_, _) => const SalesScreen()),
       GoRoute(path: Routes.targets, builder: (_, _) => const TargetsScreen()),
       GoRoute(path: Routes.orders, builder: (_, _) => const OrderListScreen()),
@@ -326,7 +426,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: Routes.taskAssignment,
         builder: (_, _) => const TaskAssignmentScreen(),
       ),
-      GoRoute(path: Routes.tasks, builder: (_, _) => const TaskListScreen()),
+      GoRoute(path: Routes.newTask, builder: (_, _) => const NewTaskScreen()),
 
       GoRoute(
         path: Routes.adminGeoFence,

@@ -29,8 +29,11 @@ class ApprovalTimeline extends StatelessWidget {
       return AppCard(
         child: Row(
           children: [
-            const Icon(Icons.history_toggle_off,
-                size: AppSizes.iconMd, color: AppColors.textSecondary),
+            const Icon(
+              Icons.history_toggle_off,
+              size: AppSizes.iconMd,
+              color: AppColors.textSecondary,
+            ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(child: Text(emptyMessage, style: AppTypography.bodySm)),
           ],
@@ -96,9 +99,7 @@ class _TimelineRow extends StatelessWidget {
                 ),
               ),
               if (!isLast)
-                Expanded(
-                  child: Container(width: 1.5, color: AppColors.border),
-                ),
+                Expanded(child: Container(width: 1.5, color: AppColors.border)),
             ],
           ),
           const SizedBox(width: AppSpacing.md),
@@ -114,11 +115,15 @@ class _TimelineRow extends StatelessWidget {
                       Expanded(
                         child: Text(
                           event.status.label,
-                          style: AppTypography.titleSm
-                              .copyWith(color: tone.foreground),
+                          style: AppTypography.titleSm.copyWith(
+                            color: tone.foreground,
+                          ),
                         ),
                       ),
-                      Text(Fmt.dateTime(event.at), style: AppTypography.caption),
+                      Text(
+                        Fmt.dateTime(event.at),
+                        style: AppTypography.caption,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 2),
@@ -137,8 +142,9 @@ class _TimelineRow extends StatelessWidget {
                       ),
                       child: Text(
                         event.reason!,
-                        style: AppTypography.bodySm
-                            .copyWith(color: AppColors.error),
+                        style: AppTypography.bodySm.copyWith(
+                          color: AppColors.error,
+                        ),
                       ),
                     ),
                   ],

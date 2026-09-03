@@ -78,6 +78,8 @@ class Activity {
     this.feedback,
     this.remarks,
     this.pop,
+    this.inputsGiven,
+    this.pobAmount,
     this.rcpaScore,
     this.rcpaEntries = const [],
     this.productIds = const [],
@@ -120,6 +122,13 @@ class Activity {
 
   /// Point-of-promotion material shared during the call.
   final String? pop;
+
+  /// Samples and promotional inputs handed over.
+  final String? inputsGiven;
+
+  /// Product order booked on the call, in rupees. Distinct from an Order
+  /// record: this is what the doctor indicated, not what the chemist placed.
+  final double? pobAmount;
 
   /// 1–5 star overall RCPA rating shown in the activity detail.
   final int? rcpaScore;
@@ -213,6 +222,8 @@ class Activity {
       photoPaths: photoPaths ?? this.photoPaths,
       attachmentPaths: attachmentPaths ?? this.attachmentPaths,
       syncStatus: syncStatus ?? this.syncStatus,
+      inputsGiven: inputsGiven,
+      pobAmount: pobAmount,
       dayPlanId: dayPlanId,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
@@ -221,6 +232,13 @@ class Activity {
 }
 
 /// A day's committed schedule (§16).
+/// A day's intimation (§16): where the rep is working today, declared before
+/// the day starts.
+///
+/// This is not a schedule and holds no visits — [activityIds] links any that
+/// are later logged against it. It answers one question for the manager:
+/// where are you today, and from what point did you say so. The captured
+/// position and address are the evidence for the second half.
 class DayPlan {
   const DayPlan({
     required this.id,
@@ -235,6 +253,9 @@ class DayPlan {
     this.status = ApprovalStatus.draft,
     this.approvalHistory = const [],
     this.remarks,
+    this.capturedPoint,
+    this.capturedAddress,
+    this.submittedAt,
   });
 
   final String id;
@@ -249,6 +270,13 @@ class DayPlan {
   final ApprovalStatus status;
   final List<ApprovalEvent> approvalHistory;
   final String? remarks;
+
+  /// Where the rep was standing when they submitted, and the address that
+  /// resolves to. Stored on the record rather than re-derived, because it is
+  /// evidence of a moment.
+  final GeoPoint? capturedPoint;
+  final String? capturedAddress;
+  final DateTime? submittedAt;
 }
 
 /// Aggregated view of a single day used by Home and the day-plan screen.
@@ -261,12 +289,28 @@ class DaySummary {
     required this.activities,
     this.workType = WorkType.fieldWork,
     this.headquarters = '',
+    this.declaredAt,
   });
 
   final DateTime date;
   final List<Activity> activities;
+
+  /// What the rep said they were doing today, from the day plan. Field work
+  /// unless they declared otherwise.
   final WorkType workType;
   final String headquarters;
+
+  /// When the day plan for this date was submitted, or null if the rep has
+  /// not intimated yet.
+  ///
+  /// This is what makes the day "started" — not the clock. The pace line used
+  /// to read the hour, so it said "Day not started" at 08:59 to a rep who had
+  /// declared and driven out at seven, and "on track" at 09:01 to one who had
+  /// done nothing at all. A day starts when the rep says it does.
+  final DateTime? declaredAt;
+
+  /// Whether the rep has intimated for this date.
+  bool get isDeclared => declaredAt != null;
 
   int get planned => activities.length;
   int get completed =>
@@ -293,9 +337,27 @@ class DaySummary {
     return null;
   }
 
+  /// The one line under the bar: what state the day is in.
+  ///
+  /// Reads the declaration first and the clock second, in that order, because
+  /// that is the order the facts matter in. Before the rep intimates there is
+  /// nothing to pace against; once they have declared a non-field day, pace
+  /// against a visit target is meaningless and the work type is the answer.
+  String dayStatusLabel({DateTime? now}) {
+    if (!isDeclared) return 'Day not started';
+    if (workType != WorkType.fieldWork) {
+      return 'Day started · ${workType.label}';
+    }
+    if (inProgress != null) return 'Visit in progress';
+    return paceLabel(now: now);
+  }
+
   /// Plain-language pace assessment shown under the progress bar. Compares
   /// completion against how much of the working day has elapsed, so "on track"
   /// means something at 11am as well as at 5pm.
+  ///
+  /// Only ever called on a declared field-work day — [dayStatusLabel] handles
+  /// the rest — so it no longer second-guesses whether the day has begun.
   String paceLabel({DateTime? now}) {
     if (planned == 0) return 'No visits planned';
     if (completed == planned) return 'All visits complete';
@@ -305,7 +367,8 @@ class DaySummary {
     const dayEnd = 18;
     final hour = reference.hour + reference.minute / 60;
 
-    if (hour < dayStart) return 'Day not started';
+    // Declared before the working day opens: started, nothing due yet.
+    if (hour < dayStart) return 'Day started · first visit ahead';
 
     final elapsed = ((hour - dayStart) / (dayEnd - dayStart)).clamp(0.0, 1.0);
     final expected = elapsed * planned;

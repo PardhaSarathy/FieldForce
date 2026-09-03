@@ -3,13 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/app_providers.dart';
+import '../../../features/shell/presentation/app_shell.dart';
 import '../../../core/routing/routes.dart';
+import '../../../data/repositories/mock_repositories.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../data/mock/mock_dataset.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/organization.dart';
+import '../../../shared/widgets/motion.dart';
+import '../../../shared/widgets/feedback.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
@@ -25,43 +29,46 @@ class AdminDashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final data = MockDataset.instance;
 
-    final counts = <({String label, String value, IconData icon, String route})>[
-      (
-        label: 'Users',
-        value: '${data.employees.length}',
-        icon: Icons.people_outline,
-        route: Routes.adminUsers
-      ),
-      (
-        label: 'Clients',
-        value: '${data.clients.length}',
-        icon: Icons.local_hospital_outlined,
-        route: Routes.adminMasterData
-      ),
-      (
-        label: 'Products',
-        value: '${data.products.length}',
-        icon: Icons.medication_outlined,
-        route: Routes.adminMasterData
-      ),
-      (
-        label: 'Territories',
-        value: '${data.territories.length}',
-        icon: Icons.map_outlined,
-        route: Routes.adminMasterData
-      ),
-    ];
+    final counts =
+        <({String label, String value, IconData icon, String route})>[
+          (
+            label: 'Users',
+            value: '${data.employees.length}',
+            icon: Icons.people_outline,
+            route: Routes.adminUsers,
+          ),
+          (
+            label: 'Clients',
+            value: '${data.clients.length}',
+            icon: Icons.local_hospital_outlined,
+            route: Routes.adminMasterData,
+          ),
+          (
+            label: 'Products',
+            value: '${data.products.length}',
+            icon: Icons.medication_outlined,
+            route: Routes.adminMasterData,
+          ),
+          (
+            label: 'Territories',
+            value: '${data.territories.length}',
+            icon: Icons.map_outlined,
+            route: Routes.adminMasterData,
+          ),
+        ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Administration'),
-        automaticallyImplyLeading: false,
+        leading: const DrawerMenuButton(),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenH, AppSpacing.md,
-          AppSpacing.screenH, AppSpacing.xxxl * 3,
+          AppSpacing.screenH,
+          AppSpacing.md,
+          AppSpacing.screenH,
+          AppSpacing.xxxl * 3,
         ),
         children: [
           const SectionHeader(title: 'System'),
@@ -70,7 +77,8 @@ class AdminDashboardScreen extends ConsumerWidget {
           Builder(
             builder: (context) {
               final scale = MediaQuery.textScalerOf(context);
-              final extent = AppSpacing.cardPadding * 2 +
+              final extent =
+                  AppSpacing.cardPadding * 2 +
                   20 +
                   AppSpacing.sm +
                   scale.scale(AppTypography.metricSm.fontSize!) * 1.3 +
@@ -96,14 +104,18 @@ class AdminDashboardScreen extends ConsumerWidget {
                       children: [
                         Icon(c.icon, size: 20, color: AppColors.brand),
                         const SizedBox(height: AppSpacing.sm),
-                        Text(c.value,
-                            style: AppTypography.metricSm,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        Text(c.label,
-                            style: AppTypography.caption,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
+                        Text(
+                          c.value,
+                          style: AppTypography.metricSm,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          c.label,
+                          style: AppTypography.caption,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
                   );
@@ -211,25 +223,28 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
     }).toList();
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Users'),
-        automaticallyImplyLeading: false,
+        leading: const DrawerMenuButton(),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: AppFab(
         onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('User creation is enabled with the backend.')),
+            content: Text('User creation is enabled with the backend.'),
+          ),
         ),
-        icon: const Icon(Icons.person_add_alt),
-        label: const Text('Add user'),
+        icon: Icons.person_add_alt,
+        label: 'Add user',
       ),
       body: Column(
         children: [
-          Container(
-            color: AppColors.surface,
+          Padding(
             padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenH, 0, AppSpacing.screenH, AppSpacing.md,
+              AppSpacing.screenH,
+              0,
+              AppSpacing.screenH,
+              AppSpacing.md,
             ),
             child: SearchField(
               hint: 'Search by name or employee ID',
@@ -256,13 +271,18 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.screenH, 0,
-                      AppSpacing.screenH, AppSpacing.xxxl * 3,
+                      AppSpacing.screenH,
+                      0,
+                      AppSpacing.screenH,
+                      AppSpacing.xxxl * 3,
                     ),
                     itemCount: users.length,
                     separatorBuilder: (_, _) =>
                         const SizedBox(height: AppSpacing.cardGap),
-                    itemBuilder: (context, i) => _UserCard(employee: users[i]),
+                    itemBuilder: (context, i) => Arrive.staggered(
+                      index: i,
+                      child: _UserCard(employee: users[i]),
+                    ),
                   ),
           ),
         ],
@@ -295,8 +315,10 @@ class _UserCard extends StatelessWidget {
                 ),
                 if (employee.managerName != null) ...[
                   const SizedBox(height: 2),
-                  Text('Reports to ${employee.managerName}',
-                      style: AppTypography.caption),
+                  Text(
+                    'Reports to ${employee.managerName}',
+                    style: AppTypography.caption,
+                  ),
                 ],
               ],
             ),
@@ -341,72 +363,76 @@ class AdminMasterDataScreen extends ConsumerWidget {
       (
         title: 'Territories',
         icon: Icons.public,
-        items: data.territories.map((t) => '${t.name} · ${t.headquarters}').toList()
+        items: data.territories
+            .map((t) => '${t.name} · ${t.headquarters}')
+            .toList(),
       ),
       (
         title: 'Areas',
         icon: Icons.location_city_outlined,
-        items: data.areas.map((a) => a.name).toList()
+        items: data.areas.map((a) => a.name).toList(),
       ),
       (
         title: 'Clusters',
         icon: Icons.hub_outlined,
-        items: data.clusters.map((c) => c.name).toList()
+        items: data.clusters.map((c) => c.name).toList(),
       ),
       (
         title: 'Products',
         icon: Icons.medication_outlined,
         items: data.products
             .map((p) => '${p.name} · ${p.code} · GST ${p.gstPercent.round()}%')
-            .toList()
+            .toList(),
       ),
       (
         title: 'Specialties',
         icon: Icons.medical_services_outlined,
-        items: const [
-          'Cardiologist', 'Physician', 'Gynecologist', 'Neurologist',
-          'Pediatrician', 'Orthopedic', 'Diabetologist', 'Pulmonologist',
-        ]
+        // The same list the client form picks from. It was a literal here,
+        // where the form could not reach it — two lists that would have
+        // disagreed the first time either was edited.
+        items: MockStore.specialties,
       ),
       (
         title: 'Work types',
         icon: Icons.work_outline,
-        items: WorkType.values.map((w) => w.label).toList()
+        items: WorkType.values.map((w) => w.label).toList(),
       ),
       (
         title: 'Tour types',
         icon: Icons.route_outlined,
-        items: TourType.values.map((t) => t.label).toList()
+        items: TourType.values.map((t) => t.label).toList(),
       ),
       (
         title: 'Expense types',
         icon: Icons.receipt_long_outlined,
-        items: ExpenseCategory.values.map((e) => e.label).toList()
+        items: ExpenseCategory.values.map((e) => e.label).toList(),
       ),
       (
         title: 'Leave types',
         icon: Icons.event_busy_outlined,
-        items: LeaveType.values.map((l) => l.label).toList()
+        items: LeaveType.values.map((l) => l.label).toList(),
       ),
       (
         title: 'Holidays',
         icon: Icons.celebration_outlined,
         items: data.holidays
             .map((h) => '${h.name} · ${h.date.day}/${h.date.month}')
-            .toList()
+            .toList(),
       ),
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Master Data'),
-        automaticallyImplyLeading: false,
+        leading: const DrawerMenuButton(),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenH, AppSpacing.screenH,
-          AppSpacing.screenH, AppSpacing.xxxl * 3,
+          AppSpacing.screenH,
+          AppSpacing.screenH,
+          AppSpacing.screenH,
+          AppSpacing.xxxl * 3,
         ),
         children: [
           for (final set in sets)
@@ -415,13 +441,16 @@ class AdminMasterDataScreen extends ConsumerWidget {
               child: AppCard(
                 padding: EdgeInsets.zero,
                 child: Theme(
-                  data: Theme.of(context)
-                      .copyWith(dividerColor: Colors.transparent),
+                  data: Theme.of(
+                    context,
+                  ).copyWith(dividerColor: Colors.transparent),
                   child: ExpansionTile(
                     leading: IconTile(icon: set.icon),
                     title: Text(set.title, style: AppTypography.titleMd),
-                    subtitle: Text('${set.items.length} entries',
-                        style: AppTypography.caption),
+                    subtitle: Text(
+                      '${set.items.length} entries',
+                      style: AppTypography.caption,
+                    ),
                     childrenPadding: const EdgeInsets.only(
                       left: AppSpacing.cardPadding,
                       right: AppSpacing.cardPadding,
@@ -430,16 +459,13 @@ class AdminMasterDataScreen extends ConsumerWidget {
                     children: [
                       for (final item in set.items)
                         Padding(
-                          padding:
-                              const EdgeInsets.only(bottom: AppSpacing.sm),
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                           child: Row(
                             children: [
-                              const StatusDot(
-                                  color: AppColors.border, size: 5),
+                              const StatusDot(color: AppColors.border, size: 5),
                               const SizedBox(width: AppSpacing.sm),
                               Expanded(
-                                child:
-                                    Text(item, style: AppTypography.bodySm),
+                                child: Text(item, style: AppTypography.bodySm),
                               ),
                             ],
                           ),
@@ -449,11 +475,11 @@ class AdminMasterDataScreen extends ConsumerWidget {
                         label: 'Add ${set.title.toLowerCase()}',
                         icon: Icons.add,
                         small: true,
-                        onPressed: () =>
-                            ScaffoldMessenger.of(context).showSnackBar(
+                        onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
-                                'Master-data editing is enabled with the backend.'),
+                              'Master-data editing is enabled with the backend.',
+                            ),
                           ),
                         ),
                       ),
@@ -485,7 +511,7 @@ class AdminGeoFenceScreen extends ConsumerWidget {
     final policy = ref.watch(geoFencePolicyProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Geo-fence')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
@@ -530,7 +556,8 @@ class AdminGeoFenceScreen extends ConsumerWidget {
                 if (radius < 40) ...[
                   const SizedBox(height: AppSpacing.md),
                   _Warning(
-                    text: 'Below about 40 m, ordinary GPS drift inside '
+                    text:
+                        'Below about 40 m, ordinary GPS drift inside '
                         'buildings will start failing honest visits.',
                   ),
                 ],
@@ -548,7 +575,8 @@ class AdminGeoFenceScreen extends ConsumerWidget {
                   value: GeoFencePolicy.warn,
                   groupValue: policy,
                   title: 'Warn and record',
-                  subtitle: 'Out-of-range visits are allowed but require a '
+                  subtitle:
+                      'Out-of-range visits are allowed but require a '
                       'written reason and are permanently flagged as '
                       'unverified. Recommended.',
                   onChanged: (v) =>
@@ -559,7 +587,8 @@ class AdminGeoFenceScreen extends ConsumerWidget {
                   value: GeoFencePolicy.strict,
                   groupValue: policy,
                   title: 'Block',
-                  subtitle: 'Visits cannot be started outside the radius. '
+                  subtitle:
+                      'Visits cannot be started outside the radius. '
                       'A rep who genuinely met the doctor elsewhere will be '
                       'unable to record the call at all.',
                   onChanged: (v) =>
@@ -570,7 +599,8 @@ class AdminGeoFenceScreen extends ConsumerWidget {
                   value: GeoFencePolicy.off,
                   groupValue: policy,
                   title: 'Record only',
-                  subtitle: 'Distance is captured for reporting but never '
+                  subtitle:
+                      'Distance is captured for reporting but never '
                       'gates a visit.',
                   onChanged: (v) =>
                       ref.read(geoFencePolicyProvider.notifier).state = v,
@@ -582,7 +612,8 @@ class AdminGeoFenceScreen extends ConsumerWidget {
           if (policy == GeoFencePolicy.strict) ...[
             const SizedBox(height: AppSpacing.md),
             _Warning(
-              text: 'Blocking pushes legitimate work out of the system. '
+              text:
+                  'Blocking pushes legitimate work out of the system. '
                   'Teams under a strict policy often stop logging visits they '
                   'actually made, which makes coverage reporting worse rather '
                   'than better.',
@@ -597,9 +628,12 @@ class AdminGeoFenceScreen extends ConsumerWidget {
               children: [
                 SwitchListTile(
                   value: true,
-                  onChanged: (_) {},
-                  title: Text('Detect mock locations',
-                      style: AppTypography.titleMd),
+                  onChanged: (_) =>
+                      showComingWithBackend(context, 'Geo-fence settings'),
+                  title: Text(
+                    'Detect mock locations',
+                    style: AppTypography.titleMd,
+                  ),
                   subtitle: Text(
                     'Flag visits captured while a location-spoofing app is '
                     'active.',
@@ -609,9 +643,12 @@ class AdminGeoFenceScreen extends ConsumerWidget {
                 const Divider(height: 1),
                 SwitchListTile(
                   value: true,
-                  onChanged: (_) {},
-                  title: Text('Store location history',
-                      style: AppTypography.titleMd),
+                  onChanged: (_) =>
+                      showComingWithBackend(context, 'Geo-fence settings'),
+                  title: Text(
+                    'Store location history',
+                    style: AppTypography.titleMd,
+                  ),
                   subtitle: Text(
                     'Retain captured coordinates against each visit for audit.',
                     style: AppTypography.caption,
@@ -692,13 +729,17 @@ class _Warning extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded,
-              size: AppSizes.iconMd, color: AppColors.warning),
+          const Icon(
+            Icons.warning_amber_rounded,
+            size: AppSizes.iconMd,
+            color: AppColors.warning,
+          ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
-            child: Text(text,
-                style:
-                    AppTypography.caption.copyWith(color: AppColors.warning)),
+            child: Text(
+              text,
+              style: AppTypography.caption.copyWith(color: AppColors.warning),
+            ),
           ),
         ],
       ),
@@ -717,27 +758,27 @@ class AdminApprovalRulesScreen extends ConsumerWidget {
       (
         kind: ApprovalKind.expense,
         approver: 'Reporting manager',
-        threshold: 'All claims'
+        threshold: 'All claims',
       ),
       (
         kind: ApprovalKind.leave,
         approver: 'Reporting manager',
-        threshold: 'All requests'
+        threshold: 'All requests',
       ),
       (
         kind: ApprovalKind.tourPlan,
         approver: 'Reporting manager',
-        threshold: 'All plans'
+        threshold: 'All plans',
       ),
       (
         kind: ApprovalKind.order,
         approver: 'ASM, then RSM above ₹1,00,000',
-        threshold: 'Two-step above threshold'
+        threshold: 'Two-step above threshold',
       ),
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Approval Rules')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
@@ -748,16 +789,18 @@ class AdminApprovalRulesScreen extends ConsumerWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.info_outline,
-                    size: AppSizes.iconMd, color: AppColors.info),
+                const Icon(
+                  Icons.info_outline,
+                  size: AppSizes.iconMd,
+                  color: AppColors.info,
+                ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     'Rules determine who sees each request in their approval '
                     'queue. Rejections always require a reason, regardless of '
                     'the rule.',
-                    style:
-                        AppTypography.bodySm.copyWith(color: AppColors.info),
+                    style: AppTypography.bodySm.copyWith(color: AppColors.info),
                   ),
                 ),
               ],
@@ -779,8 +822,10 @@ class AdminApprovalRulesScreen extends ConsumerWidget {
                         children: [
                           Text(rule.kind.label, style: AppTypography.titleMd),
                           const SizedBox(height: 2),
-                          Text('Approved by ${rule.approver}',
-                              style: AppTypography.caption),
+                          Text(
+                            'Approved by ${rule.approver}',
+                            style: AppTypography.caption,
+                          ),
                           Text(rule.threshold, style: AppTypography.caption),
                         ],
                       ),
@@ -790,11 +835,12 @@ class AdminApprovalRulesScreen extends ConsumerWidget {
                       color: AppColors.brand,
                       onPressed: () =>
                           ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'Rule editing is enabled with the backend.'),
-                        ),
-                      ),
+                            const SnackBar(
+                              content: Text(
+                                'Rule editing is enabled with the backend.',
+                              ),
+                            ),
+                          ),
                     ),
                   ],
                 ),

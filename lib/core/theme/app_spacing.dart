@@ -20,17 +20,22 @@ abstract final class AppSpacing {
   static const section = 24.0;
 
   /// Inner padding for cards.
-  static const cardPadding = 16.0;
+  static const cardPadding = 18.0;
 
   /// Gap between sibling cards in a list.
   static const cardGap = 12.0;
 }
 
+/// Corner radii.
+///
+/// Raised across the board in the finish pass: sharp corners read as
+/// utilitarian, generous ones as considered, and it costs nothing in
+/// legibility. Buttons use [pill] — fully rounded, with the icon inside.
 abstract final class AppRadius {
-  static const sm = 6.0;
-  static const md = 10.0;
-  static const lg = 14.0;
-  static const xl = 20.0;
+  static const sm = 9.0;
+  static const md = 13.0;
+  static const lg = 17.0;
+  static const xl = 22.0;
   static const pill = 999.0;
 }
 

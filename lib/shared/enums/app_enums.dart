@@ -48,10 +48,10 @@ enum DataScope {
   global;
 
   static DataScope forRole(UserRole role) => switch (role) {
-        UserRole.mr => DataScope.self,
-        UserRole.asm || UserRole.rsm || UserRole.zsm => DataScope.subtree,
-        UserRole.nsm || UserRole.admin => DataScope.global,
-      };
+    UserRole.mr => DataScope.self,
+    UserRole.asm || UserRole.rsm || UserRole.zsm => DataScope.subtree,
+    UserRole.nsm || UserRole.admin => DataScope.global,
+  };
 }
 
 /// Lifecycle shared by every approval-backed record (§62).
@@ -73,11 +73,11 @@ enum ApprovalStatus {
   bool get awaitsDecision => this == submitted || this == pending;
 
   StatusTone get tone => switch (this) {
-        draft => StatusTone.neutral,
-        submitted || pending => StatusTone.warning,
-        approved => StatusTone.success,
-        rejected => StatusTone.error,
-      };
+    draft => StatusTone.neutral,
+    submitted || pending => StatusTone.warning,
+    approved => StatusTone.success,
+    rejected => StatusTone.error,
+  };
 }
 
 /// Lifecycle of a planned or executed field activity (§16, §17).
@@ -95,13 +95,16 @@ enum ActivityStatus {
   bool get isOpen => this == planned || this == upcoming || this == inProgress;
 
   StatusTone get tone => switch (this) {
-        planned => StatusTone.neutral,
-        upcoming => StatusTone.info,
-        inProgress => StatusTone.brand,
-        completed => StatusTone.success,
-        missed => StatusTone.error,
-        rescheduled => StatusTone.warning,
-      };
+    planned => StatusTone.neutral,
+    // Brand, not info. An upcoming visit is the app's own subject — the
+    // thing it exists to get you to — rather than a piece of information
+    // about it, and a blue chip on a teal card reads as a stray.
+    upcoming => StatusTone.brand,
+    inProgress => StatusTone.brand,
+    completed => StatusTone.success,
+    missed => StatusTone.error,
+    rescheduled => StatusTone.warning,
+  };
 }
 
 /// Offline synchronization state (§8, §61).
@@ -126,11 +129,11 @@ enum SyncStatus {
   bool get isSettled => this == synced;
 
   StatusTone get tone => switch (this) {
-        savedLocally || pending => StatusTone.neutral,
-        syncing => StatusTone.info,
-        synced => StatusTone.success,
-        failed => StatusTone.error,
-      };
+    savedLocally || pending => StatusTone.neutral,
+    syncing => StatusTone.info,
+    synced => StatusTone.success,
+    failed => StatusTone.error,
+  };
 }
 
 /// Result of comparing captured GPS against a client's registered location
@@ -156,11 +159,11 @@ enum GeoVerification {
   bool get isTrusted => this == verified;
 
   StatusTone get tone => switch (this) {
-        verified => StatusTone.success,
-        outOfRange => StatusTone.warning,
-        unavailable => StatusTone.neutral,
-        suspect => StatusTone.error,
-      };
+    verified => StatusTone.success,
+    outOfRange => StatusTone.warning,
+    unavailable => StatusTone.neutral,
+    suspect => StatusTone.error,
+  };
 }
 
 /// How strictly the geo-fence is enforced. Admin-configurable (§130).
@@ -190,6 +193,24 @@ enum ClientType {
   final String label;
 }
 
+/// Whether a client sits on the company's approved list.
+///
+/// A listed doctor is one head office already recognises; an unlisted one has
+/// been met in the field but not yet added centrally. The distinction drives
+/// coverage reporting, so it is recorded at registration rather than inferred.
+enum ClientListing {
+  listed('Listed'),
+  unlisted('Unlisted');
+
+  const ClientListing(this.label);
+  final String label;
+
+  StatusTone get tone => switch (this) {
+    listed => StatusTone.success,
+    unlisted => StatusTone.warning,
+  };
+}
+
 /// Commercial importance of a client, used for planning priority.
 enum ClientCategory {
   coreTarget('Core Target'),
@@ -201,11 +222,11 @@ enum ClientCategory {
   final String label;
 
   StatusTone get tone => switch (this) {
-        coreTarget => StatusTone.brand,
-        regular => StatusTone.neutral,
-        potential => StatusTone.sand,
-        inactive => StatusTone.neutral,
-      };
+    coreTarget => StatusTone.brand,
+    regular => StatusTone.neutral,
+    potential => StatusTone.sand,
+    inactive => StatusTone.neutral,
+  };
 }
 
 enum WorkType {
@@ -244,12 +265,28 @@ enum ExpenseCategory {
   final String label;
 
   IconData get icon => switch (this) {
-        travel => Icons.directions_bus_outlined,
-        food => Icons.restaurant_outlined,
-        lodging => Icons.hotel_outlined,
-        fuel => Icons.local_gas_station_outlined,
-        other => Icons.receipt_long_outlined,
-      };
+    travel => Icons.directions_bus_outlined,
+    food => Icons.restaurant_outlined,
+    lodging => Icons.hotel_outlined,
+    fuel => Icons.local_gas_station_outlined,
+    other => Icons.receipt_long_outlined,
+  };
+}
+
+/// Where a day's work happened, relative to the rep's own headquarters.
+///
+/// It does **not** change what the day pays. The allowance is flat, and this
+/// exists to explain why a day went above it — travelling out is the usual
+/// reason, and a manager reviewing an excess needs the destination named.
+/// An earlier draft gave out-of-territory its own higher rate; that is not the
+/// rule and re-introducing it would quietly pay two reps differently for the
+/// same day.
+enum ClaimScope {
+  local('Local'),
+  outOfTerritory('Out of territory');
+
+  const ClaimScope(this.label);
+  final String label;
 }
 
 enum TravelMode {
@@ -296,12 +333,12 @@ enum AttendanceStatus {
   final String label;
 
   Color get color => switch (this) {
-        present => AppColors.success,
-        leave => AppColors.warning,
-        holiday => AppColors.info,
-        absent => AppColors.error,
-        weekOff => AppColors.textSecondary,
-      };
+    present => AppColors.success,
+    leave => AppColors.warning,
+    holiday => AppColors.info,
+    absent => AppColors.error,
+    weekOff => AppColors.textSecondary,
+  };
 }
 
 enum TaskPriority {
@@ -314,11 +351,11 @@ enum TaskPriority {
   final String label;
 
   StatusTone get tone => switch (this) {
-        low => StatusTone.neutral,
-        medium => StatusTone.info,
-        high => StatusTone.warning,
-        urgent => StatusTone.error,
-      };
+    low => StatusTone.neutral,
+    medium => StatusTone.info,
+    high => StatusTone.warning,
+    urgent => StatusTone.error,
+  };
 }
 
 enum TaskStatus {
@@ -331,11 +368,11 @@ enum TaskStatus {
   final String label;
 
   StatusTone get tone => switch (this) {
-        assigned => StatusTone.neutral,
-        inProgress => StatusTone.brand,
-        completed => StatusTone.success,
-        overdue => StatusTone.error,
-      };
+    assigned => StatusTone.neutral,
+    inProgress => StatusTone.brand,
+    completed => StatusTone.success,
+    overdue => StatusTone.error,
+  };
 }
 
 enum ComplaintStatus {
@@ -348,11 +385,11 @@ enum ComplaintStatus {
   final String label;
 
   StatusTone get tone => switch (this) {
-        open => StatusTone.warning,
-        inReview => StatusTone.info,
-        resolved => StatusTone.success,
-        closed => StatusTone.neutral,
-      };
+    open => StatusTone.warning,
+    inReview => StatusTone.info,
+    resolved => StatusTone.success,
+    closed => StatusTone.neutral,
+  };
 }
 
 /// The kind of record flowing through the approval center (§43).
@@ -379,6 +416,23 @@ enum NotificationKind {
   const NotificationKind(this.label, this.icon);
   final String label;
   final IconData icon;
+}
+
+/// What a client's special date actually is.
+///
+/// The date alone was useless: a rep cannot wish someone without knowing
+/// whether it is a birthday or an anniversary, and "Happy anniversary" on
+/// someone's birthday is worse than saying nothing.
+enum SpecialOccasion {
+  birthday('Birthday'),
+  anniversary('Anniversary'),
+
+  /// Anything else — a clinic's founding day, a festival they keep. Carries a
+  /// typed note, because the whole point of "other" is that we cannot list it.
+  other('Other');
+
+  const SpecialOccasion(this.label);
+  final String label;
 }
 
 /// Visual weight for status treatment. Maps a semantic state to palette tokens

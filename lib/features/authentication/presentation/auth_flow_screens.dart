@@ -7,6 +7,7 @@ import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../shared/widgets/feedback.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/states.dart';
@@ -21,7 +22,7 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -55,9 +56,9 @@ class _AuthStepScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.transparent,
         leading: const BackButton(),
       ),
       body: SafeArea(
@@ -119,7 +120,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Widget build(BuildContext context) {
     return _AuthStepScaffold(
       title: 'Reset your password',
-      subtitle: 'Enter your Employee ID. We will send a verification code to '
+      subtitle:
+          'Enter your Employee ID. We will send a verification code to '
           'the mobile number registered with your account.',
       children: [
         Form(
@@ -171,10 +173,9 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       _error = null;
     });
 
-    final ok = await ref.read(authRepositoryProvider).verifyOtp(
-          employeeCode: widget.employeeCode,
-          otp: _controller.text,
-        );
+    final ok = await ref
+        .read(authRepositoryProvider)
+        .verifyOtp(employeeCode: widget.employeeCode, otp: _controller.text);
 
     if (!mounted) return;
     setState(() => _busy = false);
@@ -190,7 +191,8 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
   Widget build(BuildContext context) {
     return _AuthStepScaffold(
       title: 'Enter verification code',
-      subtitle: 'We sent a 6-digit code to the number registered for '
+      subtitle:
+          'We sent a 6-digit code to the number registered for '
           '${widget.employeeCode}. In this demo build the code is 123456.',
       children: [
         AppTextField(
@@ -212,7 +214,10 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
         const SizedBox(height: AppSpacing.xl),
         PrimaryButton(label: 'Verify', isLoading: _busy, onPressed: _verify),
         const SizedBox(height: AppSpacing.md),
-        TextButton(onPressed: () {}, child: const Text('Resend code')),
+        TextButton(
+          onPressed: () => showComingWithBackend(context, 'Resending the code'),
+          child: const Text('Resend code'),
+        ),
       ],
     );
   }
@@ -245,7 +250,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
-    await ref.read(authRepositoryProvider).resetPassword(
+    await ref
+        .read(authRepositoryProvider)
+        .resetPassword(
           employeeCode: widget.employeeCode,
           password: _password.text,
         );
@@ -260,7 +267,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   Widget build(BuildContext context) {
     if (_done) {
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.transparent,
         body: SafeArea(
           child: SuccessState(
             title: 'Password updated',
@@ -326,7 +333,7 @@ class SessionExpiredScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -341,8 +348,11 @@ class SessionExpiredScreen extends ConsumerWidget {
                     color: AppColors.warningSoft,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.timer_off_outlined,
-                      size: 28, color: AppColors.warning),
+                  child: const Icon(
+                    Icons.timer_off_outlined,
+                    size: 28,
+                    color: AppColors.warning,
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 Text('Session expired', style: AppTypography.h2),

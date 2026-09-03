@@ -1,3 +1,4 @@
+import '../../core/location/geo_math.dart';
 import '../../shared/enums/app_enums.dart';
 import '../../shared/models/activity.dart';
 import '../../shared/models/business.dart';
@@ -53,6 +54,14 @@ abstract interface class ClientRepository {
 
   /// Completed visits to this client, newest first (§28 client history).
   Future<List<Activity>> historyOf(String clientId);
+
+  /// The specialties a doctor can be filed under.
+  ///
+  /// Master data, not free text. Typed by hand it arrives as "Cardiologist",
+  /// "cardiologist" and "Cardio", which look identical to a rep and split into
+  /// three rows in every report that groups by specialty. Admin edits this
+  /// list; the client form chooses from it.
+  Future<List<String>> specialties();
 }
 
 abstract interface class ActivityRepository {
@@ -81,10 +90,33 @@ abstract interface class ActivityRepository {
   Future<Activity> completeVisit(Activity activity);
 }
 
+/// The day's intimation (§16). Separate from activities: a plan says where a
+/// rep will be, an activity says who they met. One is declared in the morning,
+/// the others accumulate through the day.
+abstract interface class DayPlanRepository {
+  /// The plan already submitted for [date], or null if the day is undeclared.
+  Future<DayPlan?> forDate(String employeeId, DateTime date);
+
+  /// Submits or replaces the plan for its date. Re-submitting the same day
+  /// overwrites rather than stacking, so a corrected plan does not read as two.
+  Future<DayPlan> submit(DayPlan plan);
+
+  Future<List<DayPlan>> list(Session session, {String? employeeId});
+
+  /// The address a captured point resolves to. A geocoder behind the same
+  /// interface later; today it is seeded per area.
+  Future<String> addressFor(GeoPoint point, {String? areaId});
+}
+
 abstract interface class TravelRepository {
   Future<List<TravelPlan>> list(Session session, {ApprovalStatus? status, String? employeeId});
   Future<TravelPlan> byId(String id);
   Future<TravelPlan> create(TravelPlan plan);
+
+  /// Rewrites a plan. Only a draft should reach this — once a plan is
+  /// submitted the approver is looking at it, and changing it underneath them
+  /// is how an approval comes to mean nothing.
+  Future<TravelPlan> update(TravelPlan plan);
   Future<TravelPlan> submit(String id);
 }
 
@@ -94,6 +126,31 @@ abstract interface class ExpenseRepository {
   Future<Expense> create(Expense expense);
   Future<Expense> update(Expense expense);
   Future<Expense> submit(String id);
+
+  /// What one worked day is worth. Company reference data, not a literal in a
+  /// screen — the same reason specialties moved here.
+  Future<double> dailyAllowance();
+
+  /// The month as claimable days: every date the rep intimated, joined to
+  /// whatever has been filed against it.
+  ///
+  /// The join belongs here rather than in a screen. A widget that paired day
+  /// plans with expenses itself would be the second place in the app deciding
+  /// what "claimed" means, and the two would part company the first time
+  /// either changed.
+  Future<List<ClaimDay>> claimMonth(Session session, DateTime month,
+      {String? employeeId});
+
+  /// Files the flat allowance against every open day given — the bulk
+  /// confirm. Days already carrying a claim are skipped rather than doubled,
+  /// so a repeated tap cannot pay a day twice.
+  Future<int> confirmStandardDays(Session session, List<ClaimDay> days);
+
+  /// Submits every draft expense in [month] for approval.
+  ///
+  /// Submitting does **not** close the month: a day remembered later can
+  /// still be claimed and submitted against the same month.
+  Future<int> submitMonth(Session session, DateTime month);
 }
 
 abstract interface class HrRepository {
