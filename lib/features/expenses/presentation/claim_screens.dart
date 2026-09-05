@@ -380,7 +380,13 @@ class _ClaimCalendar extends ConsumerWidget {
         // amber here, which collided with the amber a leave day wears — the
         // row already flags "above allowance" in words, and the calendar's job
         // is where a day *stands*, not how much it cost.
-        final ink = !d.claimable
+        //
+        // A day with no intimation is red, the same red attendance paints an
+        // absence: it is not a quiet blank, it is a day that can never be
+        // claimed, and the rep has to be able to find it.
+        final ink = d.kind == DayKind.notDeclared
+            ? AppColors.calendarProblem
+            : !d.claimable
             ? AppColors.calendarOff
             : d.isOpen
             ? AppColors.calendarPlanned
@@ -402,10 +408,13 @@ class _ClaimCalendar extends ConsumerWidget {
           const CalendarLegendItem(AppColors.calendarPlanned, 'To claim'),
         if (days.any((d) => d.status == ApprovalStatus.approved))
           const CalendarLegendItem(AppColors.calendarDone, 'Approved'),
-        if (days.any((d) => d.status == ApprovalStatus.rejected))
-          const CalendarLegendItem(AppColors.calendarProblem, 'Rejected'),
-        if (days.any((d) => !d.claimable))
-          const CalendarLegendItem(AppColors.calendarOff, 'Leave / holiday'),
+        if (days.any((d) =>
+            d.status == ApprovalStatus.rejected ||
+            d.kind == DayKind.notDeclared))
+          const CalendarLegendItem(
+              AppColors.calendarProblem, 'Missed or rejected'),
+        if (days.any((d) => !d.claimable && d.kind != DayKind.notDeclared))
+          const CalendarLegendItem(AppColors.calendarOff, 'Not working'),
       ],
       footer: Row(
         children: [
@@ -508,21 +517,31 @@ class _DayRow extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      worked ? day.place : day.workType.label,
+                      worked ? day.place : day.kind.label,
                       style: AppTypography.titleSm,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 1),
+                    // A day nobody owes for still has to say *why*. "No
+                    // claim" was true of a Sunday, of a week of approved
+                    // leave and of a day the rep simply never intimated —
+                    // and only the last of those is money he has lost.
                     Text(
                       worked
                           ? [
                               day.workType.label,
                               if (day.calls > 0) Fmt.count(day.calls, 'call'),
                             ].join(' · ')
-                          : 'No claim',
+                          : day.note ??
+                              switch (day.kind) {
+                                DayKind.notDeclared =>
+                                  'No intimation filed — nothing can be '
+                                      'claimed',
+                                _ => 'Nothing to claim',
+                              },
                       style: AppTypography.caption,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],

@@ -275,13 +275,30 @@ class CalendarLegend extends StatelessWidget {
       alignment: WrapAlignment.center,
       children: [
         for (final item in items)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              StatusDot(color: item.color, size: 8),
-              const SizedBox(width: AppSpacing.xs),
-              Text(item.label, style: AppTypography.caption),
-            ],
+          // Constrained to the row's width, because a `Wrap` hands its
+          // children the full width and a `Row` inside one will happily
+          // overflow rather than wrap mid-item. A long label at a large text
+          // scale is a legend that draws a yellow-and-black bar across the
+          // calendar it is explaining.
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                StatusDot(color: item.color, size: 8),
+                const SizedBox(width: AppSpacing.xs),
+                Flexible(
+                  child: Text(
+                    item.label,
+                    style: AppTypography.caption,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
       ],
     );

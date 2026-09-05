@@ -73,12 +73,17 @@ class CalendarScreen extends ConsumerWidget {
               final dayActivities = (activitiesAsync.valueOrNull ?? const [])
                   .where((a) => _sameDay(a.scheduledStart, date))
                   .toList();
-              final isHoliday = (holidaysAsync.valueOrNull ?? const [])
-                  .any((h) => _sameDay(h.date, date));
+              // Sunday is the week off everywhere in this app, so it wears
+              // the same orange a company holiday does. A day the rep worked
+              // anyway outranks it — the calendar has to agree with the
+              // visits it is derived from.
+              final isOff = date.weekday == DateTime.sunday ||
+                  (holidaysAsync.valueOrNull ?? const [])
+                      .any((h) => _sameDay(h.date, date));
 
               // The dot carries the state; the disc only says there is
               // something here at all.
-              final dot = isHoliday
+              final dot = isOff && dayActivities.isEmpty
                   ? AppColors.calendarOff
                   : dayActivities.isEmpty
                   ? null
@@ -101,7 +106,7 @@ class CalendarScreen extends ConsumerWidget {
               CalendarLegendItem(AppColors.calendarPlanned, 'Planned'),
               CalendarLegendItem(AppColors.calendarDone, 'Completed'),
               CalendarLegendItem(AppColors.calendarProblem, 'Missed'),
-              CalendarLegendItem(AppColors.calendarOff, 'Holiday'),
+              CalendarLegendItem(AppColors.calendarOff, 'Sunday / holiday'),
             ],
           ),
           const SizedBox(height: AppSpacing.section),

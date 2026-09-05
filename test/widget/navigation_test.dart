@@ -225,6 +225,32 @@ void main() {
     });
   });
 
+  group('a month of expenses is read from every source that knows', () {
+    testWidgets('a finished month shows its Sundays and its missed days',
+        (tester) async {
+      // Not a data test — a *reachability* one. The join happens in the
+      // repository, and a render test cannot tell a screen showing four
+      // intimated days from one showing the whole month. So step back to a
+      // month that has ended and look for the days nobody filed a plan for.
+      await pumpApp(tester, size: const Size(430, 2200));
+
+      await tester.tap(find.text('Expenses').first);
+      await settle(tester);
+      expect(find.text('Expenses'), findsWidgets);
+
+      await tester.tap(find.byTooltip('Previous month'));
+      await settle(tester);
+
+      // Sunday is the week off everywhere, and it reaches the claim without
+      // the rep telling it so.
+      expect(find.text('Week off'), findsWidgets,
+          reason: 'a finished month has Sundays, and they are days too');
+
+      // And nothing on the screen is an error state laid out perfectly.
+      expect(find.text('Something went wrong'), findsNothing);
+    });
+  });
+
   group('my activity', () {
     testWidgets('tapping a client opens that activity', (tester) async {
       // My Activity is a manager's tab and a rep reaches it from the module

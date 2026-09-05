@@ -549,6 +549,14 @@ class MockTravelRepository implements TravelRepository {
               p.date.month == month.month)
             p.date.day: p,
       },
+      // The company's calendar, resolved here rather than in the screen. A
+      // holiday is not a fact about one rep's month, and a screen that fetched
+      // it separately would be a second place for the answer to live.
+      holidays: {
+        for (final h in _store.seed.holidays)
+          if (h.date.year == month.year && h.date.month == month.month)
+            h.date.day: h.name,
+      },
     );
   }
 
@@ -691,39 +699,117 @@ class MockExpenseRepository implements ExpenseRepository {
     final id = employeeId ?? session.employee.id;
     bool inMonth(DateTime d) => d.year == month.year && d.month == month.month;
 
-    final plans = _store.dayPlans
-        .where((p) => p.employeeId == id && inMonth(p.date))
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final plans = {
+      for (final p in _store.dayPlans)
+        if (p.employeeId == id && inMonth(p.date)) p.date.day: p,
+    };
 
     final filed = _store.expenses.where(
       (e) => e.employeeId == id && inMonth(e.date),
     );
 
-    return [
-      for (final plan in plans)
+    // Everything else that knows what a day was. The claim used to see only
+    // the first of these, so a month was the days a rep had filed a plan for
+    // and the other twenty were simply not on the screen.
+    final holidays = {
+      for (final h in _store.seed.holidays)
+        if (inMonth(h.date)) h.date.day: h.name,
+    };
+    final leaves = _store.leaves.where(
+      (l) => l.employeeId == id && l.status == ApprovalStatus.approved,
+    );
+    final tour = {
+      for (final p in _store.travelPlans)
+        if (p.employeeId == id && inMonth(p.date)) p.date.day: p,
+    };
+
+    final today = _dateOnly(_store.seed.today);
+    final lastDay = DateTime(month.year, month.month + 1, 0).day;
+
+    final days = <ClaimDay>[];
+    for (var d = 1; d <= lastDay; d++) {
+      final date = DateTime(month.year, month.month, d);
+      // A day that has not happened cannot have been worked. Listing the rest
+      // of the month would put twenty "No day plan" rows under today's.
+      if (date.isAfter(today)) break;
+
+      final plan = plans[d];
+
+      // Today is not yet a day anyone missed. It has no day plan because the
+      // rep has not filed one *yet* — the day is still in front of him — and
+      // a row reading "No intimation filed" against today would be the app
+      // telling him at nine in the morning that he had already lost the day.
+      if (plan == null && _sameDay(date, today)) continue;
+
+      final calls = _store.activities
+          .where((a) =>
+              a.employeeId == id &&
+              a.status == ActivityStatus.completed &&
+              _sameDay(a.scheduledStart, date))
+          .length;
+
+      // Resolved in priority order, and the declaration wins.
+      //
+      // A rep who filed a day plan and worked a Sunday worked it: the day plan
+      // is what he said about *this* day, and everything below is what was
+      // expected of it. The order below is the same one attendance uses, so
+      // the two screens cannot disagree about what a date was.
+      final DayKind kind;
+      String? note;
+      if (plan != null) {
+        kind = switch (plan.workType) {
+          WorkType.leave => DayKind.leave,
+          WorkType.holiday => DayKind.holiday,
+          _ => DayKind.worked,
+        };
+      } else if (holidays.containsKey(d)) {
+        kind = DayKind.holiday;
+        note = holidays[d];
+      } else if (date.weekday == DateTime.sunday) {
+        kind = DayKind.weekOff;
+      } else {
+        final leave = leaves
+            .where((l) =>
+                !date.isBefore(_dateOnly(l.fromDate)) &&
+                !date.isAfter(_dateOnly(l.toDate)))
+            .firstOrNull;
+        if (leave != null) {
+          kind = DayKind.leave;
+          note = leave.type.label;
+        } else if (tour[d] != null &&
+            !tourDayNeedsDetail(tour[d]!.workType)) {
+          // Planned as leave or a holiday on the tour plan and never
+          // intimated. It is still not a day anyone owes him for.
+          kind = DayKind.leave;
+          note = 'Planned as ${tour[d]!.workType.label.toLowerCase()}';
+        } else {
+          kind = DayKind.notDeclared;
+        }
+      }
+
+      days.add(
         ClaimDay(
-          date: plan.date,
-          dayPlanId: plan.id,
-          workType: plan.workType,
+          date: date,
+          dayPlanId: plan?.id,
+          workType: plan?.workType ?? WorkType.fieldWork,
+          kind: kind,
+          note: note,
           // The cluster is the more useful of the two — an area is a whole
           // city, a cluster is where he actually was.
-          place: plan.clusterName ?? plan.areaName ?? '—',
-          allowance: ClaimDay.isClaimable(plan.workType)
-              ? MockStore.dailyAllowance
-              : 0,
+          place: plan?.clusterName ?? plan?.areaName ?? '—',
+          allowance: kind.earnsAllowance ? MockStore.dailyAllowance : 0,
           // Matched on the day plan, not on the date. A claim belongs to the
           // intimation it was filed against, and matching by date would
           // silently attach it to a second plan for the same day.
-          expenses: filed.where((e) => e.dayPlanId == plan.id).toList(),
-          calls: _store.activities
-              .where((a) =>
-                  a.employeeId == id &&
-                  a.status == ActivityStatus.completed &&
-                  _sameDay(a.scheduledStart, plan.date))
-              .length,
+          expenses: plan == null
+              ? const []
+              : filed.where((e) => e.dayPlanId == plan.id).toList(),
+          calls: calls,
         ),
-    ];
+      );
+    }
+
+    return days;
   }
 
   @override

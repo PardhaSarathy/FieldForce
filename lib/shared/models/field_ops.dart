@@ -220,22 +220,66 @@ class Expense {
 /// month object would give the app two places to disagree about what is
 /// planned.
 class TourMonth {
-  const TourMonth({required this.month, required this.plans});
+  const TourMonth({
+    required this.month,
+    required this.plans,
+    this.holidays = const {},
+  });
 
   final DateTime month;
 
   /// Keyed by day of the month.
   final Map<int, TravelPlan> plans;
 
+  /// Company holidays falling in this month, keyed by day.
+  ///
+  /// The company's own calendar, not the rep's — it comes from HR and is the
+  /// same list the holiday screen shows. Named, because "Independence Day" on
+  /// the 15th is the answer to why nothing is planned there.
+  final Map<int, String> holidays;
+
   int get totalDays => DateTime(month.year, month.month + 1, 0).day;
-  int get plannedDays => plans.length;
-  int get missingDays => totalDays - plannedDays;
+
+  /// A day nobody is expected to plan: a Sunday, or a company holiday.
+  ///
+  /// **Sunday is the week off, everywhere in this app.** It was not, and the
+  /// tour plan asked a rep to open four or five Sundays a month and tell it
+  /// what it already knew. A day that has one possible answer is not a
+  /// question. A rep who *does* work a Sunday — a camp, a conference — can
+  /// still tap it and say so; the default is what changed, not the freedom.
+  bool isOff(int day) =>
+      holidays.containsKey(day) ||
+      DateTime(month.year, month.month, day).weekday == DateTime.sunday;
+
+  String? holidayName(int day) => holidays[day];
+
+  /// The days that actually need an answer.
+  int get workingDays {
+    var n = 0;
+    for (var d = 1; d <= totalDays; d++) {
+      if (!isOff(d)) n++;
+    }
+    return n;
+  }
+
+  /// Working days with a plan on them. A Sunday the rep chose to work counts
+  /// as planned — it is a plan — but was never counted as missing.
+  int get plannedDays {
+    var n = 0;
+    for (final day in plans.keys) {
+      if (!isOff(day)) n++;
+    }
+    return n;
+  }
+
+  int get missingDays => workingDays - plannedDays;
 
   /// The whole month has to be planned before any of it can be sent.
   ///
   /// A tour plan submitted with gaps in it is a plan the manager cannot
   /// approve — the days nobody declared are exactly the days they would ask
-  /// about. Leave and holidays count: saying "I am not working" is a plan.
+  /// about. Leave counts: saying "I am not working that Tuesday" is a plan.
+  /// Sundays and company holidays do not, because nobody was asking.
   bool get isComplete => missingDays == 0;
 
   bool get isSubmitted =>
@@ -263,6 +307,38 @@ bool tourDayNeedsDetail(WorkType type) =>
 /// were filed for that date, exactly as a report is derived from the records
 /// beneath it — storing it would give the app two places to disagree about
 /// whether a day is claimed.
+/// What kind of day this was, resolved from everything that knows.
+///
+/// A month of expenses used to be a list of the days a rep filed a day plan
+/// for, and nothing else — so a Sunday, a company holiday, a week of approved
+/// leave and a day he simply forgot to intimate were all the same thing: not
+/// on the screen. The rep could not tell an unclaimable day from a missing
+/// one, which is the difference between "nothing owed" and "money lost".
+enum DayKind {
+  /// A day plan was filed and the work type earns the allowance.
+  worked('Worked'),
+
+  /// A company holiday, from HR's calendar. [ClaimDay.note] names it.
+  holiday('Holiday'),
+
+  /// Sunday — the week off, everywhere in this app.
+  weekOff('Week off'),
+
+  /// Approved leave, or a day declared as leave on the plan.
+  leave('Leave'),
+
+  /// An ordinary working day with no day plan against it. Nothing can be
+  /// claimed for it and nothing ever will be — which is exactly why it has to
+  /// be on the screen.
+  notDeclared('No day plan');
+
+  const DayKind(this.label);
+  final String label;
+
+  /// Only a worked day earns anything.
+  bool get earnsAllowance => this == DayKind.worked;
+}
+
 class ClaimDay {
   const ClaimDay({
     required this.date,
@@ -270,13 +346,30 @@ class ClaimDay {
     required this.workType,
     required this.place,
     required this.allowance,
+    // Required, with no default. [kind] and [workType] can otherwise be
+    // constructed disagreeing — a day carrying `WorkType.leave` that still
+    // says it was worked — and the one that decides whether money is owed
+    // would have been the one nobody passed.
+    required this.kind,
+    this.note,
     this.expenses = const [],
     this.calls = 0,
   });
 
   final DateTime date;
-  final String dayPlanId;
+
+  /// The intimation this day's claims hang off — null when there is none, and
+  /// then nothing can be filed against the day.
+  final String? dayPlanId;
+
   final WorkType workType;
+
+  /// Where the day came from, and why it can or cannot be claimed.
+  final DayKind kind;
+
+  /// The company holiday's name, or the reason on the leave request. The row
+  /// says it out loud rather than leaving the rep to work it out.
+  final String? note;
 
   /// Where the day was worked — the day plan's area, or its cluster.
   final String place;
@@ -299,7 +392,10 @@ class ClaimDay {
   static bool isClaimable(WorkType type) =>
       type != WorkType.leave && type != WorkType.holiday;
 
-  bool get claimable => isClaimable(workType);
+  /// A day earns the allowance only if it was worked *and* declared. The kind
+  /// carries both halves — there is no claimable day without a day plan, so
+  /// asking one question answers the other.
+  bool get claimable => kind.earnsAllowance && dayPlanId != null;
 
   double get claimed => expenses.fold(0, (sum, e) => sum + e.amount);
 

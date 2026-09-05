@@ -33,7 +33,7 @@ void main() {
       await repo.saveDay(day(1, WorkType.leave));
       var tour = await repo.month(session, month);
       expect(tour.planFor(1)!.workType, WorkType.leave);
-      expect(tour.plannedDays, 1);
+      expect(tour.plans.length, 1);
 
       // ...the rep plans other days...
       await repo.saveDay(day(2, WorkType.fieldWork, areaId: 'ar-1'));
@@ -44,7 +44,7 @@ void main() {
       tour = await repo.month(session, month);
       expect(tour.planFor(1)!.workType, WorkType.fieldWork,
           reason: 'the change must stick');
-      expect(tour.plannedDays, 2,
+      expect(tour.plans.length, 2,
           reason: 'editing a day must not leave a second record behind — the '
               'manager would have two answers for one date');
     });
@@ -62,7 +62,7 @@ void main() {
   group('the month goes in one piece', () {
     test('an incomplete month is refused, and nothing is sent', () async {
       final repo = MockTravelRepository();
-      await repo.saveDay(day(9, WorkType.fieldWork, areaId: 'ar-1'));
+      await repo.saveDay(day(10, WorkType.fieldWork, areaId: 'ar-1'));
 
       final tour = await repo.month(session, month);
       expect(tour.isComplete, isFalse);
@@ -71,7 +71,7 @@ void main() {
       expect(sent, 0, reason: 'a plan with gaps is one nobody can approve');
 
       final after = await repo.month(session, month);
-      expect(after.planFor(9)!.status, ApprovalStatus.draft,
+      expect(after.planFor(10)!.status, ApprovalStatus.draft,
           reason: 'a refused submit must leave every day as it was');
     });
 
@@ -111,7 +111,7 @@ void main() {
 
     test('a leave day still counts as planned', () {
       // Saying "I am not working" is an answer. If it did not count, a month
-      // with a holiday in it could never be completed.
+      // with leave in it could never be completed.
       final tour = TourMonth(
         month: DateTime(2031, 4),
         plans: {1: day(1, WorkType.leave)},
@@ -119,4 +119,69 @@ void main() {
       expect(tour.plannedDays, 1);
     });
   });
+
+  group('Sunday is the week off, and nobody plans it', () {
+    // March 2031 has five Sundays: the 2nd, 9th, 16th, 23rd and 30th.
+    test('Sundays are not days the rep has to answer for', () {
+      final march = TourMonth(month: _march, plans: {});
+      expect(march.totalDays, 31);
+      expect(march.workingDays, 26, reason: 'five Sundays are not questions');
+      expect(march.isOff(2), isTrue);
+      expect(march.isOff(3), isFalse);
+    });
+
+    test('a company holiday is off too, and says which one', () {
+      final march = TourMonth(
+        month: _march,
+        plans: const {},
+        holidays: const {17: 'Holi'},
+      );
+      expect(march.workingDays, 25);
+      expect(march.isOff(17), isTrue);
+      expect(march.holidayName(17), 'Holi');
+    });
+
+    test('a month is complete once every working day is answered', () {
+      final plans = <int, TravelPlan>{
+        for (var d = 1; d <= 31; d++)
+          if (DateTime(2031, 3, d).weekday != DateTime.sunday)
+            d: day(d, WorkType.fieldWork, areaId: 'ar-1'),
+      };
+      final tour = TourMonth(month: _march, plans: plans);
+
+      expect(tour.missingDays, 0);
+      expect(tour.isComplete, isTrue,
+          reason: 'the five Sundays were never his to fill');
+    });
+
+    test('working a Sunday is allowed, and is not counted as a working day',
+        () {
+      // The rep took the camp on the 2nd. It is a real plan and it goes with
+      // the month — but it must not make the month's denominator move, or
+      // "26 of 26" would become "27 of 26".
+      final tour = TourMonth(
+        month: _march,
+        plans: {2: day(2, WorkType.fieldWork, areaId: 'ar-1')},
+      );
+      expect(tour.workingDays, 26);
+      expect(tour.plannedDays, 0, reason: 'it was never one of the 26');
+      expect(tour.missingDays, 26);
+      expect(tour.plans.length, 1, reason: 'but the plan is real and saved');
+    });
+
+    test('the repository names the company holidays in the month', () async {
+      final repo = MockTravelRepository();
+      final hr = MockHrRepository();
+      final year = DateTime.now().year;
+      final holidays = await hr.holidays(year);
+      if (holidays.isEmpty) return;
+
+      final h = holidays.first;
+      final tour = await repo.month(session, DateTime(h.date.year, h.date.month));
+      expect(tour.holidayName(h.date.day), h.name);
+      expect(tour.isOff(h.date.day), isTrue);
+    });
+  });
 }
+
+final _march = DateTime(2031, 3);

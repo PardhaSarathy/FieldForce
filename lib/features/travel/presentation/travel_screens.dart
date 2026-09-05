@@ -184,7 +184,22 @@ class _TourCalendar extends ConsumerWidget {
       onNextMonth: () => step(1),
       dayOf: (day) {
         final plan = tour.planFor(day);
-        if (plan == null) return const CalendarDay();
+        final date = DateTime(month.year, month.month, day);
+
+        // A Sunday or a company holiday is already answered. It is drawn —
+        // orange, like every other non-working day in this app — rather than
+        // left blank, because a blank on a plan reads as *you have not done
+        // this yet*, and a rep counting four blanks against "22 of 26" would
+        // go looking for four days that were never his to fill. It stays
+        // tappable: working a Sunday is unusual, not forbidden.
+        if (plan == null) {
+          if (!tour.isOff(day)) return const CalendarDay();
+          return CalendarDay(
+            fill: AppColors.calendarOff.withValues(alpha: 0.12),
+            ink: AppColors.calendarOff,
+            onTap: () => context.push(Routes.tourPlanDay(date)),
+          );
+        }
 
         final ink = !tourDayNeedsDetail(plan.workType)
             ? AppColors.calendarOff
@@ -198,15 +213,12 @@ class _TourCalendar extends ConsumerWidget {
           fill: ink.withValues(alpha: 0.12),
           ink: ink,
           dot: ink,
-          onTap: () => context.push(
-            Routes.tourPlanDay(DateTime(month.year, month.month, day)),
-          ),
+          onTap: () => context.push(Routes.tourPlanDay(date)),
         );
       },
       legend: [
         const CalendarLegendItem(AppColors.calendarPlanned, 'Working'),
-        if (tour.plans.values.any((p) => !tourDayNeedsDetail(p.workType)))
-          const CalendarLegendItem(AppColors.calendarOff, 'Leave / holiday'),
+        const CalendarLegendItem(AppColors.calendarOff, 'Not working'),
         if (tour.plans.values.any((p) => p.status == ApprovalStatus.approved))
           const CalendarLegendItem(AppColors.calendarDone, 'Approved'),
         if (tour.plans.values.any((p) => p.status == ApprovalStatus.rejected))
@@ -216,7 +228,7 @@ class _TourCalendar extends ConsumerWidget {
         children: [
           Expanded(
             child: Text(
-              '${tour.plannedDays} of ${tour.totalDays} days planned',
+              '${tour.plannedDays} of ${tour.workingDays} working days planned',
               style: AppTypography.bodySm.copyWith(
                 color: AppColors.textPrimary,
               ),
@@ -454,15 +466,19 @@ class TravelDetailScreen extends ConsumerWidget {
 ///
 /// By date, not by record id: the screen exists before the record does — the
 /// whole point is planning a day nothing has been saved against yet.
+/// The day's month, not just the day's plan.
+///
+/// The screen needs both: what was saved for this date, and whether the date
+/// is one the company works at all. Fetching the month twice — once for the
+/// plan, once to ask about Sundays — would be two answers to one question.
 final tourPlanDayProvider =
-    FutureProvider.autoDispose.family<TravelPlan?, DateTime>((ref, date) async {
+    FutureProvider.autoDispose.family<TourMonth, DateTime>((ref, date) async {
   final session = ref.watch(sessionProvider);
   ref.watch(dataRevisionProvider);
 
-  final tour = await ref
+  return ref
       .watch(travelRepositoryProvider)
       .month(session, DateTime(date.year, date.month));
-  return tour.planFor(date.day);
 });
 
 /// One day of the tour plan.
@@ -509,10 +525,18 @@ class _TourPlanDayScreenState extends ConsumerState<TourPlanDayScreen> {
     super.dispose();
   }
 
-  void _seed(TravelPlan? plan) {
+  void _seed(TravelPlan? plan, TourMonth tour) {
     if (_seeded) return;
     _seeded = true;
-    if (plan == null) return;
+
+    if (plan == null) {
+      // A Sunday or a company holiday opens already answered. The rep can
+      // still change it — someone does work the odd Sunday — but the default
+      // is the truth, and a form that opens on "Field Work" for 15 August is
+      // a form asking a question it knows the answer to.
+      if (tour.isOff(widget.date.day)) _workType = WorkType.holiday;
+      return;
+    }
 
     _workType = plan.workType;
     _remarks.text = plan.remarks ?? '';
@@ -565,14 +589,16 @@ class _TourPlanDayScreenState extends ConsumerState<TourPlanDayScreen> {
         error: (_, _) => ErrorState(
           onRetry: () => ref.invalidate(tourPlanDayProvider(widget.date)),
         ),
-        data: (plan) {
-          _seed(plan);
+        data: (tour) {
+          final plan = tour.planFor(widget.date.day);
+          _seed(plan, tour);
           final locked = plan != null && plan.status != ApprovalStatus.draft;
-          return _buildForm(plan, locked: locked);
+          return _buildForm(plan, tour, locked: locked);
         },
       ),
       bottomNavigationBar: async.maybeWhen(
-        data: (plan) {
+        data: (tour) {
+          final plan = tour.planFor(widget.date.day);
           if (plan != null && plan.status != ApprovalStatus.draft) {
             return null;
           }
@@ -595,7 +621,7 @@ class _TourPlanDayScreenState extends ConsumerState<TourPlanDayScreen> {
     );
   }
 
-  Widget _buildForm(TravelPlan? plan, {required bool locked}) {
+  Widget _buildForm(TravelPlan? plan, TourMonth tour, {required bool locked}) {
     final areasAsync = ref.watch(_travelAreasProvider);
     final territoriesAsync = ref.watch(_travelTerritoriesProvider);
     final clientsAsync = ref.watch(_travelClientsProvider);
@@ -629,6 +655,36 @@ class _TourPlanDayScreenState extends ConsumerState<TourPlanDayScreen> {
                       child: Text(
                         'This month is with your manager. A change from here '
                         'is a deviation — record it on the day plan.',
+                        style: AppTypography.bodySm,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          if (!locked && plan == null && tour.isOff(widget.date.day))
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+              child: AppCard(
+                color: AppColors.surfaceSecondary,
+                borderColor: Colors.transparent,
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.beach_access_outlined,
+                      size: AppSizes.iconMd,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        tour.holidayName(widget.date.day) != null
+                            ? '${tour.holidayName(widget.date.day)} — a '
+                                'company holiday. Nothing to plan unless you '
+                                'are working it.'
+                            : 'Sunday. Nothing to plan unless you are '
+                                'working it.',
                         style: AppTypography.bodySm,
                       ),
                     ),

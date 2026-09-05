@@ -205,6 +205,33 @@ that is expensive to unwind later.
   is one answer to "can this be claimed" whichever screen asks. Leave and
   holidays are never claimable; `ClaimDay.isClaimable` is the single edit when
   the client rules on whether Meeting and Training days earn the allowance.
+- **A month is read from everything that knows about it, and it comes back
+  whole.** `claimMonth` returned only the days a rep had filed a plan for, so
+  a Sunday, a company holiday, a week of approved leave and a day he simply
+  forgot to intimate were the same thing on screen: absent. Only the last of
+  those is money lost, and it was the one the rep could not see. Every day up
+  to today now comes back carrying a `DayKind`, resolved in one place and in
+  this order: **the day plan wins** (a declared Sunday was worked), then the
+  company holiday calendar, then Sunday, then approved HR leave, then a tour
+  plan that says leave — and a working day with none of those is
+  `notDeclared`, drawn in the same red attendance uses for an absence.
+  Attendance resolves a date the same way, in the same order, so the two
+  screens cannot disagree about what a day was.
+  - **Today is never a missed day.** It has no day plan because the rep has
+    not filed one *yet*; a row reading "No intimation filed" against today is
+    the app telling him at nine in the morning that he has already lost the
+    day. It is left out until it is declared. Same reasoning as `TierBadge`:
+    a day half done is a position, not a warning.
+  - `kind` is **required** on `ClaimDay`. With a default it could be
+    constructed disagreeing with `workType` — a leave day still claiming to
+    have been worked — and the field deciding whether money is owed would be
+    the one nobody passed.
+- **Sunday is the week off, everywhere.** The tour plan asked a rep to open
+  five Sundays a month and tell it what it already knew; a day with one
+  possible answer is not a question. `TourMonth.workingDays` excludes Sundays
+  and company holidays, and `isComplete` is measured against that — the five
+  Sundays were never his to fill. Working one is still allowed: tapping it
+  saves a real plan, and it does not move the denominator.
 - **The allowance is flat, and it is per *day*.** ₹250 a worked day whatever
   the distance, so the ordinary day is a confirmation rather than a
   calculation. Territory explains an excess; it never prices one — an earlier
