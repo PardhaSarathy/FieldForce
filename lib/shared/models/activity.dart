@@ -90,6 +90,7 @@ class Activity {
     this.attachmentPaths = const [],
     this.syncStatus = SyncStatus.synced,
     this.dayPlanId,
+    this.isUnplanned = false,
     this.createdAt,
     this.updatedAt,
   });
@@ -149,6 +150,19 @@ class Activity {
 
   final SyncStatus syncStatus;
   final String? dayPlanId;
+
+  /// A call the rep added on the day, rather than one that came off a plan.
+  ///
+  /// **Origin, not status.** A visit can be unplanned *and* completed — the
+  /// two answer different questions, and folding this into [ActivityStatus]
+  /// would erase it the moment the call was made, which is exactly when a
+  /// manager starts asking about it.
+  ///
+  /// It is set by Add New Activity and nowhere else: that screen exists for
+  /// the call a rep makes because he happened to be passing, which is why it
+  /// stopped asking for a date.
+  final bool isUnplanned;
+
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -231,6 +245,7 @@ class Activity {
       inputsGiven: inputsGiven ?? this.inputsGiven,
       pobAmount: pobAmount ?? this.pobAmount,
       dayPlanId: dayPlanId,
+      isUnplanned: isUnplanned,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
     );

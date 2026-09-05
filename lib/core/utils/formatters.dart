@@ -41,6 +41,7 @@ abstract final class Fmt {
   static final _weekdayShort = DateFormat('EEE');
   static final _monthYear = DateFormat('MMMM yyyy');
   static final _monthName = DateFormat('MMMM');
+  static final _slashDate = DateFormat('dd/MM/yyyy');
   static final _monthShort = DateFormat('MMM');
   static final _time = DateFormat('h:mm a');
   static final _dateTime = DateFormat('d MMM yyyy, h:mm a');
@@ -74,6 +75,10 @@ abstract final class Fmt {
 
   /// The month on its own, for a sentence that already sits in one.
   static String monthName(DateTime d) => _monthName.format(d);
+
+  /// `05/09/2026` — for an exported sheet, where Excel reads this as a date
+  /// and `5 Sep 2026` as text.
+  static String slashDate(DateTime d) => _slashDate.format(d);
   static String monthShort(DateTime d) => _monthShort.format(d);
   static String time(DateTime d) => _time.format(d);
   static String dateTime(DateTime d) => _dateTime.format(d);

@@ -25,10 +25,10 @@ import 'package:pharmaconnect/features/business/presentation/business_screens.da
 import 'package:pharmaconnect/features/business/presentation/order_screens.dart';
 import 'package:pharmaconnect/features/clients/presentation/client_screens.dart';
 import 'package:pharmaconnect/features/communication/presentation/communication_screens.dart';
-import 'package:pharmaconnect/features/day_plan/presentation/day_plan_screens.dart';
 import 'package:pharmaconnect/features/day_plan/presentation/my_day_plan_screen.dart';
 import 'package:pharmaconnect/features/expenses/presentation/claim_screens.dart';
 import 'package:pharmaconnect/features/expenses/presentation/expense_screens.dart';
+import 'package:pharmaconnect/features/export/presentation/export_screen.dart';
 import 'package:pharmaconnect/features/home/presentation/home_screen.dart';
 import 'package:pharmaconnect/features/hr/presentation/hr_screens.dart';
 import 'package:pharmaconnect/features/manager/presentation/assignment_screens.dart';
@@ -463,8 +463,12 @@ void main() {
       await pumpScreen(tester, const PayslipsScreen());
     });
 
-    testWidgets('Calendar', (tester) async {
-      await pumpScreen(tester, const CalendarScreen());
+    testWidgets('Export data', (tester) async {
+      await pumpScreen(tester, const ExportScreen());
+    });
+
+    testWidgets('To-Do calendar', (tester) async {
+      await pumpScreen(tester, const TaskCalendarScreen());
     });
 
     testWidgets('Chat list', (tester) async {
@@ -903,9 +907,10 @@ void main() {
 
       // Field-operations group is at the top of the menu.
       expect(find.text('FIELD OPERATIONS'), findsOneWidget);
-      // 'Calendar' is unique to the menu — 'My Day Plan', 'Clients',
-      // 'To-Do' and 'Expenses' all appear on Home's grid as well.
-      expect(find.text('Calendar'), findsOneWidget);
+      // The menu no longer carries a Calendar of its own: the one calendar
+      // left is the To-Do list's, reached from inside it.
+      expect(find.text('Calendar'), findsNothing);
+      expect(find.text('To-Do'), findsWidgets);
       // Logout is pinned outside the scrolling list.
       expect(find.text('Logout'), findsOneWidget);
 
@@ -975,7 +980,8 @@ void main() {
       ('Payslips', const PayslipsScreen(), 'MR1001'),
       ('Documents', const DocumentsScreen(), 'MR1001'),
       ('Holidays', const HolidaysScreen(), 'MR1001'),
-      ('Calendar', const CalendarScreen(), 'MR1001'),
+      ('Export data', const ExportScreen(), 'MR1001'),
+      ('To-Do calendar', const TaskCalendarScreen(), 'MR1001'),
       ('Chat list', const ChatListScreen(), 'MR1001'),
       ('Resources', const ResourceListScreen(), 'MR1001'),
       ('Surveys', const SurveyListScreen(), 'MR1001'),

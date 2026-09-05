@@ -98,8 +98,15 @@ abstract final class Routes {
   static const payslips = '/hr/payslips';
   static const documents = '/hr/documents';
 
-  // calendar
-  static const calendar = '/calendar';
+  /// The four sheets the office asks for, built from what the rep has filed.
+  static const exportData = '/export';
+
+  /// A month of the rep's own to-dos, reached from the To-Do list.
+  ///
+  /// It was `/calendar`, a general month of *activities* — which is My
+  /// Activity, with its own date strip, one tap away. A to-do is the only
+  /// personal thing in this app; its calendar shows to-dos and nothing else.
+  static const taskCalendar = '/tasks/calendar';
 
   // chat
   static const chat = '/chat';

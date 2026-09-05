@@ -13,6 +13,8 @@ import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/business.dart';
 import '../../../shared/models/engagement.dart';
 import '../../../shared/models/organization.dart';
+import '../../../shared/widgets/month_calendar.dart';
+import '../../../core/theme/app_motion.dart';
 import '../../../shared/widgets/motion.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
@@ -616,7 +618,7 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
           IconButton(
             tooltip: 'Calendar',
             icon: const Icon(Icons.calendar_month_outlined),
-            onPressed: () => context.push(Routes.calendar),
+            onPressed: () => context.push(Routes.taskCalendar),
           ),
           const SizedBox(width: AppSpacing.xs),
         ],
@@ -693,6 +695,140 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ========================================================= to-do calendar ==
+
+final _taskCalendarMonthProvider = StateProvider.autoDispose<DateTime>(
+  (ref) => DateTime(DateTime.now().year, DateTime.now().month),
+);
+
+final _taskCalendarDayProvider = StateProvider.autoDispose<DateTime>(
+  (ref) => DateTime.now(),
+);
+
+/// A month of the rep's own to-dos.
+///
+/// This screen used to be a general Calendar: a month of *activities* with the
+/// day's agenda under it — which is My Activity, a tap away, with its own date
+/// strip. Two screens answering "what am I doing on the 12th" is one screen
+/// too many, and neither of them was the calendar the To-Do list actually
+/// wanted. A to-do is the one thing here nobody else can see: personal, no
+/// approval, no scope — so the calendar behind it carries to-dos and nothing
+/// else.
+class TaskCalendarScreen extends ConsumerWidget {
+  const TaskCalendarScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final month = ref.watch(_taskCalendarMonthProvider);
+    final selected = ref.watch(_taskCalendarDayProvider);
+    final async = ref.watch(_tasksProvider);
+    final session = ref.watch(sessionProvider);
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('To-Do Calendar')),
+      body: async.when(
+        loading: () => const LoadingState(message: 'Loading your to-dos'),
+        error: (_, _) => ErrorState(onRetry: () => ref.invalidate(_tasksProvider)),
+        data: (tasks) {
+          bool onDay(FieldTask t, DateTime d) =>
+              t.dueDate.year == d.year &&
+              t.dueDate.month == d.month &&
+              t.dueDate.day == d.day;
+
+          final today = tasks.where((t) => onDay(t, selected)).toList()
+            ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenH,
+              0,
+              AppSpacing.screenH,
+              AppSpacing.xxxl * 3,
+            ),
+            children: [
+              Arrive(
+                child: MonthCalendar(
+                  month: month,
+                  selected: selected,
+                  onPreviousMonth: () =>
+                      ref.read(_taskCalendarMonthProvider.notifier).state =
+                          DateTime(month.year, month.month - 1),
+                  onNextMonth: () =>
+                      ref.read(_taskCalendarMonthProvider.notifier).state =
+                          DateTime(month.year, month.month + 1),
+                  dayOf: (day) {
+                    final date = DateTime(month.year, month.month, day);
+                    final due = tasks.where((t) => onDay(t, date)).toList();
+                    if (due.isEmpty) return const CalendarDay();
+
+                    // The same four colours every calendar here uses. Red is
+                    // overdue, which is the only one a rep has to act on
+                    // today; green is a day already cleared.
+                    final ink = due.any(
+                            (t) => t.effectiveStatus() == TaskStatus.overdue)
+                        ? AppColors.calendarProblem
+                        : due.every((t) =>
+                                t.effectiveStatus() == TaskStatus.completed)
+                            ? AppColors.calendarDone
+                            : AppColors.calendarPlanned;
+
+                    return CalendarDay(
+                      fill: ink.withValues(alpha: 0.12),
+                      ink: ink,
+                      dot: ink,
+                      onTap: () => ref
+                          .read(_taskCalendarDayProvider.notifier)
+                          .state = date,
+                    );
+                  },
+                  legend: const [
+                    CalendarLegendItem(AppColors.calendarPlanned, 'To do'),
+                    CalendarLegendItem(AppColors.calendarDone, 'Done'),
+                    CalendarLegendItem(AppColors.calendarProblem, 'Overdue'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.section),
+              SectionHeader(title: Fmt.relativeDay(selected)),
+              if (today.isEmpty)
+                Arrive(
+                  delay: AppMotion.staggerFor(1),
+                  child: AppCard(
+                    child: EmptyState(
+                      compact: true,
+                      icon: Icons.check_circle_outline,
+                      title: 'Nothing due',
+                      message: 'Tap a date with a mark on it, or add a to-do '
+                          'from the list.',
+                    ),
+                  ),
+                )
+              else
+                for (var i = 0; i < today.length; i++) ...[
+                  if (i > 0) const SizedBox(height: AppSpacing.cardGap),
+                  Arrive.staggered(
+                    index: i + 1,
+                    child: _TaskCard(
+                      task: today[i],
+                      showAssignee: session.isManager,
+                      onComplete: () async {
+                        await ref
+                            .read(taskRepositoryProvider)
+                            .updateStatus(today[i].id, TaskStatus.completed);
+                        ref.bumpRevision();
+                      },
+                    ),
+                  ),
+                ],
+            ],
+          );
+        },
       ),
     );
   }

@@ -36,7 +36,6 @@ class MoreScreen extends ConsumerWidget {
           (Icons.map_outlined, 'Tour Plan', Routes.travelPlans),
           (Icons.receipt_long_outlined, 'Expenses', Routes.expenses),
           (Icons.people_outline, 'Clients', Routes.clients),
-          (Icons.calendar_month_outlined, 'Calendar', Routes.calendar),
           (Icons.assignment_outlined, 'To-Do', Routes.tasks),
         ],
       ),

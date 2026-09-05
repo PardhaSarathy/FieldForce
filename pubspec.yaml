@@ -44,6 +44,10 @@ dependencies:
   uuid: ^4.6.0
   collection: ^1.19.1
   equatable: ^2.1.0
+  # Hands the generated sheet to whatever the phone uses to move a file —
+  # mail, WhatsApp, Drive. Without it "Export" is a button that builds a file
+  # nobody can reach, which is a dead control with extra steps.
+  share_plus: ^13.3.0
 
 dev_dependencies:
   flutter_test:

@@ -478,10 +478,12 @@ class _QuickAddButton extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
       child: Tooltip(
-        // "Add", not "Quick actions". The button adds things; naming it after
-        // the pattern it is built from is the same tell that got the heading
-        // taken off Home's module grid.
-        message: 'Add',
+        // Named for what it does, which now differs by role: a manager's
+        // button adds things, a rep's exports them. Naming it after the
+        // pattern it is built from — "Quick actions" — is the same tell that
+        // got the heading taken off Home's module grid, and a `+` that opens
+        // Export Data would be the same lie one glyph further on.
+        message: isManager ? 'Add' : 'Export',
         child: DecoratedBox(
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
@@ -505,10 +507,14 @@ class _QuickAddButton extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: () => _showQuickActions(context, isManager: isManager),
-              child: const SizedBox(
+              child: SizedBox(
                 width: 46,
                 height: 46,
-                child: Icon(Icons.add, size: 24, color: AppColors.textOnBrand),
+                child: Icon(
+                  isManager ? Icons.add : Icons.ios_share_outlined,
+                  size: 24,
+                  color: AppColors.textOnBrand,
+                ),
               ),
             ),
           ),
@@ -519,35 +525,26 @@ class _QuickAddButton extends StatelessWidget {
 }
 
 void _showQuickActions(BuildContext context, {required bool isManager}) {
+  // A rep's centre button is Export.
+  //
+  // It was a sheet of four shortcuts — Add activity, New client, New order,
+  // Tour plan — and every one of them is a tap away on the screen it belongs
+  // to: My Activity's own button, the Clients list, Orders, and Home's grid.
+  // The sheet was a second door onto four rooms that already had one.
+  //
+  // What had no door at all was the thing the office asks for every month:
+  // the four sheets. So the button goes straight to Export Data rather than
+  // opening a menu with one useful item in it.
+  //
+  // A manager's button is untouched — assigning work and setting targets are
+  // theirs, and neither is reachable from a rep's bar.
+  if (!isManager) {
+    context.push(Routes.exportData);
+    return;
+  }
+
   final actions = <(IconData, String, String, String)>[
-    if (!isManager) ...[
-      (
-        Icons.event_available_outlined,
-        'Add activity',
-        'Log or plan a client visit',
-        Routes.addActivity,
-      ),
-      (
-        Icons.person_add_alt_outlined,
-        'New client',
-        'Register a doctor, hospital or chemist',
-        Routes.newClient,
-      ),
-      (
-        Icons.shopping_bag_outlined,
-        'New order',
-        'Capture an order for a client',
-        Routes.newOrder,
-      ),
-      // Lands on the month, not a blank day. A tour plan is submitted whole,
-      // so "add" starts with the calendar showing which days are still empty.
-      (
-        Icons.map_outlined,
-        'Tour plan',
-        'Plan next month',
-        Routes.travelPlans,
-      ),
-    ] else ...[
+    ...[
       (
         Icons.assignment_outlined,
         'Assign task',

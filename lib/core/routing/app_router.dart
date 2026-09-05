@@ -14,10 +14,10 @@ import '../../features/business/presentation/business_screens.dart';
 import '../../features/business/presentation/order_screens.dart';
 import '../../features/clients/presentation/client_screens.dart';
 import '../../features/communication/presentation/communication_screens.dart';
-import '../../features/day_plan/presentation/day_plan_screens.dart';
 import '../../features/day_plan/presentation/my_day_plan_screen.dart';
 import '../../features/expenses/presentation/claim_screens.dart';
 import '../../features/expenses/presentation/expense_screens.dart';
+import '../../features/export/presentation/export_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
 import '../../features/hr/presentation/hr_screens.dart';
 import '../../features/manager/presentation/assignment_screens.dart';
@@ -322,7 +322,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.payslips, builder: (_, _) => const PayslipsScreen()),
       GoRoute(path: Routes.documents, builder: (_, _) => const DocumentsScreen()),
 
-      GoRoute(path: Routes.calendar, builder: (_, _) => const CalendarScreen()),
+      GoRoute(
+        path: Routes.exportData,
+        builder: (_, _) => const ExportScreen(),
+      ),
+      GoRoute(
+        path: Routes.taskCalendar,
+        builder: (_, _) => const TaskCalendarScreen(),
+      ),
 
       // Chat and Resources themselves are shell branches; their detail screens
       // are pushed above the shell so they own the whole viewport.

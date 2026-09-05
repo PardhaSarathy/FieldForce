@@ -507,6 +507,10 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
       // Planned, not completed. Nothing has happened yet — the visit flow is
       // what turns it into a record of a call.
       status: ActivityStatus.upcoming,
+      // Added on the day, off any plan. This screen only ever creates these —
+      // the planned calls come from the day's schedule — and it is the reason
+      // the form has no date on it.
+      isUnplanned: true,
       workType: WorkType.fieldWork,
       purpose: _purpose,
       contactPerson: client.contactPerson,

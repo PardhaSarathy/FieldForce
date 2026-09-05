@@ -229,10 +229,31 @@ class StatusBadge extends StatelessWidget {
       tone = status.tone,
       icon = null;
 
-  StatusBadge.activity(ActivityStatus status, {super.key, this.dense = false})
-    : label = status.label,
-      tone = status.tone,
-      icon = null;
+  /// The badge on an activity: its **origin** while the call is still ahead,
+  /// its **outcome** once it has happened.
+  ///
+  /// Before the call, "did I plan this?" is the useful fact. "Upcoming" is
+  /// not — every open call is upcoming, so the word separated nothing from
+  /// anything, and it read as a second name for Planned. The status still
+  /// exists underneath (it is how the day's *next* call is found), it just
+  /// has nothing to say on a badge. Afterwards the question changes to
+  /// whether it happened, and the outcome answers it.
+  ///
+  /// In Progress is the exception and keeps its own word: a call being made
+  /// right now is neither an origin nor an outcome.
+  ///
+  /// One badge either way. A card carrying both squeezes the pair until one
+  /// ellipsises, which is what a client row already taught this app.
+  StatusBadge.activity(
+    ActivityStatus status, {
+    super.key,
+    bool isUnplanned = false,
+    this.dense = false,
+  }) : label = status.isOpen && status != ActivityStatus.inProgress
+           ? (isUnplanned ? 'Unplanned' : 'Planned')
+           : status.label,
+       tone = status.tone,
+       icon = null;
 
   StatusBadge.sync(SyncStatus status, {super.key, this.dense = false})
     : label = status.label,

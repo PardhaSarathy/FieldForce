@@ -4,6 +4,7 @@ import '../../shared/models/activity.dart';
 import '../../shared/models/business.dart';
 import '../../shared/models/client.dart';
 import '../../shared/models/engagement.dart';
+import '../../shared/models/export.dart';
 import '../../shared/models/field_ops.dart';
 import '../../shared/models/organization.dart';
 
@@ -208,6 +209,16 @@ abstract interface class TaskRepository {
   Future<List<FieldTask>> list(Session session, {String? employeeId, TaskStatus? status});
   Future<FieldTask> create(FieldTask task);
   Future<FieldTask> updateStatus(String id, TaskStatus status);
+}
+
+/// Builds the four sheets the office asks for (§ export).
+///
+/// One method, not four: every sheet is the same act — take a month of records
+/// this rep already has and lay them out — and four near-identical signatures
+/// would be four places to forget a parameter.
+abstract interface class ExportRepository {
+  /// [month] is ignored for [ExportKind.clients], which is the whole list.
+  Future<ExportSheet> build(Session session, ExportKind kind, DateTime month);
 }
 
 abstract interface class NotificationRepository {

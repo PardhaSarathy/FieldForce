@@ -65,11 +65,6 @@ class AppDrawer extends ConsumerWidget {
                   route: Routes.expenses,
                 ),
                 (
-                  icon: Icons.calendar_month_outlined,
-                  label: 'Calendar',
-                  route: Routes.calendar,
-                ),
-                (
                   icon: Icons.assignment_outlined,
                   label: 'To-Do',
                   route: Routes.tasks,

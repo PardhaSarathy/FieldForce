@@ -129,7 +129,11 @@ class _Body extends StatelessWidget {
                       ],
                     ),
                   ),
-                  StatusBadge.activity(activity.status, dense: true),
+                  StatusBadge.activity(
+                    activity.status,
+                    isUnplanned: activity.isUnplanned,
+                    dense: true,
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.md),

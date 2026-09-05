@@ -31,6 +31,8 @@ final travelRepositoryProvider =
 final expenseRepositoryProvider =
     Provider<ExpenseRepository>((ref) => MockExpenseRepository());
 final hrRepositoryProvider = Provider<HrRepository>((ref) => MockHrRepository());
+final exportRepositoryProvider =
+    Provider<ExportRepository>((ref) => MockExportRepository());
 final businessRepositoryProvider =
     Provider<BusinessRepository>((ref) => MockBusinessRepository());
 final approvalRepositoryProvider =

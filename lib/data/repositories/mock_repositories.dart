@@ -6,6 +6,7 @@ import '../../shared/models/activity.dart';
 import '../../shared/models/business.dart';
 import '../../shared/models/client.dart';
 import '../../shared/models/engagement.dart';
+import '../../shared/models/export.dart';
 import '../../shared/models/field_ops.dart';
 import '../../shared/models/organization.dart';
 import '../mock/mock_dataset.dart';
@@ -722,6 +723,15 @@ class MockExpenseRepository implements ExpenseRepository {
       for (final p in _store.travelPlans)
         if (p.employeeId == id && inMonth(p.date)) p.date.day: p,
     };
+
+    // A month with nothing in it at all is not a month of missed days.
+    //
+    // The synthesised days exist to give a *worked* month its context — the
+    // Sundays, the holidays, the one Tuesday nobody intimated. A month before
+    // the rep joined has none of that to contextualise, and filling it with
+    // thirty "No day plan" rows would paint a red calendar and export a sheet
+    // of nothing.
+    if (plans.isEmpty && filed.isEmpty) return const [];
 
     final today = _dateOnly(_store.seed.today);
     final lastDay = DateTime(month.year, month.month + 1, 0).day;
@@ -1462,3 +1472,267 @@ double stableJitter(String seed, double min, double max) {
 
 /// Kept so callers can generate ids without importing uuid everywhere.
 String newId() => _uuid.v4();
+
+// ================================================================ export ==
+
+/// Builds the four sheets from records this rep already has.
+///
+/// Derived, never stored — the same rule reports follow. A sheet is a view of
+/// the transactional records at the moment it is asked for, so it cannot go
+/// stale and there is nothing to keep in step.
+///
+/// Two of the client's columns are deliberately absent. **Joint work** was
+/// removed from this app outright — the field, both pickers and both display
+/// rows — because "who rode along" turned out to be nobody's question, and
+/// printing a column of "No" would be inventing data to fill a shape. The
+/// client list's **Unlisted** column is the negation of its **Listed** column
+/// beside it; one of them is the answer.
+class MockExportRepository implements ExportRepository {
+  final _store = MockStore.instance;
+  final _expenses = MockExpenseRepository();
+  final _travel = MockTravelRepository();
+  final _clients = MockClientRepository();
+
+  @override
+  Future<ExportSheet> build(
+    Session session,
+    ExportKind kind,
+    DateTime month,
+  ) async {
+    final rows = switch (kind) {
+      ExportKind.expenses => await _expensesRows(session, month),
+      ExportKind.tourPlan => await _tourRows(session, month),
+      ExportKind.dcr => await _dcrRows(session, month),
+      ExportKind.clients => await _clientRows(session),
+    };
+
+    final stamp = kind.isMonthly
+        ? '${month.year}-${_two(month.month)}'
+        : _isoDay(_store.seed.today);
+
+    return ExportSheet(
+      kind: kind,
+      fileName:
+          '${kind.label.replaceAll(' ', '-')}_${session.employee.employeeCode}'
+          '_$stamp.csv',
+      rows: [..._heading(session, kind), ...rows],
+    );
+  }
+
+  static String _two(int n) => n.toString().padLeft(2, '0');
+  static String _isoDay(DateTime d) =>
+      '${d.year}-${_two(d.month)}-${_two(d.day)}';
+
+  /// The block at the top of every one of the client's sheets.
+  List<List<String>> _heading(Session session, ExportKind kind) {
+    final e = session.employee;
+    return [
+      [kind.title],
+      ['Name', e.name],
+      ['Emp Code', e.employeeCode],
+      ['Designation', e.designation],
+      ['Area', e.areaName ?? e.headquarters],
+      [],
+    ];
+  }
+
+  /// The word that stands in for a station on a day nobody worked.
+  ///
+  /// The client's sheets write SUNDAY, HOLIDAY or LEAVE straight into the
+  /// station column with zeroes beside it, and this app already resolves
+  /// exactly those three — [DayKind] — from the day plan, the holiday
+  /// calendar, the week, HR's approved leave and the tour plan, in that order.
+  static String? _offLabel(DayKind kind) => switch (kind) {
+    DayKind.weekOff => 'SUNDAY',
+    DayKind.holiday => 'HOLIDAY',
+    DayKind.leave => 'LEAVE',
+    DayKind.notDeclared => 'NOT DECLARED',
+    DayKind.worked => null,
+  };
+
+  /// Who signed it off, from the append-only approval history.
+  static String _approver(List<ApprovalEvent> history) {
+    for (final e in history.reversed) {
+      if (e.status == ApprovalStatus.approved ||
+          e.status == ApprovalStatus.rejected) {
+        return e.actorName;
+      }
+    }
+    return '—';
+  }
+
+  Future<List<List<String>>> _expensesRows(
+    Session session,
+    DateTime month,
+  ) async {
+    final days = await _expenses.claimMonth(session, month);
+    final rows = <List<String>>[
+      [
+        'Date',
+        'Station',
+        'Out of territory',
+        'Place',
+        'Amount',
+        'Status',
+        'Approved By',
+      ],
+    ];
+
+    for (final d in days) {
+      final off = _offLabel(d.kind);
+      if (off != null) {
+        rows.add([exportDate(d.date), off, '0', '0', '0', '', '']);
+        continue;
+      }
+
+      final out = d.expenses
+          .where((e) => e.scope == ClaimScope.outOfTerritory)
+          .firstOrNull;
+      rows.add([
+        exportDate(d.date),
+        d.place,
+        out == null ? 'No' : 'Yes',
+        out?.place ?? 'NA',
+        d.claimed.toStringAsFixed(0),
+        d.status?.label ?? 'Not claimed',
+        _approver([for (final e in d.expenses) ...e.approvalHistory]),
+      ]);
+    }
+    return rows;
+  }
+
+  Future<List<List<String>>> _tourRows(Session session, DateTime month) async {
+    final tour = await _travel.month(session, month);
+    final total = DateTime(month.year, month.month + 1, 0).day;
+
+    final rows = <List<String>>[
+      [
+        'Date',
+        'Station',
+        'Planned Clients',
+        'Client List',
+        'Status',
+        'Approved By',
+      ],
+    ];
+
+    for (var d = 1; d <= total; d++) {
+      final date = DateTime(month.year, month.month, d);
+      final plan = tour.planFor(d);
+
+      // A plan the rep filed outranks the calendar, exactly as it does on the
+      // claim: a declared Sunday was worked.
+      if (plan == null || !tourDayNeedsDetail(plan.workType)) {
+        final off = plan != null
+            ? (plan.workType == WorkType.leave ? 'LEAVE' : 'HOLIDAY')
+            : tour.holidayName(d) != null
+            ? 'HOLIDAY'
+            : date.weekday == DateTime.sunday
+            ? 'SUNDAY'
+            : 'NOT PLANNED';
+        rows.add([exportDate(date), off, '0', '0', '', '']);
+        continue;
+      }
+
+      rows.add([
+        exportDate(date),
+        plan.areaName ?? plan.territoryName ?? '—',
+        // The count is what the rep planned; the names are the ones he wrote
+        // down. They differ — a rep plans a round of ten and names the four
+        // that matter — so the sheet prints both rather than deriving one
+        // from the other and quietly disagreeing with the app.
+        '${plan.plannedVisits}',
+        plan.clientNames.isEmpty ? 'NA' : plan.clientNames.join('; '),
+        plan.status.label,
+        _approver(plan.approvalHistory),
+      ]);
+    }
+    return rows;
+  }
+
+  Future<List<List<String>>> _dcrRows(Session session, DateTime month) async {
+    // The claim month is the one place that already answers "what kind of day
+    // was this" for every date, so the DCR is read from it rather than from a
+    // second walk over the day plans that could disagree with the first.
+    final days = await _expenses.claimMonth(session, month);
+    final clients = await _clients.list(session);
+    final listing = {for (final c in clients) c.id: c.listing};
+
+    final rows = <List<String>>[
+      [
+        'Date',
+        'Station',
+        'Clients Visited',
+        'Listed',
+        'Unlisted',
+        'Unplanned',
+        'Day Status',
+      ],
+    ];
+
+    for (final d in days) {
+      final off = _offLabel(d.kind);
+      if (off != null) {
+        rows.add([exportDate(d.date), off, '0', '0', '0', '0', off]);
+        continue;
+      }
+
+      final calls = _store.activities.where(
+        (a) =>
+            a.employeeId == session.employee.id &&
+            a.status == ActivityStatus.completed &&
+            _sameDay(a.scheduledStart, d.date),
+      );
+
+      rows.add([
+        exportDate(d.date),
+        d.place,
+        '${calls.length}',
+        '${calls.where((a) => listing[a.clientId] == ClientListing.listed).length}',
+        '${calls.where((a) => listing[a.clientId] != ClientListing.listed).length}',
+        '${calls.where((a) => a.isUnplanned).length}',
+        d.workType.label,
+      ]);
+    }
+    return rows;
+  }
+
+  Future<List<List<String>>> _clientRows(Session session) async {
+    final clients = await _clients.list(session);
+    final rows = <List<String>>[
+      [
+        'Sr.No.',
+        'Client Name',
+        'Client Type',
+        'Designation',
+        'Speciality',
+        'Area',
+        'Listed',
+        'Status',
+        'Special Date',
+        'Type of Special Day',
+        'Total Visits',
+        'Last Visit',
+      ],
+    ];
+
+    for (var i = 0; i < clients.length; i++) {
+      final c = clients[i];
+      rows.add([
+        '${i + 1}',
+        c.name,
+        c.type.label,
+        c.designation ?? 'NA',
+        c.specialty ?? 'NA',
+        c.areaName,
+        c.listing.label,
+        c.isActive ? 'Active' : 'Inactive',
+        c.specialDate == null ? 'NA' : exportDate(c.specialDate!),
+        c.specialOccasion?.label ?? 'NA',
+        '${c.totalVisits}',
+        c.lastVisitAt == null ? 'NA' : exportDate(c.lastVisitAt!),
+      ]);
+    }
+    return rows;
+  }
+}

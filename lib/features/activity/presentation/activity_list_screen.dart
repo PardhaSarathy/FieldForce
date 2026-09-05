@@ -21,8 +21,16 @@ import 'widgets/activity_card.dart';
 /// Filters offered above the activity list (§17).
 enum ActivityFilter {
   all('All'),
-  upcoming('Upcoming'),
   planned('Planned'),
+
+  /// Calls the rep added on the day rather than off a plan.
+  ///
+  /// This replaced "Upcoming", which sorted by *when* — and every open call
+  /// is upcoming, so the filter answered a question nobody was asking. What a
+  /// rep and a manager both want out of a day's list is which calls were the
+  /// plan and which were the street.
+  unplanned('Unplanned'),
+
   completed('Completed'),
   missed('Missed');
 
@@ -31,10 +39,8 @@ enum ActivityFilter {
 
   bool matches(Activity a) => switch (this) {
     all => true,
-    upcoming =>
-      a.status == ActivityStatus.upcoming ||
-          a.status == ActivityStatus.inProgress,
-    planned => a.status == ActivityStatus.planned,
+    planned => a.status.isOpen && !a.isUnplanned,
+    unplanned => a.isUnplanned,
     completed => a.status == ActivityStatus.completed,
     missed => a.status == ActivityStatus.missed,
   };
@@ -78,13 +84,6 @@ class ActivityListScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('My Activity'),
         leading: const DrawerMenuButton(),
-        actions: [
-          IconButton(
-            tooltip: 'Calendar',
-            icon: const Icon(Icons.calendar_month_outlined),
-            onPressed: () => context.push(Routes.calendar),
-          ),
-        ],
       ),
       // Recording a call is the reason a rep opens this screen, so the action
       // is on it rather than only in the shell's "+" sheet.

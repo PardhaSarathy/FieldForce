@@ -1030,7 +1030,11 @@ class _VisitRow extends StatelessWidget {
                         ] else if (activity.status == ActivityStatus.missed)
                           ...[
                           const SizedBox(width: AppSpacing.sm),
-                          StatusBadge.activity(activity.status, dense: true),
+                          StatusBadge.activity(
+                            activity.status,
+                            isUnplanned: activity.isUnplanned,
+                            dense: true,
+                          ),
                         ],
                       ],
                     ),

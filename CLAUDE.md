@@ -304,6 +304,26 @@ that is expensive to unwind later.
   thing to a rep, three rows in any report that groups by it.
 - **Reports are derived from transactional records**, never stored alongside
   them. If you add a report figure, compute it.
+- **An exported sheet is a report, and it keeps the office's shape.** The four
+  — Expenses, Tour Plan, DCR, Client List — come from the client's own
+  workbook: a title, the rep's name / code / designation / area, a blank line,
+  then a table with **one row per calendar day**, and SUNDAY / HOLIDAY / LEAVE
+  written into the station column with zeroes beside it. That is exactly what
+  `DayKind` already resolves, so the sheets read the claim month rather than
+  walking the day plans a second time and disagreeing with it. `ExportSheet`
+  holds rows of strings, not a formatted file — so the same sheet can become a
+  real workbook when a backend writes one, and so the contents can be asserted
+  on without opening a file.
+  - **Two of the client's columns are deliberately missing.** Joint work was
+    removed from this app outright, and printing a column of "No" would be
+    inventing data to fill a shape; the client list's *Unlisted* column is the
+    negation of the *Listed* column beside it. A test holds both absences, so
+    nobody adds them back to "match the sample" without reading why.
+  - **A month with nothing in it is not a month of missed days.**
+    `claimMonth` synthesises the days a rep did not intimate so the red ones
+    can be found — but a month before he joined has nothing to give context
+    to, and thirty "No day plan" rows would paint a red calendar and export a
+    sheet of nothing. It returns empty instead, and the screen says so.
 - **Scope is resolved once at login** into a `DataScope` and applied at the
   repository layer. Never filter by employee in a screen.
 - Offline-capable records use **client-generated UUIDs** so a retry cannot
@@ -378,6 +398,22 @@ an analytics dashboard.) Two rules have already been re-learned the hard way:
   label always ships with the colour: an earlier bar changed colour with the
   pace on its own and read as a warning light rather than as progress, because
   nothing named what the amber meant. Naming it is the whole difference.
+- **Planned vs unplanned is an *origin*, not a status.** A call the rep added
+  on the day carries `Activity.isUnplanned`, set by Add New Activity and
+  nowhere else — that screen exists for the call made because he was passing,
+  which is why it has no date on it. Folding this into `ActivityStatus` would
+  erase it the moment the visit was made, which is precisely when a manager
+  starts asking about it. My Activity filters on it: the old **Upcoming**
+  filter sorted by *when*, and every open call is upcoming, so it answered a
+  question nobody was asking.
+- **An activity's badge shows its origin before the call and its outcome
+  after.** Planned / Unplanned while it is ahead, Completed / Missed once it
+  has happened, In Progress while it is being made — a call happening right
+  now is neither. "Upcoming" has no surface anywhere any more; the status
+  still exists because it is how the day's *next* call is found, but as a word
+  it was a second name for Planned. One badge either way: a card carrying both
+  the origin and the state squeezes the pair until one ellipsises, which is
+  what a client row already taught this app.
 - **`TierBadge` for achievement, `StatusBadge` for state.** The old mapping ran
   the *state* palette over targets and painted a rep at 40% in **error red**,
   which tells someone at 11am that their morning is a failure. A target that is
@@ -484,6 +520,11 @@ Rejected on purpose; re-open only with a reason:
   ~150 usages; swapping adds a dependency and a migration for no user benefit.
 - **`flutter_svg`** — there are no SVG assets. The brand mark is drawn in code
   so it scales and re-colours with the palette.
+- **`share_plus`** — accepted, and the only dependency added since the build
+  began. "Export" that builds a file nobody can reach is a dead control with
+  extra steps, and handing a file to the phone's own share sheet is the one
+  part of this that differs on every platform. The sheet is passed as bytes
+  (`XFile.fromData`), so no `path_provider` and no temp-file bookkeeping.
 - **`flutter_animate`** — still rejected, but not because motion is unwanted.
   The motion system in `app_motion.dart` and `motion.dart` is built from
   `AnimationController`, `TweenAnimationBuilder` and the implicit animations,

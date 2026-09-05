@@ -740,6 +740,13 @@ class MockDataset {
           final isDone = status == ActivityStatus.completed;
           final geo = isDone ? _geoFor(client, i) : null;
 
+          // Roughly one call in six was added on the day rather than planned,
+          // which is about what a rep's week actually looks like — and it is
+          // the only way the Unplanned filter has anything in it on a demo.
+          // Never the last visit of a day, so today's next call stays a
+          // planned one.
+          final unplanned = i > 0 && i < visitCount - 1 && (counter + i) % 6 == 0;
+
           result.add(
             Activity(
               id: 'act-${++counter}',
@@ -776,6 +783,7 @@ class MockDataset {
               outOfRangeReason: geo?.requiresReason == true
                   ? 'Doctor asked to meet at the adjacent OPD block.'
                   : null,
+              isUnplanned: unplanned,
               createdAt: start,
               updatedAt: isDone ? end : start,
             ),
@@ -1057,6 +1065,18 @@ class MockDataset {
           : (n % 17 == 0 ? WorkType.leave : WorkType.fieldWork);
       final working = workType == WorkType.fieldWork;
 
+      // Sundays are a day off, and the plan says which clients the day is
+      // for. It carried a count and no names, so the exported tour plan read
+      // "9 clients — NA": the sheet had a column the seed could not fill, and
+      // a column that is always NA is a column nobody trusts.
+      final planned = working ? 6 + n % 5 : 0;
+      final named = working
+          ? [
+              for (var i = 0; i < (planned < 4 ? planned : 4); i++)
+                clients[(n * 3 + i) % clients.length].name,
+            ]
+          : const <String>[];
+
       result.add(
         TravelPlan(
           id: 'tp-${++n}',
@@ -1072,7 +1092,8 @@ class MockDataset {
           travelMode: n % 6 == 0 ? TravelMode.train : TravelMode.bike,
           destination: working ? area.name : null,
           purpose: working ? 'Routine coverage and RCPA in ${area.name}' : null,
-          plannedVisits: working ? 6 + n % 5 : 0,
+          plannedVisits: planned,
+          clientNames: named,
           estimatedKm: working ? 14.0 + (n % 11) * 3 : null,
           approvalHistory: _historyFor(status, mr, date, 0),
           createdAt: DateTime(date.year, date.month - 1, 20),

@@ -273,6 +273,55 @@ void main() {
     });
   });
 
+  group('the one calendar left belongs to the to-do list', () {
+    testWidgets('To-Do opens its own calendar, not a month of visits',
+        (tester) async {
+      // It used to open a general Calendar: a month of *activities* with the
+      // day's agenda under it — which is My Activity, one tap away, with its
+      // own date strip. Neither screen was the calendar the to-do list wanted.
+      await pumpApp(tester, size: const Size(430, 1800));
+
+      await tester.tap(find.byIcon(Icons.menu));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('To-Do').first);
+      await settle(tester);
+
+      await tester.tap(find.byTooltip('Calendar'));
+      await settle(tester);
+
+      expect(find.text('To-Do Calendar'), findsOneWidget);
+      // Its legend is the to-do's three states, not a visit's.
+      expect(find.text('Overdue'), findsWidgets);
+      expect(find.text('Something went wrong'), findsNothing);
+    });
+  });
+
+  group('planned and unplanned are different questions', () {
+    testWidgets('My Activity filters by origin, not by "upcoming"',
+        (tester) async {
+      // "Upcoming" sorted by *when*, and every open call is upcoming — the
+      // filter answered a question nobody was asking. What a rep and a
+      // manager both want to know is which calls were the plan and which were
+      // the street.
+      await pumpApp(tester, size: const Size(430, 1800));
+
+      await tester.tap(find.text('My Activity'));
+      await settle(tester);
+
+      expect(find.text('Upcoming'), findsNothing);
+      expect(find.text('Unplanned'), findsWidgets);
+
+      await tester.tap(find.text('Unplanned').first);
+      await settle(tester);
+
+      // The filter has something in it, and it is a list rather than an
+      // error state laid out perfectly.
+      expect(find.byType(ActivityCard), findsWidgets);
+      expect(find.text('Something went wrong'), findsNothing);
+    });
+  });
+
   group('adding an activity', () {
     testWidgets('creating one opens the activity, not a call report',
         (tester) async {
@@ -336,25 +385,37 @@ void main() {
       expect(find.text('Add to claim'), findsOneWidget);
     });
 
-    testWidgets('the + sheet does not offer to add an expense',
+    testWidgets("a rep's centre button opens Export, not a menu of shortcuts",
         (tester) async {
-      // A claim is not a thing you *add* — it is a day you confirm, and the
-      // month screen is where the days are. The sheet used to open a
-      // standalone form that could write a record with no day behind it, and
-      // then a shortcut to the month, which was one entry point too many for
-      // something reached from Home's own grid.
+      // It was a sheet of four — Add activity, New client, New order, Tour
+      // plan — and every one of them is a tap away on the screen it belongs
+      // to. What had no door at all was the four sheets the office asks for
+      // every month.
       await pumpApp(tester, size: const Size(430, 1800));
+
+      expect(find.byTooltip('Add'), findsNothing,
+          reason: 'a + that opens Export Data is a lie one glyph on');
+      await tester.tap(find.byTooltip('Export'));
+      await settle(tester);
+
+      expect(find.text('Export Data'), findsOneWidget);
+      expect(find.text('Add new'), findsNothing);
+
+      // The four sheets, taken from the office's own workbook.
+      for (final sheet in ['Expenses', 'Tour Plan', 'DCR', 'Client List']) {
+        expect(find.text(sheet), findsWidgets, reason: sheet);
+      }
+    });
+
+    testWidgets("a manager's centre button is untouched", (tester) async {
+      await pumpApp(tester, code: 'ASM201', size: const Size(430, 1800));
 
       await tester.tap(find.byTooltip('Add'));
       await settle(tester);
 
       expect(find.text('Add new'), findsOneWidget);
-      expect(find.text('Claim a day'), findsNothing);
-      expect(find.text('New expense'), findsNothing);
-
-      // The things that genuinely are new records still are.
-      expect(find.text('Add activity'), findsOneWidget);
-      expect(find.text('Tour plan'), findsOneWidget);
+      expect(find.text('Assign task'), findsOneWidget);
+      expect(find.text('Set targets'), findsOneWidget);
     });
   });
 
