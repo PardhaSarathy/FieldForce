@@ -24,6 +24,8 @@ Client _client({
 }
 
 void main() {
+  _statusTests();
+  _duplicateProbeTests();
   group('the occasion label', () {
     test('names what the date is', () {
       final c = _client(
@@ -111,6 +113,77 @@ void main() {
       expect(copy.specialDate, DateTime(1980, 3, 14));
       expect(copy.specialOccasion, SpecialOccasion.other);
       expect(copy.specialOccasionNote, 'Clinic founding day');
+    });
+  });
+}
+
+/// The duplicate warning fires off the name field, so it has to be sure
+/// before it speaks.
+void _duplicateProbeTests() {
+  group('a duplicate warning that cannot cry wolf', () {
+    test('an honorific is not a name', () {
+      // "Dr" is the first two characters of every doctor on the master. Left
+      // in, the warning would fire on every doctor a rep ever registered.
+      expect(duplicateProbe('Dr'), '');
+      expect(duplicateProbe('Dr. '), '');
+      expect(duplicateProbe('Dr. Meera Joshi'), 'meera joshi');
+      expect(duplicateProbe('Prof. Rao'), '');
+      expect(duplicateProbe('Mrs Kulkarni'), 'kulkarni');
+    });
+
+    test('it says nothing under four characters of actual name', () {
+      expect(duplicateProbe('Ap'), '');
+      expect(duplicateProbe('Apo'), '');
+      expect(duplicateProbe('Apol'), 'apol');
+    });
+
+    test('punctuation and case do not make two names different', () {
+      expect(duplicateProbe('  APOLLO   Clinic '), 'apollo   clinic');
+      expect(duplicateProbe("St. Mary's"), 'st marys');
+    });
+  });
+}
+
+/// Active/Inactive is a fact about a client's place on the company list.
+void _statusTests() {
+  group('only a listed client has a status', () {
+    Client client({required ClientListing listing, required bool active}) =>
+        Client(
+          id: 'c1',
+          name: 'Dr. A',
+          type: ClientType.doctor,
+          category: ClientCategory.coreTarget,
+          areaId: 'ar-1',
+          areaName: 'Dadar',
+          territoryId: 't-1',
+          listing: listing,
+          isActive: active,
+        );
+
+    test('a listed client says which it is', () {
+      expect(
+        client(listing: ClientListing.listed, active: true).statusLabel,
+        'Active',
+      );
+      expect(
+        client(listing: ClientListing.listed, active: false).statusLabel,
+        'Inactive',
+      );
+    });
+
+    test('an unlisted client has nothing to say', () {
+      // He was never on the list, so there is nothing for the flag to
+      // describe — no badge on the detail screen, and NA in the sheet.
+      final c = client(listing: ClientListing.unlisted, active: true);
+      expect(c.hasStatus, isFalse);
+      expect(c.statusLabel, isNull);
+    });
+
+    test('a stale Inactive on an unlisted client is still not shown', () {
+      // The form clears it when the listing changes, but a record that
+      // arrives from anywhere else must not leak the old answer either.
+      final c = client(listing: ClientListing.unlisted, active: false);
+      expect(c.statusLabel, isNull);
     });
   });
 }

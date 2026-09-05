@@ -102,6 +102,25 @@ void main() {
           reason: 'Sr.No. runs to the end');
     });
 
+    test('an unlisted client writes NA where the status goes', () async {
+      final clients = await MockClientRepository().list(session);
+      final s = await sheet(ExportKind.clients);
+      final header =
+          s.rows.firstWhere((r) => r.isNotEmpty && r.first == 'Sr.No.');
+      final listed = header.indexOf('Listed');
+      final status = header.indexOf('Status');
+
+      for (var i = 0; i < clients.length; i++) {
+        final row = s.rows[s.headerIndex + 1 + i];
+        if (row[listed] == 'Unlisted') {
+          expect(row[status], 'NA',
+              reason: 'he was never on the list; there is nothing to describe');
+        } else {
+          expect(row[status], anyOf('Active', 'Inactive'));
+        }
+      }
+    });
+
     test('a client with no special date says so rather than leaving a hole',
         () async {
       final s = await sheet(ExportKind.clients);

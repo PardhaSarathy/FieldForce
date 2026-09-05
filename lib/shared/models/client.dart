@@ -2,6 +2,23 @@ import '../../core/location/geo_math.dart';
 import '../enums/app_enums.dart';
 
 /// A doctor, hospital, chemist or stockist the field team calls on (§19).
+/// What to search the master for, given a name a rep is part-way through
+/// typing — or `''` when it is too early to say anything.
+///
+/// The duplicate warning fires off the name field now rather than off a search
+/// box the rep opted into, so it has to be sure before it speaks. Two rules do
+/// that: strip the honorific, because "Dr" is the first two characters of
+/// every doctor in the master and would match all of them; and say nothing
+/// under four characters of actual name.
+String duplicateProbe(String typed) {
+  final name = typed
+      .toLowerCase()
+      .replaceAll(RegExp(r'^\s*(dr|prof|mr|mrs|ms)\.?\s+'), '')
+      .replaceAll(RegExp(r'[^a-z0-9 ]'), '')
+      .trim();
+  return name.length < 4 ? '' : name;
+}
+
 class Client {
   const Client({
     required this.id,
@@ -59,11 +76,27 @@ class Client {
 
   final String? clusterId;
   final String? clusterName;
+
+  /// Whether a **listed** client is still being called on.
+  ///
+  /// Only meaningful when [listing] is listed — read [statusLabel] rather than
+  /// this. Active/Inactive is a fact about a client's place on the company's
+  /// list: a clinic that has closed comes off it. An unlisted client was never
+  /// on the list, so there is nothing for the flag to describe, and asking a
+  /// rep to answer it produces a value every report then has to ignore.
   final bool isActive;
 
   /// Whether this client is on the company's approved list. See
   /// [ClientListing].
   final ClientListing listing;
+
+  /// Whether Active/Inactive means anything for this client.
+  bool get hasStatus => listing == ClientListing.listed;
+
+  /// What to print where the status goes — `null` when there is nothing to
+  /// say, so a screen shows no badge and a sheet writes NA.
+  String? get statusLabel =>
+      hasStatus ? (isActive ? 'Active' : 'Inactive') : null;
 
   /// Birthday or anniversary — the date a rep is expected to remember. Carried
   /// on the client because it belongs to the relationship, not to any visit.

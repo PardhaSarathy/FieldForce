@@ -236,17 +236,29 @@ void main() {
     testWidgets('New client', (tester) async {
       await pumpScreen(tester, const NewClientScreen(), size: const Size(420, 1600));
       expect(find.text('New Client'), findsOneWidget);
-      // Search first, then register: the duplicate check leads the form.
-      expect(find.text('SEARCH EXISTING CLIENTS'), findsOneWidget);
+      // The form opens on the form. A search box and a row of type filters
+      // used to sit above it — a second, smaller Clients screen on top of a
+      // create screen — and the duplicate check runs off the name field now.
+      expect(find.text('SEARCH EXISTING CLIENTS'), findsNothing);
+      expect(find.text('Check before you add'), findsNothing);
       expect(find.text('NEW CLIENT REGISTRATION'), findsOneWidget);
       // Fields added for the client master, not just the visit.
       expect(find.text('Designation'), findsOneWidget);
       expect(find.text('Territory'), findsOneWidget);
+      // Category is the listing state, not a planning grade.
+      expect(find.text('Unlisted'), findsOneWidget);
+
+      // Active/Inactive is a fact about a client's place on the company list.
+      // The form opens on Unlisted, where the question has no answer, so it is
+      // not asked — and choosing Listed is what asks it.
+      expect(find.text('Status'), findsNothing);
+      expect(find.text('Inactive'), findsNothing);
+
+      await tester.tap(find.text('Listed'));
+      await tester.pumpAndSettle();
       expect(find.text('Status'), findsOneWidget);
       expect(find.text('Active'), findsOneWidget);
       expect(find.text('Inactive'), findsOneWidget);
-      // Category is the listing state, not a planning grade.
-      expect(find.text('Unlisted'), findsOneWidget);
       // Interpolated copy must render its values, not the source text.
       expect(find.textContaining(r'${'), findsNothing);
       expect(find.text('Core Target'), findsNothing);

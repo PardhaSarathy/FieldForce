@@ -8,7 +8,6 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/formatters.dart';
 import 'buttons.dart';
-import 'primitives.dart';
 
 /// A labelled field wrapper.
 ///
@@ -474,10 +473,22 @@ class SegmentedField<T> extends StatelessWidget {
       label: label,
       required: required,
       helper: helper,
+      // A pill, filled when chosen — the same object `FilterChipBar` draws.
+      //
+      // It was an `AppCard` per option with a Material radio glyph inside it:
+      // a rounded rectangle carrying two drop shadows, a pale brand tint, and
+      // a heavy ring borrowed from another app's form language. Two shadowed
+      // rectangles side by side read as muddy grey rather than as one control
+      // with two positions, and the app already had an answer to "pick one of
+      // these" three screens away.
+      //
+      // No radio glyph. A filled pill beside an unfilled one *is* the mark —
+      // the ring was a second indicator saying what the fill already said, and
+      // it was the loudest thing in the row.
       child: Row(
         children: [
           for (var i = 0; i < options.length; i++) ...[
-            if (i > 0) const SizedBox(width: AppSpacing.md),
+            if (i > 0) const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: GestureDetector(
                 onTap: () {
@@ -485,42 +496,49 @@ class SegmentedField<T> extends StatelessWidget {
                   onChanged(options[i]);
                 },
                 behavior: HitTestBehavior.opaque,
-                child: AppCard(
-                  // The tint and the border cross-fade rather than switching,
-                  // so choosing between two options reads as one control
-                  // changing state instead of two cards swapping appearance.
-                  animateColour: true,
-                  color: value == options[i]
-                      ? AppColors.brandSoft
-                      : AppColors.surface,
-                  borderColor: value == options[i]
-                      ? AppColors.brand
-                      : AppColors.border,
+                child: AnimatedContainer(
+                  duration: AppMotion.fast,
+                  curve: AppMotion.curve,
+                  height: AppSizes.buttonHeightSmall,
+                  alignment: Alignment.center,
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.md,
-                    vertical: AppSpacing.md,
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        value == options[i]
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_unchecked,
-                        size: AppSizes.iconMd,
-                        color: value == options[i]
-                            ? AppColors.brand
-                            : AppColors.textSecondary,
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      Flexible(
-                        child: Text(
-                          itemLabel(options[i]),
-                          style: AppTypography.titleSm,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                  decoration: BoxDecoration(
+                    color: value == options[i] ? null : AppColors.surface,
+                    gradient: value == options[i]
+                        ? AppGlow.fill(AppColors.brand)
+                        : null,
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                    border: Border.all(
+                      color: value == options[i]
+                          ? Colors.transparent
+                          : AppColors.border,
+                    ),
+                    // Half strength, as on the chips: a field holds two or
+                    // three of these and a full halo on one of them makes the
+                    // row look like it is on fire rather than answered.
+                    boxShadow: value == options[i]
+                        ? AppGlow.halo(
+                            AppColors.brand,
+                            AppSizes.buttonHeightSmall,
+                            strength: 0.5,
+                          )
+                        : null,
+                  ),
+                  child: Text(
+                    itemLabel(options[i]),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.titleSm.copyWith(
+                      color: value == options[i]
+                          ? AppColors.textOnBrand
+                          : AppColors.textPrimary,
+                      fontWeight: value == options[i]
+                          ? FontWeight.w600
+                          : FontWeight.w500,
+                    ),
                   ),
                 ),
               ),

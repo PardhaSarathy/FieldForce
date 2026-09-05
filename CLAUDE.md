@@ -136,6 +136,13 @@ that is expensive to unwind later.
   "Confi…" and "Not y…", an ellipsised verb on the one control whose job is
   saying what the tap does. They stack when measurement says they must, with
   confirm on top. Stacking is not the degraded layout — it is the honest one.
+- **A `SegmentedField` is the same pill a `FilterChipBar` draws.** It was an
+  `AppCard` per option — a rounded rectangle with two drop shadows and a pale
+  brand tint — with a Material radio ring inside it. Two shadowed rectangles
+  side by side read as muddy grey rather than as one control with two
+  positions, and the app already had an answer to "pick one of these" three
+  screens away. No radio glyph: a filled pill beside an unfilled one *is* the
+  mark, and the ring was a second indicator saying what the fill already said.
 - **Two or three options go in a `SegmentedField`, not a dropdown.** Both
   answers on screen, no tap spent revealing them. A dropdown for a two-value
   field costs three taps to express one bit. Past three the row runs out of
@@ -299,6 +306,14 @@ that is expensive to unwind later.
   have disagreed the first time either was edited. They are
   `ClientRepository.specialties()` now, and both read it. Anything a company
   maintains rather than a rep creates belongs there.
+- **Active/Inactive belongs to a *listed* client only.** It is a fact about a
+  client's place on the company list — a clinic that has closed comes off it —
+  and an unlisted client was never on the list, so there is nothing for the
+  flag to describe. The form does not ask; choosing Listed is what asks it,
+  and choosing Unlisted clears the answer so an "Inactive" given while listed
+  cannot sit on the record unasked and unshown, waiting for a report to find
+  it. `Client.statusLabel` is the rule: `null` means no badge on a screen and
+  `NA` in the exported sheet, which is what the client's own workbook writes.
 - **A field with a closed set of answers is a picker, not a text box.** Typed
   free text arrives as "Cardiologist", "cardiologist" and "Cardio" — the same
   thing to a rep, three rows in any report that groups by it.

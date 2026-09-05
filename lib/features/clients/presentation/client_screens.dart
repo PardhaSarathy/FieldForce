@@ -84,7 +84,7 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen> {
       floatingActionButton: AppFab(
         onPressed: () => context.push(Routes.newClient),
         icon: Icons.person_add_alt,
-        label: 'New client',
+        label: 'Add New Client',
       ),
       body: Column(
         children: [
@@ -332,14 +332,16 @@ class ClientDetailScreen extends ConsumerWidget {
                         tone: client.category.tone,
                         dense: true,
                       ),
-                      const SizedBox(width: AppSpacing.sm),
-                      StatusBadge(
-                        label: client.isActive ? 'Active' : 'Inactive',
-                        tone: client.isActive
-                            ? StatusTone.success
-                            : StatusTone.neutral,
-                        dense: true,
-                      ),
+                      if (client.statusLabel != null) ...[
+                        const SizedBox(width: AppSpacing.sm),
+                        StatusBadge(
+                          label: client.statusLabel!,
+                          tone: client.isActive
+                              ? StatusTone.success
+                              : StatusTone.neutral,
+                          dense: true,
+                        ),
+                      ],
                     ],
                   ),
                 ],
@@ -633,7 +635,13 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
   final _address = TextEditingController();
   final _pincode = TextEditingController();
 
-  final _search = TextEditingController();
+  /// The name as typed, so the duplicate check can watch it.
+  ///
+  /// Held in state rather than read off the controller in `build`: a
+  /// `TextEditingController` does not rebuild the form when its text changes,
+  /// so a warning driven straight off `_name.text` would only appear the next
+  /// time something *else* rebuilt the screen.
+  String _typedName = '';
 
   /// Chosen from master data, so this is a value rather than typed text.
   String? _specialty;
@@ -690,7 +698,6 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
       _address,
       _pincode,
       _occasionNote,
-      _search,
     ]) {
       c.dispose();
     }
@@ -852,20 +859,6 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.screenH),
           children: [
-            // Search first — but only when registering. A rep standing outside
-            // a clinic does not know whether head office already listed this
-            // doctor, and a duplicate splits their visit history across two
-            // records for good. Editing a record that already exists cannot
-            // duplicate anything, so the search would just be noise above the
-            // fields they came to change.
-            if (!widget.isEditing) ...[
-              _DuplicateCheck(
-                controller: _search,
-                onOpen: (client) =>
-                    context.push(Routes.clientDetail(client.id)),
-              ),
-              const SizedBox(height: AppSpacing.section),
-            ],
             SectionHeader(
               title: widget.isEditing
                   ? 'Client details'
@@ -876,7 +869,25 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
               required: true,
               controller: _name,
               validator: (v) => Validate.required(v, 'Client name'),
+              onChanged: (v) => setState(() => _typedName = v),
             ),
+
+            // The duplicate check, on the name the rep is already typing.
+            //
+            // It was a search box and a row of type filters above the form —
+            // a second, smaller Clients screen sitting on top of a create
+            // form, asking the rep to look for a record before entering the
+            // one he came to enter. He types the name either way, so the name
+            // field can do the looking, and nothing appears unless there is
+            // actually something to say.
+            //
+            // The check itself is not optional: registering a doctor who is
+            // already listed splits their visit history, targets and RCPA
+            // across two records for good, and nothing downstream can tell
+            // they are one person. Editing cannot duplicate anything, so it
+            // is only ever shown while registering.
+            if (!widget.isEditing) _DuplicateWarning(name: _typedName),
+
             const SizedBox(height: AppSpacing.lg),
             AppTextField(
               label: 'Designation',
@@ -925,20 +936,31 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
               options: ClientListing.values,
               value: _listing,
               itemLabel: (l) => l.label,
-              onChanged: (v) => setState(() => _listing = v),
+              onChanged: (v) => setState(() {
+                _listing = v;
+                // Coming off the list takes the status with it. Left as it
+                // was, an "Inactive" answered while the client was listed
+                // would sit on the record unasked and unshown, waiting for a
+                // report to find it.
+                if (v == ClientListing.unlisted) _isActive = true;
+              }),
               helper: 'Listed clients are already on the company list.',
             ),
-            const SizedBox(height: AppSpacing.lg),
 
-            // A clinic that has closed should stop appearing in planning
-            // immediately, so this is the rep's to set.
-            SegmentedField<bool>(
-              label: 'Status',
-              options: const [true, false],
-              value: _isActive,
-              itemLabel: (active) => active ? 'Active' : 'Inactive',
-              onChanged: (v) => setState(() => _isActive = v),
-            ),
+            // Active/Inactive is a fact about a client's place on the company
+            // list — a clinic that has closed comes off it. An unlisted
+            // client was never on the list, so the question has no answer and
+            // is not asked.
+            if (_listing == ClientListing.listed) ...[
+              const SizedBox(height: AppSpacing.lg),
+              SegmentedField<bool>(
+                label: 'Status',
+                options: const [true, false],
+                value: _isActive,
+                itemLabel: (active) => active ? 'Active' : 'Inactive',
+                onChanged: (v) => setState(() => _isActive = v),
+              ),
+            ],
 
             const SizedBox(height: AppSpacing.section),
             const SectionHeader(title: 'Contact'),
@@ -1090,105 +1112,69 @@ final _specialtiesProvider = FutureProvider.autoDispose<List<String>>(
 /// before it is created rather than merged afterwards.
 final _duplicateSearchProvider = FutureProvider.autoDispose
     .family<List<Client>, String>((ref, query) async {
-      if (query.trim().length < 2) return const [];
+      if (query.trim().isEmpty) return const [];
       final session = ref.watch(sessionProvider);
       return ref.watch(clientRepositoryProvider).list(session, query: query);
     });
 
-/// Search the existing master before adding to it.
+/// Says so when the name being typed is already on the master.
 ///
 /// The single most damaging mistake on this screen is registering a client who
 /// is already listed: their visit history, targets and RCPA then live under two
 /// records, and nothing downstream can tell they are one person.
-class _DuplicateCheck extends ConsumerStatefulWidget {
-  const _DuplicateCheck({required this.controller, required this.onOpen});
+///
+/// Silent until there is a match — a create form should not carry a control
+/// that spends most of its life saying "no results".
+class _DuplicateWarning extends ConsumerWidget {
+  const _DuplicateWarning({required this.name});
 
-  final TextEditingController controller;
-  final ValueChanged<Client> onOpen;
-
-  @override
-  ConsumerState<_DuplicateCheck> createState() => _DuplicateCheckState();
-}
-
-class _DuplicateCheckState extends ConsumerState<_DuplicateCheck> {
-  String _query = '';
-  ClientType? _type;
+  final String name;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final probe = duplicateProbe(name);
+    if (probe.isEmpty) return const SizedBox.shrink();
+
     final matches =
-        ref.watch(_duplicateSearchProvider(_query)).valueOrNull ?? const [];
-    final filtered = matches
-        .where((c) => _type == null || c.type == _type)
-        .toList();
+        ref.watch(_duplicateSearchProvider(probe)).valueOrNull ?? const [];
+    if (matches.isEmpty) return const SizedBox.shrink();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionHeader(title: 'Search existing clients'),
-        AppTextField(
-          controller: widget.controller,
-          hint: 'Check before you add',
-          prefixIcon: Icons.search,
-          textCapitalization: TextCapitalization.words,
-          onChanged: (v) => setState(() => _query = v),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        FilterChipBar<ClientFilter>(
-          options: ClientFilter.values,
-          selected: ClientFilter.values.firstWhere(
-            (f) => f.type == _type,
-            orElse: () => ClientFilter.all,
-          ),
-          labelOf: (f) => f.label,
-          onSelected: (f) => setState(() => _type = f.type),
-          padding: EdgeInsets.zero,
-        ),
-        if (_query.trim().length >= 2) ...[
-          const SizedBox(height: AppSpacing.md),
-          if (filtered.isEmpty)
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: AppCard(
+        color: AppColors.warningSoft,
+        borderColor: Colors.transparent,
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Text(
-              'No existing client matches "${_query.trim()}". Register it below.',
-              style: AppTypography.caption,
-            )
-          else
-            AppCard(
-              color: AppColors.warningSoft,
-              borderColor: Colors.transparent,
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${filtered.length} already listed. Open one instead of '
-                    'adding a duplicate.',
-                    style: AppTypography.bodySm.copyWith(
-                      color: AppColors.textPrimary,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  for (final client in filtered.take(4))
-                    ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: AppAvatar(name: client.name, size: 32),
-                      title: Text(client.name, style: AppTypography.titleSm),
-                      subtitle: Text(
-                        '${client.type.label} · ${client.areaName}',
-                        style: AppTypography.caption,
-                      ),
-                      trailing: const Icon(
-                        Icons.chevron_right,
-                        size: AppSizes.iconMd,
-                      ),
-                      onTap: () => widget.onOpen(client),
-                    ),
-                ],
+              matches.length == 1
+                  ? 'Already listed. Open it instead of adding a duplicate.'
+                  : '${matches.length} already listed. Open one instead of '
+                        'adding a duplicate.',
+              style: AppTypography.bodySm.copyWith(
+                color: AppColors.textPrimary,
+                height: 1.35,
               ),
             ),
-        ],
-      ],
+            const SizedBox(height: AppSpacing.sm),
+            for (final client in matches.take(4))
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: AppAvatar(name: client.name, size: 32),
+                title: Text(client.name, style: AppTypography.titleSm),
+                subtitle: Text(
+                  '${client.type.label} · ${client.areaName}',
+                  style: AppTypography.caption,
+                ),
+                trailing: const Icon(Icons.chevron_right, size: AppSizes.iconMd),
+                onTap: () => context.push(Routes.clientDetail(client.id)),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

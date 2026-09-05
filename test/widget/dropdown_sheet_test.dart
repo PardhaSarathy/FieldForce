@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pharmaconnect/core/theme/app_colors.dart';
 import 'package:pharmaconnect/core/theme/app_theme.dart';
 import 'package:pharmaconnect/shared/widgets/inputs.dart';
 
@@ -162,15 +163,26 @@ void main() {
       // them and none spent closing anything.
       expect(find.text('Listed'), findsOneWidget);
       expect(find.text('Unlisted'), findsOneWidget);
-      expect(find.byIcon(Icons.radio_button_checked), findsOneWidget);
-      expect(find.byIcon(Icons.radio_button_unchecked), findsOneWidget);
+      // The selected one is the filled pill, which is what a filter chip does
+      // three screens away. It used to be an `AppCard` per option carrying a
+      // Material radio ring — a second indicator saying what the fill already
+      // said, and the loudest thing in the row.
+      expect(find.byIcon(Icons.radio_button_checked), findsNothing);
+      expect(find.byIcon(Icons.radio_button_unchecked), findsNothing);
+
+      int filled() => tester
+          .widgetList<Text>(find.byType(Text))
+          .where((t) => t.style?.color == AppColors.textOnBrand)
+          .length;
+
+      expect(filled(), 1, reason: 'exactly one answer is chosen');
 
       await tester.tap(find.text('Listed'));
       await tester.pumpAndSettle();
       expect(value, 'Listed');
 
-      // Still exactly one selected — a radio, not a checkbox.
-      expect(find.byIcon(Icons.radio_button_checked), findsOneWidget);
+      // Still exactly one — a radio, not a checkbox.
+      expect(filled(), 1);
     });
   });
 }

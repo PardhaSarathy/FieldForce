@@ -1728,7 +1728,10 @@ class MockExportRepository implements ExportRepository {
         c.specialty ?? 'NA',
         c.areaName,
         c.listing.label,
-        c.isActive ? 'Active' : 'Inactive',
+        // NA, not 'Active'. The client's own workbook writes the status
+        // column that way for an unlisted client, and it is the same rule:
+        // there is nothing on the list for the flag to describe.
+        c.statusLabel ?? 'NA',
         c.specialDate == null ? 'NA' : exportDate(c.specialDate!),
         c.specialOccasion?.label ?? 'NA',
         '${c.totalVisits}',
