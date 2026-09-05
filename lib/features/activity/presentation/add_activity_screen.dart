@@ -115,8 +115,6 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
   Client? _client;
   DateTime _nextVisit = DateTime.now().add(const Duration(days: 14));
 
-  /// When the call is scheduled for, on the create form.
-  DateTime _scheduledFor = DateTime.now();
   VisitPurpose? _purpose;
 
   /// Which of Location / Call report / Review is showing. Only meaningful
@@ -460,15 +458,6 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
           ],
           const SizedBox(height: AppSpacing.lg),
 
-          DateField(
-            label: 'When',
-            required: true,
-            value: _scheduledFor,
-            firstDate: DateTime.now().subtract(const Duration(days: 30)),
-            onChanged: (d) => setState(() => _scheduledFor = d),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-
           DropdownField<VisitPurpose>(
             label: 'Purpose',
             items: VisitPurpose.values,
@@ -495,14 +484,12 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
 
     setState(() => _submitting = true);
     final session = ref.read(sessionProvider);
+    // Today, and now. A rep adds an activity standing outside the clinic, so
+    // the date field was a required tap that answered itself — and the one
+    // thing it made possible, back-dating a call, is a correction rather than
+    // a new record and belongs on the activity's own edit screen.
     final now = DateTime.now();
-    final start = DateTime(
-      _scheduledFor.year,
-      _scheduledFor.month,
-      _scheduledFor.day,
-      now.hour,
-      now.minute,
-    );
+    final start = now;
 
     final activity = Activity(
       // Client-generated so a retry cannot file the same call twice.

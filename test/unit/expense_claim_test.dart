@@ -120,4 +120,113 @@ void main() {
       expect(second, 0, reason: 'a day already claimed must be skipped');
     });
   });
+
+  group('the month goes in one piece', () {
+    ClaimDay day({required int date, bool claimed = true, ApprovalStatus s =
+        ApprovalStatus.draft}) {
+      return ClaimDay(
+        date: DateTime(2026, 8, date),
+        dayPlanId: 'dp$date',
+        workType: WorkType.fieldWork,
+        place: 'Dadar',
+        allowance: 250,
+        expenses: claimed
+            ? [
+                Expense(
+                  id: 'e$date',
+                  employeeId: 'MR1001',
+                  employeeName: 'Rep',
+                  date: DateTime(2026, 8, date),
+                  amount: 250,
+                  status: s,
+                  allowance: 250,
+                  dayPlanId: 'dp$date',
+                ),
+              ]
+            : const [],
+      );
+    }
+
+    test('a month still running cannot be sent, however tidy it is', () {
+      // Every declared day answered, on the 20th — and it still cannot go,
+      // because the ten days after it have not happened yet. This is the whole
+      // difference from the old behaviour, which sent whatever was ready.
+      final gate = claimGate(
+        days: [day(date: 3), day(date: 4)],
+        month: DateTime(2026, 8),
+        now: DateTime(2026, 8, 20),
+      );
+      expect(gate, ClaimGate.monthRunning);
+    });
+
+    test('an unanswered day holds the month back once it has ended', () {
+      final gate = claimGate(
+        days: [day(date: 3), day(date: 4, claimed: false)],
+        month: DateTime(2026, 8),
+        now: DateTime(2026, 9, 1),
+      );
+      expect(gate, ClaimGate.daysOpen);
+    });
+
+    test('a finished, fully answered month is ready on the 1st', () {
+      final gate = claimGate(
+        days: [day(date: 3), day(date: 4)],
+        month: DateTime(2026, 8),
+        now: DateTime(2026, 9, 1),
+      );
+      expect(gate, ClaimGate.ready);
+    });
+
+    test('leave does not hold a month back — it was never claimable', () {
+      final leave = ClaimDay(
+        date: DateTime(2026, 8, 5),
+        dayPlanId: 'dp5',
+        workType: WorkType.leave,
+        place: '-',
+        allowance: 250,
+      );
+      expect(
+        claimGate(
+          days: [day(date: 3), leave],
+          month: DateTime(2026, 8),
+          now: DateTime(2026, 9, 1),
+        ),
+        ClaimGate.ready,
+      );
+    });
+
+    test('nothing in draft means no bar at all', () {
+      expect(
+        claimGate(
+          days: [day(date: 3, s: ApprovalStatus.submitted)],
+          month: DateTime(2026, 8),
+          now: DateTime(2026, 9, 1),
+        ),
+        ClaimGate.nothingToSend,
+      );
+    });
+
+    test('the repository refuses a month the screen would have let through',
+        () async {
+      // The button works from a snapshot taken when the screen loaded. A rep
+      // who opened the claim at 23:58 on the 31st and tapped at 00:01 would
+      // have sent a month the gate had since re-opened — and the reverse, a
+      // month that gained an unanswered day while the screen sat open.
+      final repo = MockExpenseRepository();
+      final store = MockStore.instance;
+      final employee =
+          store.seed.employees.firstWhere((e) => e.employeeCode == 'MR1001');
+      final session = Session(employee: employee, loginAt: DateTime(2026, 9));
+
+      final now = DateTime.now();
+      final month = DateTime(now.year, now.month);
+      final days = await repo.claimMonth(session, month);
+      final open = days.where((d) => d.isOpen).toList();
+      if (open.isEmpty) return;
+
+      await repo.confirmStandardDays(session, open);
+      final sent = await repo.submitMonth(session, month);
+      expect(sent, 0, reason: 'this month has not ended');
+    });
+  });
 }

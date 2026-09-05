@@ -7,9 +7,13 @@
 /// * **The allowance is flat.** ₹250 a worked day whatever the distance, so
 ///   the ordinary day is a confirmation rather than a calculation. Anything
 ///   above it needs a bill and a reason; the allowance itself needs neither.
-/// * **The month never shuts.** Submitting sends what is claimed so far. A day
-///   remembered in November can still be claimed against September, which is
-///   what stops a rep guessing a figure on the 30th rather than losing the day.
+/// * **The month goes in one piece, and never shuts.** The claim is submitted
+///   once, after the month has ended and every day in it has been answered —
+///   the same shape as the tour plan, because an approver looking at a month
+///   in instalments is not looking at the month. And it still never shuts: a
+///   day remembered in November can be claimed against September and sent on
+///   its own, which is what stops a rep guessing a figure rather than losing
+///   the day.
 library;
 
 import 'package:flutter/material.dart';
@@ -89,18 +93,49 @@ class _ExpenseClaimScreenState extends ConsumerState<ExpenseClaimScreen> {
       appBar: AppBar(title: const Text('Expenses')),
       bottomNavigationBar: async.maybeWhen(
         data: (days) {
-          final drafts = days
-              .expand((d) => d.expenses)
-              .where((e) => e.status == ApprovalStatus.draft)
-              .length;
-          if (drafts == 0) return null;
+          final gate = claimGate(
+            days: days,
+            month: month,
+            now: DateTime.now(),
+          );
+          if (gate == ClaimGate.nothingToSend) return null;
+
+          final open = days.where((d) => d.isOpen).length;
+          // Disabled, not hidden — and it always says why. A month-level
+          // control that vanishes for most of the month reads as a bug; one
+          // that sits there greyed with "September is still running" under it
+          // teaches the rule in the only place the rule matters.
+          final blocker = switch (gate) {
+            ClaimGate.monthRunning =>
+              '${Fmt.monthName(month)} is still running. The claim goes as one '
+                  'month, on the 1st.',
+            ClaimGate.daysOpen =>
+              '${Fmt.count(open, 'day')} still to confirm.',
+            _ => null,
+          };
 
           return BottomActionBar(
             children: [
-              PrimaryButton(
-                label: 'Submit ${Fmt.count(drafts, 'claim')}',
-                icon: Icons.send_rounded,
-                onPressed: () => _submitMonth(context, ref, month),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  PrimaryButton(
+                    label: 'Submit ${Fmt.monthYear(month)}',
+                    icon: Icons.send_rounded,
+                    onPressed: blocker == null
+                        ? () => _submitMonth(context, ref, month)
+                        : null,
+                  ),
+                  if (blocker != null) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      blocker,
+                      textAlign: TextAlign.center,
+                      style: AppTypography.caption.copyWith(height: 1.35),
+                    ),
+                  ],
+                ],
               ),
             ],
           );
@@ -235,6 +270,17 @@ class _ExpenseClaimScreenState extends ConsumerState<ExpenseClaimScreen> {
     WidgetRef ref,
     DateTime month,
   ) async {
+    final go = await showConfirmDialog(
+      context,
+      title: 'Submit ${Fmt.monthYear(month)}?',
+      message: 'The whole month goes to your manager together. If you '
+          'remember a day afterwards you can still claim it — it goes on its '
+          'own, after this one.',
+      confirmLabel: 'Submit',
+      cancelLabel: 'Not yet',
+    );
+    if (!go || !context.mounted) return;
+
     final session = ref.read(sessionProvider);
     final sent = await ref
         .read(expenseRepositoryProvider)

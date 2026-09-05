@@ -140,11 +140,11 @@ void main() {
       await pumpScreen(tester, const AddActivityScreen());
       expect(find.text('Add New Activity'), findsOneWidget);
 
-      // One short form: who, when, what for. Adding an activity *plans* a
-      // call — recording one is the visit flow, which begins from the
-      // activity once the rep is standing at the door.
+      // Two questions: who, and what for. It is filed against today —
+      // recording the call is the visit flow, which begins from the activity
+      // once the rep is standing at the door.
       expect(find.text('Client'), findsWidgets);
-      expect(find.text('When'), findsOneWidget);
+      expect(find.text('When'), findsNothing);
       expect(find.text('Purpose'), findsOneWidget);
       expect(find.text('Add activity'), findsOneWidget);
 

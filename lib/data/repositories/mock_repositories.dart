@@ -771,6 +771,17 @@ class MockExpenseRepository implements ExpenseRepository {
   Future<int> submitMonth(Session session, DateTime month) async {
     await _latency(600);
 
+    // Asked of the store, not of the screen. The button is disabled on a
+    // snapshot taken when the screen loaded, and a month can have gained an
+    // unanswered day since — or, on the last day of the month, simply have
+    // still been running when the screen opened.
+    final gate = claimGate(
+      days: await claimMonth(session, month),
+      month: month,
+      now: DateTime.now(),
+    );
+    if (gate != ClaimGate.ready) return 0;
+
     var sent = 0;
     for (var i = 0; i < _store.expenses.length; i++) {
       final e = _store.expenses[i];

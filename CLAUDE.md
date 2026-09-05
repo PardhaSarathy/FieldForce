@@ -130,6 +130,12 @@ that is expensive to unwind later.
   a small pill the band covers most of it and reads as a gradient fault.
 - Typography uses the platform UI face deliberately (offline-first field app;
   no webfont fetch). Change it only via `AppTypography.fontFamily`.
+- **A dialog's buttons are two equal halves, until the words stop fitting.**
+  Two `Expanded` halves make the *longer* label fit in half a dialog, and a
+  dialog is narrower than the screen: "Confirm all" and "Not yet" shipped as
+  "Confi…" and "Not y…", an ellipsised verb on the one control whose job is
+  saying what the tap does. They stack when measurement says they must, with
+  confirm on top. Stacking is not the degraded layout — it is the honest one.
 - **Two or three options go in a `SegmentedField`, not a dropdown.** Both
   answers on screen, no tap spent revealing them. A dropdown for a two-value
   field costs three taps to express one bit. Past three the row runs out of
@@ -216,10 +222,19 @@ that is expensive to unwind later.
   so a second tap paid every day again. It asks the store now. The comment
   above the guard claimed protection the code did not have, and only a unit
   test found it: **a comment is not a test.**
-- **The month never shuts.** Submitting sends what is claimed so far; a day
-  remembered in November can still be claimed against September. The screen
-  says so out loud, which is what stops a rep guessing a figure on the 30th
-  rather than losing the day.
+- **The claim goes in one piece, and the month never shuts.** It is submitted
+  once, after the month has ended *and* every day in it has been answered —
+  the same gate the tour plan has, because an approver receiving a month in
+  instalments is not looking at the month. `claimGate` is that rule, and it is
+  read twice: by the screen to disable the button, and by the repository
+  against the store, since the button is working from a snapshot. A month is
+  over when the calendar says so, never when the last declared day has been
+  confirmed — on the 20th every day so far can be answered and the month still
+  has ten days in it. What does *not* change is the other half: a day
+  remembered in November can still be claimed against September and sent on
+  its own, which is what stops a rep guessing a figure rather than losing the
+  day. The screen says both out loud — a disabled Submit always carries the
+  reason it is disabled.
 - **A claimed day must say where it stands.** Draft, submitted, approved and
   rejected all rendered as one green tick once — and when money moves monthly,
   "has this been approved" is the question the screen exists to answer. Where
@@ -407,6 +422,11 @@ why the widget smoke suite exists:
   the radius.
 - **Never use `Row(crossAxisAlignment: stretch)` inside a scrolling list.** It
   has no bounded height and collapses the card and everything after it.
+- **Never put a `LayoutBuilder` in `AlertDialog.actions`.** They sit in an
+  `OverflowBar`, which asks its children for an intrinsic width, and a
+  `LayoutBuilder` cannot answer that. `showConfirmDialog` decides whether its
+  two buttons sit in a row or stack by measuring the *labels* against the
+  narrowest a dialog can be (280), not against the width it actually got.
 - Metadata rows must degrade on a 320pt phone: wrap the give-way element in
   `Flexible` with `overflow: ellipsis`, or use a `Wrap`.
 

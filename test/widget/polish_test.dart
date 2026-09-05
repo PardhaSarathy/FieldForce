@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pharmaconnect/core/theme/app_colors.dart';
 import 'package:pharmaconnect/core/theme/app_theme.dart';
@@ -138,6 +139,105 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
       expect(tester.widget<AnimatedScale>(find.byType(AnimatedScale)).scale, 1.0);
+    });
+  });
+
+  group('a dialog never ellipsises its own verbs', () {
+    Future<void> open(
+      WidgetTester tester, {
+      required String confirmLabel,
+      required String cancelLabel,
+      double width = 320,
+    }) async {
+      tester.view.physicalSize = Size(width, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showConfirmDialog(
+                  context,
+                  title: 'Confirm 12 days?',
+                  message: 'Money will move.',
+                  confirmLabel: confirmLabel,
+                  cancelLabel: cancelLabel,
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    /// Whether the label had to be cut to fit the button it sits in.
+    bool clipped(WidgetTester tester, String label) {
+      final text = tester.renderObject<RenderParagraph>(
+        find.text(label, skipOffstage: false),
+      );
+      return text.didExceedMaxLines ||
+          text.size.width + 0.5 < text.getMaxIntrinsicWidth(double.infinity);
+    }
+
+    testWidgets('long labels stack rather than shrink', (tester) async {
+      // "Confirm all" beside "Not yet" came out as "Confi…" and "Not y…" on a
+      // small phone: two Expanded halves make the longer word fit in half a
+      // dialog, and a dialog is already narrower than the screen.
+      await open(tester, confirmLabel: 'Confirm all', cancelLabel: 'Not yet');
+
+      expect(find.text('Confirm all'), findsOneWidget);
+      expect(clipped(tester, 'Confirm all'), isFalse);
+      expect(clipped(tester, 'Not yet'), isFalse);
+    });
+
+    testWidgets('short labels stay side by side', (tester) async {
+      await open(tester, confirmLabel: 'Yes', cancelLabel: 'No', width: 400);
+
+      final yes = tester.getTopLeft(find.text('Yes'));
+      final no = tester.getTopLeft(find.text('No'));
+      expect(yes.dy, no.dy, reason: 'two short words fit on one line');
+      expect(yes.dx, greaterThan(no.dx), reason: 'confirm sits on the right');
+    });
+
+    testWidgets('a large text scale stacks what fitted before',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
+            child: Scaffold(
+              body: Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => showConfirmDialog(
+                    context,
+                    title: 'Submit?',
+                    message: 'It goes to your manager.',
+                    confirmLabel: 'Submit',
+                    cancelLabel: 'Not yet',
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(clipped(tester, 'Submit'), isFalse);
+      expect(clipped(tester, 'Not yet'), isFalse);
     });
   });
 }

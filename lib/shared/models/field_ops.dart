@@ -345,6 +345,56 @@ class ClaimDay {
   bool get isOpen => claimable && !hasClaim;
 }
 
+/// Why a month's claim cannot be sent yet — or that it can.
+///
+/// The claim goes the way the tour plan goes: **in one piece, once**. A rep
+/// used to be able to send three days on the 8th and four more on the 19th,
+/// which gives an approver the same month arriving in instalments and no
+/// moment where the figure they are looking at is the month's figure.
+enum ClaimGate {
+  /// Nothing is waiting to go. The bar hides rather than showing a control
+  /// with nothing behind it.
+  nothingToSend,
+
+  /// The month has not finished. Days keep arriving until it does, so a claim
+  /// sent on the 20th could never be the month's claim.
+  monthRunning,
+
+  /// The month is over but days in it are still unanswered. Confirming them
+  /// is one tap; losing them because the claim went without them is not
+  /// recoverable in the same way.
+  daysOpen,
+
+  /// It can go.
+  ready,
+}
+
+/// Reads [days] as a month and answers whether its claim can be submitted.
+///
+/// Pure, and takes [now] rather than reading the clock, so the gate can be
+/// tested on a month that has ended without waiting for one to.
+ClaimGate claimGate({
+  required List<ClaimDay> days,
+  required DateTime month,
+  required DateTime now,
+}) {
+  final drafts = days
+      .expand((d) => d.expenses)
+      .where((e) => e.status == ApprovalStatus.draft)
+      .length;
+  if (drafts == 0) return ClaimGate.nothingToSend;
+
+  // A month is over when the calendar has moved past it — not when the last
+  // declared day has been confirmed. On the 20th every day so far can be
+  // answered and the month still has ten days left in it.
+  if (!month.isBefore(DateTime(now.year, now.month))) {
+    return ClaimGate.monthRunning;
+  }
+
+  if (days.any((d) => d.isOpen)) return ClaimGate.daysOpen;
+  return ClaimGate.ready;
+}
+
 class AttendanceRecord {
   const AttendanceRecord({
     required this.date,

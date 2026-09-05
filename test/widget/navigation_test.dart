@@ -165,11 +165,10 @@ void main() {
       // It opens on the client question. The three steps — Location, Call
       // report, Review — only mean anything once there is a client, so the
       // picker comes before the step header rather than being step one.
-      // One short form: who, when, what for. Adding an activity *plans* a
-      // call; recording one is the visit flow, and it begins from the
-      // activity itself once the rep is standing at the door.
+      // Two questions: who, and what for. It is filed against today —
+      // the date field was a required tap that answered itself.
       expect(find.text('Client'), findsWidgets);
-      expect(find.text('When'), findsOneWidget);
+      expect(find.text('When'), findsNothing);
       expect(find.text('Purpose'), findsOneWidget);
       expect(find.text('Add activity'), findsOneWidget);
 

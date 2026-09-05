@@ -166,8 +166,13 @@ abstract interface class ExpenseRepository {
 
   /// Submits every draft expense in [month] for approval.
   ///
-  /// Submitting does **not** close the month: a day remembered later can
-  /// still be claimed and submitted against the same month.
+  /// The month goes in one piece, once it is over and every day in it has been
+  /// answered — the same shape as a tour plan. Refuses anything else and
+  /// returns 0; see [claimGate], which the screen reads to disable its button
+  /// and this reads again against the store.
+  ///
+  /// Submitting still does **not** close the month: a day remembered later can
+  /// be claimed and sent against the same month.
   Future<int> submitMonth(Session session, DateTime month);
 }
 

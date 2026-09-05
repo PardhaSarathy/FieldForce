@@ -466,28 +466,85 @@ Future<bool> showConfirmDialog(
         AppSpacing.lg,
       ),
       actions: [
-        Row(
-          children: [
-            Expanded(
-              child: SecondaryButton(
-                label: cancelLabel,
-                onPressed: () => Navigator.of(context).pop(false),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: isDestructive
-                  ? DangerButton(
-                      label: confirmLabel,
-                      filled: true,
-                      onPressed: () => Navigator.of(context).pop(true),
-                    )
-                  : PrimaryButton(
-                      label: confirmLabel,
-                      onPressed: () => Navigator.of(context).pop(true),
-                    ),
-            ),
-          ],
+        // Side by side while both labels fit, stacked when they do not.
+        //
+        // Two `Expanded` halves make the *longer* label the one that has to
+        // fit in half the dialog, and a dialog is narrower than the screen it
+        // sits on. "Confirm all" and "Not yet" came out as "Confi…" and
+        // "Not y…" on a small phone — an ellipsised verb on the one control
+        // whose whole job is saying what the tap will do. Stacking is not a
+        // degraded version of the row; it is the honest layout when the words
+        // are long.
+        Builder(
+          builder: (context) {
+            final confirm = isDestructive
+                ? DangerButton(
+                    label: confirmLabel,
+                    filled: true,
+                    onPressed: () => Navigator.of(context).pop(true),
+                  )
+                : PrimaryButton(
+                    label: confirmLabel,
+                    onPressed: () => Navigator.of(context).pop(true),
+                  );
+            final cancel = SecondaryButton(
+              label: cancelLabel,
+              onPressed: () => Navigator.of(context).pop(false),
+            );
+
+            // Measured, not guessed at with a breakpoint: the labels are
+            // callers' words, and a text scale of 1.3 makes any fixed width
+            // wrong. `AppSpacing.xl` twice is the button's own padding.
+            //
+            // Measured against the *narrowest* dialog rather than this one.
+            // `LayoutBuilder` would give the real width and cannot be used —
+            // `AlertDialog` puts its actions in an `OverflowBar`, which asks
+            // them for an intrinsic width, and a LayoutBuilder cannot answer
+            // that (it asserts in debug and lays out nothing in release, which
+            // is the same trap as `Row(stretch)` in a list). So the floor is
+            // the answer: a dialog is never narrower than 280, the row is only
+            // taken when the labels fit inside *that*, and the cost of being
+            // conservative is a stacked pair on a wide screen that could have
+            // sat in a row.
+            final scaler = MediaQuery.textScalerOf(context);
+            double widthOf(String label) {
+              final painter = TextPainter(
+                text: TextSpan(text: label, style: AppTypography.button),
+                textDirection: Directionality.of(context),
+                textScaler: scaler,
+              )..layout();
+              return painter.width + AppSpacing.xl * 2;
+            }
+
+            final widest = [
+              widthOf(confirmLabel),
+              widthOf(cancelLabel),
+            ].reduce((a, b) => a > b ? a : b);
+
+            const narrowestDialog = 280.0 - AppSpacing.lg * 2;
+            if (widest * 2 + AppSpacing.md <= narrowestDialog) {
+              return Row(
+                children: [
+                  Expanded(child: cancel),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(child: confirm),
+                ],
+              );
+            }
+
+            // Confirm on top when stacked: it is the answer to the question in
+            // the title, and the destructive one is the one that must not be
+            // reached for by muscle memory.
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                confirm,
+                const SizedBox(height: AppSpacing.sm),
+                cancel,
+              ],
+            );
+          },
         ),
       ],
     ),
