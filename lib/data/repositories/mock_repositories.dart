@@ -1512,9 +1512,11 @@ class MockExportRepository implements ExportRepository {
 
     return ExportSheet(
       kind: kind,
+      // No extension: the format is chosen when the file is written, and a
+      // name carrying `.csv` was still on the workbook the day it became one.
       fileName:
           '${kind.label.replaceAll(' ', '-')}_${session.employee.employeeCode}'
-          '_$stamp.csv',
+          '_$stamp',
       rows: [..._heading(session, kind), ...rows],
     );
   }

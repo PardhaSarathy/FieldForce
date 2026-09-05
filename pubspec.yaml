@@ -48,6 +48,8 @@ dependencies:
   # mail, WhatsApp, Drive. Without it "Export" is a button that builds a file
   # nobody can reach, which is a dead control with extra steps.
   share_plus: ^13.3.0
+  archive: ^4.2.0
+  file_saver: ^0.4.0
 
 dev_dependencies:
   flutter_test:

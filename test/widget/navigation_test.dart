@@ -407,6 +407,23 @@ void main() {
       }
     });
 
+    testWidgets('Export is in the index too, not only behind the button',
+        (tester) async {
+      // One entry point is a feature nobody finds. The drawer is the app's
+      // full index — every other module is in it — and a rep who never taps
+      // the centre button would never have known these existed.
+      await pumpApp(tester, size: const Size(430, 1800));
+
+      await tester.tap(find.byIcon(Icons.menu));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Export Data'));
+      await settle(tester);
+
+      expect(find.text('Export Data'), findsWidgets);
+      expect(find.text('DCR'), findsWidgets);
+    });
+
     testWidgets("a manager's centre button is untouched", (tester) async {
       await pumpApp(tester, code: 'ASM201', size: const Size(430, 1800));
 

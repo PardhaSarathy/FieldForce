@@ -1,7 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_saver/file_saver.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/providers/app_providers.dart';
@@ -123,65 +122,102 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     setState(() => _busy = kind);
     final session = ref.read(sessionProvider);
 
+    // Building and saving are two acts with two failures, and they were
+    // wrapped in one `try` that blamed the first for both. A file that will
+    // not save is not a sheet that would not build — telling a rep his month
+    // failed to generate when it generated perfectly sends him looking in the
+    // wrong place.
+    final ExportSheet sheet;
     try {
-      final sheet = await ref
+      sheet = await ref
           .read(exportRepositoryProvider)
           .build(session, kind, month);
-
-      if (!mounted) return;
-
-      // Nothing to send is not an error, and it must not open a share sheet
-      // with an empty file in it.
-      if (sheet.dataRowCount == 0) {
-        AppHaptics.failure();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Nothing filed for ${Fmt.monthYear(month)}, so there is nothing '
-              'to export.',
-            ),
-          ),
-        );
-        return;
-      }
-
-      // Bytes, not a path. `XFile.fromData` lets the plugin put the file
-      // wherever the platform wants it, which is the one part of this that
-      // differs on every platform.
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [
-            XFile.fromData(
-              utf8.encode(sheet.toCsv()),
-              name: sheet.fileName,
-              mimeType: 'text/csv',
-            ),
-          ],
-          fileNameOverrides: [sheet.fileName],
-          subject: '${kind.title} — ${session.employee.name}',
-        ),
-      );
-
-      if (!mounted) return;
-      AppHaptics.success();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${kind.label}: ${Fmt.count(sheet.dataRowCount, 'row')} ready.',
-          ),
-        ),
-      );
     } catch (_) {
+      _finish();
       if (!mounted) return;
       AppHaptics.failure();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not build the sheet. Try again.')),
+      _say('Could not build the ${kind.label} sheet. Try again.');
+      return;
+    }
+
+    if (!mounted) return _finish();
+
+    // Nothing to send is not an error, and it must not download an empty
+    // workbook that the office then has to ask about.
+    if (sheet.dataRowCount == 0) {
+      _finish();
+      AppHaptics.failure();
+      _say(
+        'Nothing filed for ${Fmt.monthYear(month)}, so there is nothing to '
+        'export.',
       );
-    } finally {
-      if (mounted) setState(() => _busy = null);
+      return;
+    }
+
+    final rows = Fmt.count(sheet.dataRowCount, 'row');
+
+    try {
+      // Downloads, rather than opening a share sheet.
+      //
+      // Share was the first answer and it was the wrong one: the office asks
+      // for a file, and a share sheet asks the rep to pick an app before he
+      // has one. This writes it where the phone keeps downloads — no
+      // permission prompt on any Android this app supports, because it goes
+      // through the media store rather than the filesystem.
+      await FileSaver.instance.saveFile(
+        name: sheet.fileName,
+        bytes: sheet.toXlsx(),
+        fileExtension: 'xlsx',
+        mimeType: MimeType.microsoftExcel,
+      );
+
+      _finish();
+      if (!mounted) return;
+      AppHaptics.success();
+      _say('${sheet.fileName}.xlsx saved to Downloads — $rows.');
+    } catch (_) {
+      // No downloads folder to write to: a desktop build, a locked-down
+      // device. The workbook exists and the rep should still be able to get
+      // it out, so it goes to the share sheet instead of nowhere. A control
+      // that cannot act must still answer.
+      try {
+        await SharePlus.instance.share(
+          ShareParams(
+            files: [
+              XFile.fromData(
+                sheet.toXlsx(),
+                name: '${sheet.fileName}.xlsx',
+                mimeType: _xlsxMime,
+              ),
+            ],
+            fileNameOverrides: ['${sheet.fileName}.xlsx'],
+            subject: '${kind.title} — ${session.employee.name}',
+          ),
+        );
+        _finish();
+        if (!mounted) return;
+        AppHaptics.success();
+        _say('${kind.label} — $rows.');
+      } catch (_) {
+        _finish();
+        if (!mounted) return;
+        AppHaptics.failure();
+        _say('Could not save the file. Check the app has storage access.');
+      }
     }
   }
+
+  void _finish() {
+    if (mounted) setState(() => _busy = null);
+  }
+
+  void _say(String message) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(message)));
 }
+
+const _xlsxMime =
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /// One sheet, and the button that builds it.
 class _ExportRow extends StatelessWidget {

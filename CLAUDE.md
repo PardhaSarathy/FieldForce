@@ -311,9 +311,23 @@ that is expensive to unwind later.
   written into the station column with zeroes beside it. That is exactly what
   `DayKind` already resolves, so the sheets read the claim month rather than
   walking the day plans a second time and disagreeing with it. `ExportSheet`
-  holds rows of strings, not a formatted file — so the same sheet can become a
-  real workbook when a backend writes one, and so the contents can be asserted
-  on without opening a file.
+  holds rows of strings, not a formatted file, and writes itself as either —
+  so the contents can be asserted on without opening a file.
+  - **It downloads a real `.xlsx`, and it is not a share sheet.** CSV was the
+    first answer and it was wrong twice over: every column arrives as text, so
+    the amounts will not sum and a month will not sort, which is the first
+    thing the office does to one of these. `toXlsx()` writes the six OOXML
+    parts by hand — dates as real Excel dates, figures as numbers, the header
+    row frozen, filtered and in the app's own blue. Six parts is the whole
+    format for a sheet with no formulas in it, which is why there is no
+    spreadsheet package here. And the file *saves* to Downloads rather than
+    opening a share sheet: the office asks for a file, and a share sheet asks
+    the rep to choose an app before he has one. Sharing is the fallback for a
+    platform with nowhere to download to.
+  - **Building and saving are two acts with two failures.** They were in one
+    `try` that blamed the first for both, so a file that would not save
+    reported a sheet that would not build — and sent the rep looking in the
+    wrong place.
   - **Two of the client's columns are deliberately missing.** Joint work was
     removed from this app outright, and printing a column of "No" would be
     inventing data to fill a shape; the client list's *Unlisted* column is the
@@ -520,11 +534,15 @@ Rejected on purpose; re-open only with a reason:
   ~150 usages; swapping adds a dependency and a migration for no user benefit.
 - **`flutter_svg`** — there are no SVG assets. The brand mark is drawn in code
   so it scales and re-colours with the palette.
-- **`share_plus`** — accepted, and the only dependency added since the build
-  began. "Export" that builds a file nobody can reach is a dead control with
-  extra steps, and handing a file to the phone's own share sheet is the one
-  part of this that differs on every platform. The sheet is passed as bytes
-  (`XFile.fromData`), so no `path_provider` and no temp-file bookkeeping.
+- **`file_saver`, `archive`, `share_plus`** — accepted, and the only
+  dependencies added since the build began. All three are the export's:
+  `file_saver` puts the workbook in Downloads through the media store, so
+  there is no storage permission to ask for and no `path_provider`; `archive`
+  zips the OOXML parts (a workbook is a zip, and hand-rolling one is CRC and
+  central-directory code nobody should own); `share_plus` is the fallback
+  where there is nowhere to download to. A spreadsheet package was *not*
+  taken — the six parts in `ExportSheet.toXlsx` are the whole format for a
+  sheet with no formulas, and a library for that only ever writes one shape.
 - **`flutter_animate`** — still rejected, but not because motion is unwanted.
   The motion system in `app_motion.dart` and `motion.dart` is built from
   `AnimationController`, `TweenAnimationBuilder` and the implicit animations,

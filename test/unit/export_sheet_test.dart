@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pharmaconnect/data/repositories/mock_repositories.dart';
 import 'package:pharmaconnect/shared/models/export.dart';
@@ -36,7 +40,10 @@ void main() {
       final s = await sheet(ExportKind.expenses);
       expect(s.fileName, contains('Expenses'));
       expect(s.fileName, contains(employee.employeeCode));
-      expect(s.fileName, endsWith('.csv'));
+      expect(s.fileName, contains('2026-08'));
+      // No extension: the format is chosen when the file is written, and a
+      // name carrying `.csv` was still on the workbook the day it became one.
+      expect(s.fileName, isNot(contains('.')));
     });
   });
 
@@ -107,7 +114,82 @@ void main() {
     });
   });
 
-  group('the file is one Excel will open', () {
+  group('the workbook is one Excel will open', () {
+    Archive open(Uint8List bytes) => ZipDecoder().decodeBytes(bytes);
+
+    String part(Archive a, String path) =>
+        utf8.decode(a.findFile(path)!.content as List<int>);
+
+    test('it is a zip carrying the six parts a workbook needs', () async {
+      final a = open((await sheet(ExportKind.expenses)).toXlsx());
+      for (final path in [
+        '[Content_Types].xml',
+        '_rels/.rels',
+        'xl/workbook.xml',
+        'xl/_rels/workbook.xml.rels',
+        'xl/styles.xml',
+        'xl/worksheets/sheet1.xml',
+      ]) {
+        expect(a.findFile(path), isNotNull, reason: path);
+      }
+    });
+
+    test('a date is a date, and a figure is a figure', () async {
+      // The whole reason this stopped being a CSV. Arriving as text, the
+      // amounts will not sum and a month will not sort — which is the first
+      // thing the office does to one of these.
+      final xml = part(
+        open((await sheet(ExportKind.expenses)).toXlsx()),
+        'xl/worksheets/sheet1.xml',
+      );
+
+      // 01/08/2026 is 46235 days after Excel's zero.
+      expect(xml, contains('<c r="A8" s="4"><v>46235</v></c>'));
+      // And the header row is frozen above the month.
+      expect(xml, contains('state="frozen"'));
+      expect(xml, contains('<autoFilter'));
+    });
+
+    test('a quote, an ampersand and an angle bracket do not break the XML',
+        () {
+      const s = ExportSheet(
+        kind: ExportKind.clients,
+        fileName: 'x',
+        rows: [
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          ['Sr.No.', 'Client Name'],
+          ['1', 'Ram & Co. <Andheri> "City"'],
+        ],
+      );
+      final xml = utf8.decode(
+        ZipDecoder()
+            .decodeBytes(s.toXlsx())
+            .findFile('xl/worksheets/sheet1.xml')!
+            .content as List<int>,
+      );
+      expect(xml, contains('Ram &amp; Co. &lt;Andheri&gt; "City"'));
+      expect(s.dataRowCount, 1);
+    });
+
+    test('the row count is held, not searched for', () {
+      // It used to be found by looking for a cell reading 'Date' or 'Sr.No.',
+      // which is a string match against a column name: the first sheet to
+      // rename a column would have silently reported zero rows.
+      const s = ExportSheet(
+        kind: ExportKind.dcr,
+        fileName: 'x',
+        rows: [[], [], [], [], [], [], ['Anything'], ['a'], ['b']],
+      );
+      expect(s.dataRowCount, 2);
+    });
+  });
+
+  group('the same table still writes as text', () {
     test('a comma, a quote and a newline all survive the round trip', () {
       const s = ExportSheet(
         kind: ExportKind.clients,
