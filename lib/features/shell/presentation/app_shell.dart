@@ -533,27 +533,19 @@ void _showQuickActions(BuildContext context, {required bool isManager}) {
         'Register a doctor, hospital or chemist',
         Routes.newClient,
       ),
-      // Lands on the month, not on a blank form. A claim hangs off a day the
-      // rep declared, so "new expense" has to start by choosing which day —
-      // and that list is the month screen. A standalone form would have to
-      // ask the same question worse.
-      (
-        Icons.receipt_long_outlined,
-        'Claim a day',
-        'Confirm what you are owed',
-        Routes.expenses,
-      ),
       (
         Icons.shopping_bag_outlined,
         'New order',
         'Capture an order for a client',
         Routes.newOrder,
       ),
+      // Lands on the month, not a blank day. A tour plan is submitted whole,
+      // so "add" starts with the calendar showing which days are still empty.
       (
         Icons.map_outlined,
         'Tour plan',
-        'Plan an upcoming tour',
-        Routes.newTravelPlan,
+        'Plan next month',
+        Routes.travelPlans,
       ),
     ] else ...[
       (
@@ -567,12 +559,6 @@ void _showQuickActions(BuildContext context, {required bool isManager}) {
         'Set targets',
         'Assign monthly targets',
         Routes.targetAssignment,
-      ),
-      (
-        Icons.receipt_long_outlined,
-        'Claim a day',
-        'Confirm what you are owed',
-        Routes.expenses,
       ),
       (
         Icons.event_busy_outlined,
@@ -606,9 +592,9 @@ void _showQuickActions(BuildContext context, {required bool isManager}) {
                 width: 38,
                 height: 38,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: AppColors.brandSoft,
-                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  shape: BoxShape.circle,
                 ),
                 child: Icon(icon, size: 19, color: AppColors.brand),
               ),

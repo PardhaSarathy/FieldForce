@@ -25,7 +25,6 @@ import '../../features/manager/presentation/team_screens.dart';
 import '../../features/more/presentation/more_screens.dart';
 import '../../features/reports/presentation/report_screens.dart';
 import '../../features/shell/presentation/app_shell.dart';
-import '../../features/travel/presentation/travel_hub_screen.dart';
 import '../../features/travel/presentation/travel_screens.dart';
 import '../providers/app_providers.dart';
 import 'routes.dart';
@@ -272,28 +271,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       GoRoute(
-        path: Routes.travel,
-        builder: (_, _) => const TravelHubScreen(),
-      ),
-      GoRoute(
         path: Routes.travelPlans,
-        builder: (_, _) => const TravelDashboardScreen(),
+        builder: (_, _) => const TourPlanScreen(),
       ),
       GoRoute(
-        path: Routes.newTravelPlan,
-        builder: (_, _) => const NewTravelPlanScreen(),
+        path: '/travel/plans/day/:date',
+        builder: (_, state) => TourPlanDayScreen(
+          date: DateTime.parse(state.pathParameters['date']!),
+        ),
       ),
       GoRoute(
         path: '/travel/detail/:id',
         builder: (_, state) =>
             TravelDetailScreen(planId: state.pathParameters['id']!),
-        routes: [
-          GoRoute(
-            path: 'edit',
-            builder: (_, state) =>
-                EditTravelPlanScreen(planId: state.pathParameters['id']!),
-          ),
-        ],
       ),
 
       GoRoute(

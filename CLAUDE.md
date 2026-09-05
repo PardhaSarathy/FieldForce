@@ -50,6 +50,36 @@ that is expensive to unwind later.
   badge is a pill with a word in it and a tile is a chip with a label under it
   — never because of hue.
 - **Never communicate state by colour alone** — every badge carries text.
+- **There is one calendar.** `MonthCalendar` — attendance, the day plan, the
+  expense claim and the tour plan are the same widget with different data. Each
+  had its own grid, its own cell and its own header once, and they drifted in
+  every one of those: one clipped its dates at large text sizes because it
+  sized rows from an aspect ratio, one drew rounded squares while the rest drew
+  circles, one put the month on the left with both arrows bunched right. A day
+  is a **tinted disc, the number, and a small dot** for what happened on it —
+  the disc says *something is here*, the dot says *what*, and the legend under
+  the grid names every colour, so a calendar never speaks by hue alone. The
+  screen supplies a `CalendarDay` per date; it never lays one out itself.
+- **A calendar has four colours and no more**, and each one means the same
+  thing on every screen: `calendarPlanned` blue is *ahead of you* (a planned
+  visit, a working tour day, a claim not yet settled, a company holiday on the
+  attendance sheet), `calendarDone` green is *happened and accepted*,
+  `calendarOff` orange is *not a working day*, `calendarProblem` red is
+  *missed, absent or rejected*. A blank day stays blank — the four are read
+  against it. Between them the four calendars had grown six hues, with amber
+  meaning "leave" on one screen and "above allowance" on the next; the excess
+  is a word on the row, not a fifth colour on the grid. `palette_contrast_test`
+  holds each one at 4.5:1 and holds them apart from each other, because the
+  mark carrying them is a 5pt dot.
+- **Anything holding a single mark is a circle.** Wells, avatars, icon
+  buttons, the `+` sheet's chips, and every **day cell in all three
+  calendars** — Calendar, Attendance and the expense claim. Each of those
+  calendars had drawn its own rounded square, and one of them going round on
+  its own is how a set of screens stops looking like one app. Rounded
+  rectangles are for things you *read* — cards, fields, sheets — not for
+  things you *press* or single glyphs.
+  - The one deliberate exception is a **receipt thumbnail**: it stands in for
+    a photograph, and photographs are not round.
 - **A well is a circle.** `IconWell` defaults to `size / 2` and nothing should
   override it. Home's tiles were discs and the other twenty-six wells were
   rounded squares — one object, two shapes, and the odd one out was the screen

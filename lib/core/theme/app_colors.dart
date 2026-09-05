@@ -224,6 +224,30 @@ abstract final class AppColors {
   static const errorSoft = Color(0xFFFFF4F2); // --color-error-soft
   static const infoSoft = Color(0xFFE3F5F7);
 
+  // ------------------------------------------------------------- calendars
+  /// The four colours a calendar is allowed, and what each one means.
+  ///
+  /// Every calendar in the app draws from this set and nothing else. They had
+  /// grown to six hues between them — brand, a lighter brand, amber, green,
+  /// red, teal and a violet — with the same colour meaning different things on
+  /// different screens, which is the state where a legend stops being a key
+  /// and becomes a translation table.
+  ///
+  /// * [calendarPlanned] — **blue.** Something is on this day and it has not
+  ///   happened yet: a visit to make, a day worked but not claimed, a claim
+  ///   waiting on a manager.
+  /// * [calendarDone] — **green.** Completed, approved, present.
+  /// * [calendarOff] — **orange.** Not a working day. Leave, or a holiday.
+  /// * [calendarProblem] — **red.** Missed, rejected, absent.
+  ///
+  /// A day with nothing recorded takes no colour at all — it is the blank the
+  /// other four are read against, and giving it a hue is what made a month of
+  /// ordinary days look busy.
+  static const calendarPlanned = brand;
+  static const calendarDone = success;
+  static const calendarOff = warning;
+  static const calendarProblem = error;
+
   // ------------------------------------------------------- fills, not inks
   /// Rating stars. Carries dark ink; never a foreground itself. `--color-star`.
   static const star = Color(0xFFFFB800);
@@ -290,7 +314,12 @@ enum ModulePalette {
   hr(Color(0xFF4338CA), Color(0xFFECEDFD)),
 
   /// `--concern-accent`. 5.5:1 / 4.8:1.
-  sales(Color(0xFFC0267A), Color(0xFFFDEAF3));
+  ///
+  /// Named for the tile it paints, which is Expenses. It was `sales` until
+  /// Sales came off Home's grid — a hue named after a module it no longer
+  /// belongs to is the kind of stale name that makes the next reader think
+  /// the wrong colour is in use.
+  expenses(Color(0xFFC0267A), Color(0xFFFDEAF3));
 
   const ModulePalette(this.ink, this.tile);
 

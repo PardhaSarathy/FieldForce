@@ -97,7 +97,9 @@ class ExpenseDetailScreen extends ConsumerWidget {
                               style: AppTypography.metricSm,
                             ),
                             Text(
-                              expense.category.label,
+                              expense.categories
+                                  .map((c) => c.label)
+                                  .join(' · '),
                               style: AppTypography.bodySm,
                             ),
                           ],
@@ -115,7 +117,10 @@ class ExpenseDetailScreen extends ConsumerWidget {
                 children: [
                   KeyValueRow(label: 'Employee', value: expense.employeeName),
                   KeyValueRow(label: 'Date', value: Fmt.date(expense.date)),
-                  KeyValueRow(label: 'Category', value: expense.category.label),
+                  KeyValueRow(
+                    label: 'Category',
+                    value: expense.categories.map((c) => c.label).join(' · '),
+                  ),
                   KeyValueRow(label: 'Description', value: expense.description),
 
                   // The three the claim form captures and nothing displayed.
@@ -262,7 +267,8 @@ class _EditClaimFormState extends ConsumerState<_EditClaimForm> {
   late final _remarks = TextEditingController(
     text: widget.expense.description ?? '',
   );
-  late ExpenseCategory _category = widget.expense.category;
+  late final Set<ExpenseCategory> _categories =
+      widget.expense.categories.toSet();
   bool _saving = false;
 
   @override
@@ -319,14 +325,18 @@ class _EditClaimFormState extends ConsumerState<_EditClaimForm> {
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            DropdownField<ExpenseCategory>(
+            MultiSelectField<ExpenseCategory>(
               label: 'Category',
               required: true,
-              items: ExpenseCategory.values,
-              value: _category,
+              options: ExpenseCategory.values,
+              selected: _categories,
               itemLabel: (c) => c.label,
-              onChanged: (v) =>
-                  setState(() => _category = v ?? ExpenseCategory.other),
+              iconOf: (c) => c.icon,
+              onChanged: (v) => setState(() {
+                _categories
+                  ..clear()
+                  ..addAll(v);
+              }),
             ),
             const SizedBox(height: AppSpacing.lg),
 
@@ -404,6 +414,7 @@ class _EditClaimFormState extends ConsumerState<_EditClaimForm> {
     // day plan and the approval trail all have to survive a correction.
     await ref.read(expenseRepositoryProvider).update(
           e.copyWith(
+            categories: _categories.toList(),
             amount: entered,
             description: _remarks.text.trim().isEmpty
                 ? null

@@ -17,6 +17,7 @@ import '../../../shared/widgets/approval_timeline.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
+import '../../../shared/widgets/month_calendar.dart';
 import '../../../shared/widgets/states.dart';
 
 /// HR hub (§23). A directory rather than a dashboard — each item is its own
@@ -120,29 +121,50 @@ class AttendanceScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
         children: [
-          _MonthSwitcher(
-            month: month,
-            onChanged: (m) =>
-                ref.read(_attendanceMonthProvider.notifier).state = m,
-          ),
-          const SizedBox(height: AppSpacing.lg),
           async.when(
             loading: () => const Padding(
               padding: EdgeInsets.only(top: AppSpacing.xxxl),
               child: LoadingState(),
             ),
             error: (_, _) => const ErrorState(),
-            data: (records) => Column(
-              children: [
-                _AttendanceSummary(records: records),
-                const SizedBox(height: AppSpacing.cardGap),
-                AppCard(
-                  child: _AttendanceCalendar(month: month, records: records),
-                ),
-                const SizedBox(height: AppSpacing.cardGap),
-                const _AttendanceLegend(),
-              ],
-            ),
+            data: (records) {
+              final byDay = {for (final r in records) r.date.day: r};
+              void step(int delta) =>
+                  ref.read(_attendanceMonthProvider.notifier).state =
+                      DateTime(month.year, month.month + delta);
+
+              return Column(
+                children: [
+                  // The month header, the grid and the key are all part of the
+                  // one calendar now — they used to be three separate blocks
+                  // with a switcher above and a legend card below.
+                  MonthCalendar(
+                    month: month,
+                    onPreviousMonth: () => step(-1),
+                    onNextMonth: month.isBefore(
+                      DateTime(DateTime.now().year, DateTime.now().month),
+                    )
+                        ? () => step(1)
+                        : null,
+                    dayOf: (day) {
+                      final status = byDay[day]?.status;
+                      if (status == null) return const CalendarDay();
+                      return CalendarDay(
+                        fill: status.color.withValues(alpha: 0.12),
+                        ink: status.color,
+                        dot: status.color,
+                      );
+                    },
+                    legend: [
+                      for (final status in AttendanceStatus.values)
+                        CalendarLegendItem(status.color, status.label),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.cardGap),
+                  _AttendanceSummary(records: records),
+                ],
+              );
+            },
           ),
           const SizedBox(height: AppSpacing.xxxl),
         ],
@@ -151,47 +173,6 @@ class AttendanceScreen extends ConsumerWidget {
   }
 }
 
-class _MonthSwitcher extends StatelessWidget {
-  const _MonthSwitcher({required this.month, required this.onChanged});
-
-  final DateTime month;
-  final ValueChanged<DateTime> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final canGoForward = month.isBefore(
-      DateTime(DateTime.now().year, DateTime.now().month),
-    );
-
-    return AppCard(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.xs,
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.chevron_left),
-            onPressed: () => onChanged(DateTime(month.year, month.month - 1)),
-          ),
-          Expanded(
-            child: Text(
-              Fmt.monthYear(month),
-              textAlign: TextAlign.center,
-              style: AppTypography.titleMd,
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.chevron_right),
-            onPressed: canGoForward
-                ? () => onChanged(DateTime(month.year, month.month + 1))
-                : null,
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _AttendanceSummary extends StatelessWidget {
   const _AttendanceSummary({required this.records});
@@ -266,135 +247,8 @@ class _Stat extends StatelessWidget {
   }
 }
 
-class _AttendanceCalendar extends StatelessWidget {
-  const _AttendanceCalendar({required this.month, required this.records});
 
-  final DateTime month;
-  final List<AttendanceRecord> records;
 
-  @override
-  Widget build(BuildContext context) {
-    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
-    // Monday-first grid.
-    final leadingBlanks = DateTime(month.year, month.month, 1).weekday - 1;
-
-    final byDay = {for (final r in records) r.date.day: r};
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            for (final label in ['M', 'T', 'W', 'T', 'F', 'S', 'S'])
-              Expanded(
-                child: Center(
-                  child: Text(label, style: AppTypography.overline),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        // Fixed cell height derived from the text scale. A seven-column grid
-        // has its width dictated by the screen, so letting the aspect ratio
-        // set the height clipped the day number at large font sizes.
-        Builder(
-          builder: (context) {
-            final scale = MediaQuery.textScalerOf(context);
-            final extent =
-                scale.scale(AppTypography.bodySm.fontSize!) * 1.35 + 12;
-            final cells = leadingBlanks + daysInMonth;
-
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: cells,
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 7,
-                mainAxisSpacing: AppSpacing.xs,
-                crossAxisSpacing: AppSpacing.xs,
-                mainAxisExtent: extent,
-              ),
-              itemBuilder: (context, i) {
-                if (i < leadingBlanks) return const SizedBox.shrink();
-                final day = i - leadingBlanks + 1;
-                return _DayCell(day: day, record: byDay[day]);
-              },
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
-class _DayCell extends StatelessWidget {
-  const _DayCell({required this.day, this.record});
-
-  final int day;
-  final AttendanceRecord? record;
-
-  @override
-  Widget build(BuildContext context) {
-    final status = record?.status;
-    final color = status?.color;
-
-    return Container(
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color?.withValues(alpha: 0.12) ?? Colors.transparent,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-      ),
-      // A calendar cell is a fixed box in a seven-column grid: its width comes
-      // from the screen and cannot grow. Scaling the content down is the only
-      // behaviour that survives every combination of narrow screen and large
-      // system font, so the cell is fitted rather than sized by arithmetic.
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '$day',
-              style: AppTypography.bodySm.copyWith(
-                color: color ?? AppColors.textSecondary,
-                fontWeight: status == null ? FontWeight.w400 : FontWeight.w600,
-              ),
-            ),
-            if (color != null) ...[
-              const SizedBox(height: 2),
-              StatusDot(color: color, size: 5),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AttendanceLegend extends StatelessWidget {
-  const _AttendanceLegend();
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      child: Wrap(
-        spacing: AppSpacing.lg,
-        runSpacing: AppSpacing.sm,
-        children: [
-          for (final status in AttendanceStatus.values)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                StatusDot(color: status.color, size: 8),
-                const SizedBox(width: AppSpacing.xs),
-                Text(status.label, style: AppTypography.caption),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-}
 
 // ================================================================== leave ==
 

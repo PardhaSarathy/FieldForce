@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -7,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/location/geo_math.dart';
 import '../../../core/location/location_service.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -16,6 +16,8 @@ import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/activity.dart';
 import '../../../shared/models/client.dart';
 import 'activity_detail_screen.dart';
+import 'widgets/call_report_form.dart';
+import 'widgets/visit_photo_field.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
@@ -98,9 +100,12 @@ class EditActivityScreen extends ConsumerWidget {
 class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
   final _formKey = GlobalKey<FormState>();
   final _inputs = TextEditingController();
-  final _rcpa = TextEditingController();
   final _pob = TextEditingController();
   final _feedback = TextEditingController();
+  final _pop = TextEditingController();
+  final _remarks = TextEditingController();
+  int _rcpaScore = 0;
+  final Set<String> _selectedProducts = {};
 
   final _reason = TextEditingController();
   final _pageController = PageController();
@@ -109,6 +114,10 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
 
   Client? _client;
   DateTime _nextVisit = DateTime.now().add(const Duration(days: 14));
+
+  /// When the call is scheduled for, on the create form.
+  DateTime _scheduledFor = DateTime.now();
+  VisitPurpose? _purpose;
 
   /// Which of Location / Call report / Review is showing. Only meaningful
   /// once a client is picked — before that the screen is the picker.
@@ -127,6 +136,10 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
   /// city and find out only when a manager queried the flag.
   GeoFenceResult? _geoResult;
 
+  /// Photos taken at the client, alongside the fix. Named rather than stored
+  /// — the camera arrives with the device integration.
+  final List<String> _photos = [];
+
   bool _loading = true;
   bool _submitting = false;
 
@@ -137,9 +150,12 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
     final e = widget.existing;
     if (e != null) {
       _inputs.text = e.inputsGiven ?? '';
-      _rcpa.text = e.rcpaScore?.toString() ?? '';
       _pob.text = e.pobAmount?.toStringAsFixed(0) ?? '';
       _feedback.text = e.feedback ?? '';
+      _pop.text = e.pop ?? '';
+      _remarks.text = e.remarks ?? '';
+      _rcpaScore = e.rcpaScore ?? 0;
+      _selectedProducts.addAll(e.productIds);
       _nextVisit = e.expectedNextVisit ?? _nextVisit;
       _reason.text = e.outOfRangeReason ?? '';
       // The evidence from the original call, shown read-only. A correction
@@ -153,9 +169,10 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
   @override
   void dispose() {
     _inputs.dispose();
-    _rcpa.dispose();
     _pob.dispose();
     _feedback.dispose();
+    _pop.dispose();
+    _remarks.dispose();
     _reason.dispose();
     _pageController.dispose();
     super.dispose();
@@ -315,13 +332,19 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
       status: existing?.status ?? ActivityStatus.completed,
       workType: WorkType.fieldWork,
       inputsGiven: _inputs.text.trim().isEmpty ? null : _inputs.text.trim(),
-      rcpaScore: int.tryParse(_rcpa.text.trim()),
+      rcpaScore: _rcpaScore > 0 ? _rcpaScore : null,
+      pop: _pop.text.trim().isEmpty ? null : _pop.text.trim(),
+      remarks: _remarks.text.trim().isEmpty ? null : _remarks.text.trim(),
+      productIds: _selectedProducts.toList(),
       pobAmount: double.tryParse(_pob.text.trim()),
       feedback: _feedback.text.trim().isEmpty ? null : _feedback.text.trim(),
       expectedNextVisit: _nextVisit,
       // The geo evidence belongs to where the rep actually stood. A
       // correction typed at the office must not overwrite it.
       geoResult: existing?.geoResult ?? geo,
+      // Evidence, like the fix beside it: a correction keeps what was taken on
+      // the day rather than replacing it from a desk.
+      photoPaths: existing?.photoPaths ?? List.of(_photos),
       // Mandatory whenever the call was logged out of range (§9). It had
       // nowhere to be entered on this screen at all before the Location step
       // existed, so an out-of-range call recorded here carried no explanation
@@ -374,12 +397,18 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
       bottomNavigationBar: _loading ? null : _buildActions(),
       body: _loading
           ? const LoadingState()
+          // Creating is one short form. Correcting keeps the three steps: a
+          // correction has evidence attached to it — the fix, the photos, the
+          // call report — and each of those needs its own screenful.
+          : !widget.isEditing
+          ? _buildCreateForm()
           : client == null
           ? _buildClientPicker()
           : Column(
               children: [
-                _ActivityClientHeader(client: client),
-                StepProgress(
+                StepHeader(
+                  name: client.name,
+                  subtitle: client.subtitle,
                   currentStep: _step,
                   labels: const ['Location', 'Call report', 'Review'],
                 ),
@@ -397,6 +426,114 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
               ],
             ),
     );
+  }
+
+  // ------------------------------------------------------------ creating
+
+  /// Scheduling a call: who, when, and what for.
+  ///
+  /// It used to walk straight into Location → Call report → Review, which is
+  /// the shape of *recording* a visit rather than *planning* one — and the app
+  /// already has a screen for recording it, reached from the activity itself.
+  /// Adding an activity now creates the record and lands on it; the three
+  /// steps begin when the rep taps **Start visit**, standing at the door.
+  Widget _buildCreateForm() {
+    return Form(
+      key: _formKey,
+      child: ListView(
+        padding: const EdgeInsets.all(AppSpacing.screenH),
+        children: [
+          DropdownField<Client>(
+            label: 'Client',
+            required: true,
+            hint: 'Select a client',
+            items: _clients,
+            value: _client,
+            itemLabel: (c) => c.name,
+            onChanged: (v) => setState(() => _client = v),
+            validator: (_) => _client == null ? 'Select a client' : null,
+          ),
+
+          if (_client != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            _ClientFacts(client: _client!),
+          ],
+          const SizedBox(height: AppSpacing.lg),
+
+          DateField(
+            label: 'When',
+            required: true,
+            value: _scheduledFor,
+            firstDate: DateTime.now().subtract(const Duration(days: 30)),
+            onChanged: (d) => setState(() => _scheduledFor = d),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          DropdownField<VisitPurpose>(
+            label: 'Purpose',
+            items: VisitPurpose.values,
+            value: _purpose,
+            itemLabel: (p) => p.label,
+            onChanged: (v) => setState(() => _purpose = v),
+            helper: 'What the call is for. It shows on the activity.',
+          ),
+          const SizedBox(height: AppSpacing.xxxl),
+        ],
+      ),
+    );
+  }
+
+  /// Creates the activity and opens it.
+  ///
+  /// `pushReplacement`, not `push`: the form has done its job, and backing out
+  /// of the activity should land on the list the rep came from rather than on
+  /// a form that would create a second one.
+  Future<void> _create() async {
+    if (!_formKey.currentState!.validate()) return;
+    final client = _client;
+    if (client == null) return;
+
+    setState(() => _submitting = true);
+    final session = ref.read(sessionProvider);
+    final now = DateTime.now();
+    final start = DateTime(
+      _scheduledFor.year,
+      _scheduledFor.month,
+      _scheduledFor.day,
+      now.hour,
+      now.minute,
+    );
+
+    final activity = Activity(
+      // Client-generated so a retry cannot file the same call twice.
+      id: const Uuid().v4(),
+      employeeId: session.employee.id,
+      employeeName: session.employee.name,
+      clientId: client.id,
+      clientName: client.name,
+      clientSpecialty: client.specialty,
+      clientType: client.type,
+      locationName: client.addressLine,
+      areaName: client.areaName,
+      scheduledStart: start,
+      scheduledEnd: start.add(const Duration(minutes: 15)),
+      // Planned, not completed. Nothing has happened yet — the visit flow is
+      // what turns it into a record of a call.
+      status: ActivityStatus.upcoming,
+      workType: WorkType.fieldWork,
+      purpose: _purpose,
+      contactPerson: client.contactPerson,
+      contactMobile: client.mobile,
+      createdAt: now,
+    );
+
+    await ref.read(activityRepositoryProvider).create(activity);
+
+    if (!mounted) return;
+    AppHaptics.success();
+    ref.bumpRevision();
+    setState(() => _submitting = false);
+    context.pushReplacement(Routes.activityDetail(activity.id));
   }
 
   // ------------------------------------------------------------ the client
@@ -453,6 +590,24 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
           // replace it: the rep is at a desk now, and a re-measure would
           // claim they were standing at the clinic.
           onRetry: widget.isEditing ? null : _capture,
+        ),
+
+        // The same field the live visit flow carries, under the same panel.
+        // The fence says the rep was near the clinic; the photo says they were
+        // in it with the client.
+        const SizedBox(height: AppSpacing.lg),
+        VisitPhotoField(
+          photos: widget.isEditing
+              ? widget.existing!.photoPaths
+              : _photos,
+          enabled: !widget.isEditing,
+          note: widget.isEditing
+              ? 'Taken when the call was logged. A correction keeps it.'
+              : null,
+          onAdd: () => setState(
+            () => _photos.add('visit-${_photos.length + 1}.jpg'),
+          ),
+          onRemove: (p) => setState(() => _photos.remove(p)),
         ),
 
         if (widget.isEditing) ...[
@@ -549,66 +704,34 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
   // ---------------------------------------------------------- step two
 
   Widget _buildReportStep() {
+    // The same form the live visit flow uses. The two had drifted into
+    // different questions for the same record — see the note on
+    // [CallReportForm].
     return Form(
       key: _formKey,
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenH),
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: AppTextField(
-                  label: 'Input',
-                  controller: _inputs,
-                  hint: 'Samples',
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: AppTextField(
-                  label: 'RCPA',
-                  controller: _rcpa,
-                  hint: '1–5',
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return null;
-                    final n = int.tryParse(v.trim());
-                    return (n == null || n < 1 || n > 5) ? '1–5' : null;
-                  },
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: AppTextField(
-                  label: 'POB',
-                  controller: _pob,
-                  hint: '₹',
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                ),
-              ),
-            ],
+          CallReportForm(
+            rcpaScore: _rcpaScore,
+            onRcpaChanged: (v) => setState(() => _rcpaScore = v),
+            selectedProducts: _selectedProducts,
+            onProductsChanged: (v) => setState(() {
+              _selectedProducts
+                ..clear()
+                ..addAll(v);
+            }),
+            feedback: _feedback,
+            pop: _pop,
+            inputs: _inputs,
+            pob: _pob,
+            remarks: _remarks,
+            nextVisit: _nextVisit,
+            onNextVisitChanged: (d) => setState(() => _nextVisit = d),
+            // Logging a call afterwards is often catch-up, so the report is
+            // asked for rather than insisted on. The live flow insists.
+            nextVisitRequired: true,
           ),
-          const SizedBox(height: AppSpacing.lg),
-
-          AppTextField(
-            label: 'Feedback',
-            controller: _feedback,
-            maxLines: 4,
-            hint: 'What the client said, and what you promised',
-          ),
-          const SizedBox(height: AppSpacing.lg),
-
-          DateField(
-            label: 'Next visit date',
-            required: true,
-            value: _nextVisit,
-            firstDate: DateTime.now(),
-            onChanged: (d) => setState(() => _nextVisit = d),
-          ),
-          const SizedBox(height: AppSpacing.xxxl),
         ],
       ),
     );
@@ -623,7 +746,7 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
   /// doctor?" is worth answering, because it is the last moment it can be
   /// answered for free.
   Widget _buildReviewStep(Client client) {
-    final rcpa = int.tryParse(_rcpa.text.trim());
+    final rcpa = _rcpaScore > 0 ? _rcpaScore : null;
     final pob = double.tryParse(_pob.text.trim());
     final feedback = _feedback.text.trim();
     final inputs = _inputs.text.trim();
@@ -644,7 +767,16 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
               if (_address != null)
                 KeyValueRow(label: 'Captured at', value: _address),
               KeyValueRow(label: 'Input', value: inputs.isEmpty ? null : inputs),
-              KeyValueRow(label: 'RCPA', value: rcpa?.toString()),
+              KeyValueRow(
+                label: 'RCPA',
+                value: rcpa == null ? null : '$rcpa of 5',
+              ),
+              KeyValueRow(
+                label: 'Products',
+                value: _selectedProducts.isEmpty
+                    ? null
+                    : Fmt.count(_selectedProducts.length, 'product'),
+              ),
               KeyValueRow(
                 label: 'POB value',
                 value: pob == null ? null : Fmt.money(pob),
@@ -670,6 +802,24 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
   }
 
   Widget _buildActions() {
+    // Creating is one form and one button. The Back/Continue pair belongs to
+    // the three steps, which only a correction still walks through.
+    if (!widget.isEditing) {
+      return BottomActionBar(
+        children: [
+          SecondaryButton(
+            label: 'Cancel',
+            onPressed: _submitting ? null : () => context.pop(),
+          ),
+          PrimaryButton(
+            label: 'Add activity',
+            isLoading: _submitting,
+            onPressed: _create,
+          ),
+        ],
+      );
+    }
+
     if (_client == null) {
       return BottomActionBar(
         children: [
@@ -699,43 +849,6 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
   }
 }
 
-/// The client the report is being written about, above the step header — the
-/// same block, in the same place, as the live visit flow's.
-class _ActivityClientHeader extends StatelessWidget {
-  const _ActivityClientHeader({required this.client});
-
-  final Client client;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: AppColors.surface,
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.screenH,
-        0,
-        AppSpacing.screenH,
-        AppSpacing.lg,
-      ),
-      child: Row(
-        children: [
-          AppAvatar(name: client.name, size: AppSizes.avatarLg),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(client.name, style: AppTypography.h3),
-                const SizedBox(height: 2),
-                Text(client.subtitle, style: AppTypography.bodySm),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 /// The selected client's own record. Read-only by design — see the class doc
 /// on [AddActivityScreen].

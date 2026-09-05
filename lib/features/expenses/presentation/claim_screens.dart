@@ -29,6 +29,7 @@ import '../../../shared/models/field_ops.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/motion.dart';
+import '../../../shared/widgets/month_calendar.dart';
 import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
 
@@ -37,12 +38,49 @@ import '../../../shared/widgets/states.dart';
 // The month
 // ===========================================================================
 
+/// The month a day is selected in, so the calendar and the list agree.
+///
+/// Null until the rep picks one. Not auto-disposed with the screen: stepping
+/// into a day and coming back should return to the day you were looking at.
+final claimSelectedDayProvider = StateProvider<DateTime?>((ref) => null);
+
 /// Every day the rep declared this month, and what is claimed against each.
-class ExpenseClaimScreen extends ConsumerWidget {
+class ExpenseClaimScreen extends ConsumerStatefulWidget {
   const ExpenseClaimScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ExpenseClaimScreen> createState() => _ExpenseClaimScreenState();
+}
+
+class _ExpenseClaimScreenState extends ConsumerState<ExpenseClaimScreen> {
+  /// One key per rendered day, so the calendar can scroll the list to the date
+  /// it was tapped on. This is the "coordinated" half: a calendar that only
+  /// paints state is a picture, and the rep still has to hunt for the row.
+  final _rowKeys = <String, GlobalKey>{};
+
+  Future<void> _revealDay(DateTime date) async {
+    ref.read(claimSelectedDayProvider.notifier).state = date;
+    AppHaptics.selection();
+
+    // Let the selection paint before scrolling, or `ensureVisible` measures
+    // the row at its old position and stops short of it.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
+    // The row's own context, not this State's — it is fetched fresh after the
+    // frame, and the row may have been rebuilt away in the meantime.
+    final rowContext = _rowKeys[isoDay(date)]?.currentContext;
+    if (rowContext == null || !rowContext.mounted) return;
+    await Scrollable.ensureVisible(
+      rowContext,
+      alignment: 0.25,
+      duration: AppMotion.slow,
+      curve: AppMotion.curve,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final month = ref.watch(claimMonthProvider);
     final async = ref.watch(claimMonthDaysProvider);
 
@@ -57,9 +95,6 @@ class ExpenseClaimScreen extends ConsumerWidget {
               .length;
           if (drafts == 0) return null;
 
-          // One button, full width. A second control beside it truncated to
-          // "Add older d…" and duplicated the month header — stepping back to
-          // August is already how a forgotten August day gets claimed.
           return BottomActionBar(
             children: [
               PrimaryButton(
@@ -77,45 +112,120 @@ class ExpenseClaimScreen extends ConsumerWidget {
         error: (_, _) => ErrorState(
           onRetry: () => ref.invalidate(claimMonthDaysProvider),
         ),
-        data: (days) => RefreshIndicator(
-          onRefresh: () async => ref.invalidate(claimMonthDaysProvider),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenH,
-              0,
-              AppSpacing.screenH,
-              AppSpacing.xxxl * 2,
-            ),
-            children: [
-              Arrive(child: _ClaimSummary(days: days)),
-              const SizedBox(height: AppSpacing.section),
-              Arrive(
-                delay: AppMotion.staggerFor(1),
-                child: SectionHeader(
-                  title: Fmt.monthYear(month),
-                  trailing: _MonthStepper(month: month),
-                ),
+        data: (days) {
+          final open = days.where((d) => d.isOpen).toList();
+          final allowance = ref.watch(dailyAllowanceProvider).valueOrNull;
+          _rowKeys.removeWhere(
+            (k, _) => !days.any((d) => isoDay(d.date) == k),
+          );
+
+          return RefreshIndicator(
+            onRefresh: () async => ref.invalidate(claimMonthDaysProvider),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenH,
+                0,
+                AppSpacing.screenH,
+                AppSpacing.xxxl * 2,
               ),
-              if (days.isEmpty)
+              children: [
+                // The month at a glance, where a summary card used to sit.
+                //
+                // The card said what the calendar shows — a total, a count of
+                // open days — but said it in prose, so finding *which* days
+                // were open meant scrolling the list and reading every row.
+                // A month has thirty cells; it fits in the space the sentence
+                // took.
                 Arrive(
-                  delay: AppMotion.staggerFor(2),
-                  child: AppCard(
-                    child: EmptyState(
-                      compact: true,
-                      icon: Icons.event_busy_outlined,
-                      title: 'No days declared',
-                      message: 'You can only claim for a day you filed a day '
-                          'plan for. Nothing was filed this month.',
-                    ),
+                  child: _ClaimCalendar(
+                    month: month,
+                    days: days,
+                    onPick: _revealDay,
                   ),
                 ),
-              for (var i = 0; i < days.length; i++) ...[
-                if (i > 0) const SizedBox(height: AppSpacing.cardGap),
-                Arrive.staggered(index: i + 2, child: _DayRow(day: days[i])),
+
+                if (open.isNotEmpty && allowance != null) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  Arrive(
+                    delay: AppMotion.staggerFor(1),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        PrimaryButton(
+                          label:
+                              'Confirm all ${Fmt.count(open.length, 'standard day')}',
+                          icon: Icons.done_all_rounded,
+                          small: true,
+                          onPressed: () =>
+                              _confirmAll(context, ref, open, allowance),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          'Adds ${Fmt.money(allowance)} for each. Days where '
+                          'you spent more stay open for you to fill in.',
+                          style: AppTypography.caption.copyWith(height: 1.35),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.section),
+
+                if (days.isEmpty)
+                  Arrive(
+                    delay: AppMotion.staggerFor(2),
+                    child: AppCard(
+                      child: EmptyState(
+                        compact: true,
+                        icon: Icons.event_busy_outlined,
+                        title: 'No days declared',
+                        message: 'You can only claim for a day you filed a '
+                            'day plan for. Nothing was filed this month.',
+                      ),
+                    ),
+                  ),
+
+                for (var i = 0; i < days.length; i++) ...[
+                  if (i > 0) const SizedBox(height: AppSpacing.cardGap),
+                  Arrive.staggered(
+                    index: i + 2,
+                    child: _DayRow(
+                      key: _rowKeys.putIfAbsent(
+                        isoDay(days[i].date),
+                        GlobalKey.new,
+                      ),
+                      day: days[i],
+                    ),
+                  ),
+                ],
+
+                // The footnote it always was. It sat at the top inside the
+                // summary card, above everything, which is a strange place
+                // for a reassurance nobody needs until they have scrolled to
+                // the end and found a day missing.
+                const SizedBox(height: AppSpacing.lg),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.lock_open_outlined,
+                      size: AppSizes.iconSm,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'No cut-off. A day you missed can be claimed later, '
+                        'even after this month is paid.',
+                        style: AppTypography.caption.copyWith(height: 1.35),
+                      ),
+                    ),
+                  ],
+                ),
               ],
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -139,163 +249,6 @@ class ExpenseClaimScreen extends ConsumerWidget {
           '${Fmt.count(sent, 'claim')} sent for approval. You can still add '
           'days you missed.',
         ),
-      ),
-    );
-  }
-}
-
-/// Steps the claim month.
-///
-/// Chevrons, matching Business and Reports — the app already has one way to
-/// move through months and a second one here would be a second vocabulary for
-/// the same action. Forward stops at the current month: there is nothing to
-/// claim against a day that has not happened.
-class _MonthStepper extends ConsumerWidget {
-  const _MonthStepper({required this.month});
-
-  final DateTime month;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final now = DateTime.now();
-    final canForward = month.isBefore(DateTime(now.year, now.month));
-
-    void go(int delta) {
-      AppHaptics.selection();
-      ref.read(claimMonthProvider.notifier).state =
-          DateTime(month.year, month.month + delta);
-    }
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          visualDensity: VisualDensity.compact,
-          tooltip: 'Previous month',
-          icon: const Icon(Icons.chevron_left, size: AppSizes.iconMd),
-          onPressed: () => go(-1),
-        ),
-        IconButton(
-          visualDensity: VisualDensity.compact,
-          tooltip: 'Next month',
-          icon: const Icon(Icons.chevron_right, size: AppSizes.iconMd),
-          onPressed: canForward ? () => go(1) : null,
-        ),
-      ],
-    );
-  }
-}
-
-/// The month's standing, and the one action that clears the ordinary days.
-class _ClaimSummary extends ConsumerWidget {
-  const _ClaimSummary({required this.days});
-
-  final List<ClaimDay> days;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final claimed = days.fold<double>(0, (sum, d) => sum + d.claimed);
-    final open = days.where((d) => d.isOpen).toList();
-    final allowance = ref.watch(dailyAllowanceProvider).valueOrNull;
-
-    return AppCard(
-      padding: const EdgeInsets.all(AppSpacing.cardPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: CountUp(
-                        value: claimed,
-                        builder: (context, v) => Text(
-                          Fmt.money(v),
-                          maxLines: 1,
-                          style: AppTypography.metric.copyWith(
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Text('claimed this month', style: AppTypography.caption),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 5),
-                child: StatusDot(
-                  color: open.isEmpty ? AppColors.success : AppColors.warning,
-                  size: 7,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  open.isEmpty
-                      ? 'Every worked day is claimed.'
-                      : '${Fmt.count(open.length, 'day')} worked and not yet '
-                            'claimed. Paid after month end.',
-                  style: AppTypography.bodySm.copyWith(height: 1.3),
-                ),
-              ),
-            ],
-          ),
-
-          // The month-end case, in one action. A grid where every row needs
-          // its own tick is a tidier version of the same chore, not a fix for
-          // it — the standard days are the ones the app already knows the
-          // answer to, so it offers to take them all.
-          if (open.isNotEmpty && allowance != null) ...[
-            const SizedBox(height: AppSpacing.lg),
-            PrimaryButton(
-              label: 'Confirm all ${Fmt.count(open.length, 'standard day')}',
-              icon: Icons.done_all_rounded,
-              small: true,
-              onPressed: () => _confirmAll(context, ref, open, allowance),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Adds ${Fmt.money(allowance)} for each. Days where you spent '
-              'more stay open for you to fill in.',
-              style: AppTypography.caption.copyWith(height: 1.35),
-            ),
-          ],
-
-          const AppDivider(height: AppSpacing.lg),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(
-                Icons.lock_open_outlined,
-                size: AppSizes.iconSm,
-                color: AppColors.textSecondary,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  'No cut-off. A day you missed can be claimed later, even '
-                  'after this month is paid.',
-                  style: AppTypography.caption.copyWith(height: 1.35),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -330,6 +283,115 @@ class _ClaimSummary extends ConsumerWidget {
   }
 }
 
+/// The month, as a calendar.
+///
+/// Two jobs, and it has to do both or it is decoration. It **shows** where
+/// every day of the month stands — declared or not, claimed or open, approved
+/// or rejected — and it **drives** the list below: tapping a date selects that
+/// day and scrolls its row into view. A calendar that only paints state leaves
+/// the rep scrolling to find the day they just looked at.
+class _ClaimCalendar extends ConsumerWidget {
+  const _ClaimCalendar({
+    required this.month,
+    required this.days,
+    required this.onPick,
+  });
+
+  final DateTime month;
+  final List<ClaimDay> days;
+  final ValueChanged<DateTime> onPick;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final byDay = {for (final d in days) d.date.day: d};
+    final claimed = days.fold<double>(0, (sum, d) => sum + d.claimed);
+    final open = days.where((d) => d.isOpen).length;
+    final now = DateTime.now();
+
+    void step(int delta) {
+      // The selection belongs to the month it was made in, so it clears when
+      // the month does — otherwise stepping to August leaves 3 September
+      // highlighted on a grid that no longer contains it.
+      ref.read(claimSelectedDayProvider.notifier).state = null;
+      ref.read(claimMonthProvider.notifier).state =
+          DateTime(month.year, month.month + delta);
+    }
+
+    return MonthCalendar(
+      month: month,
+      selected: ref.watch(claimSelectedDayProvider),
+      onPreviousMonth: () => step(-1),
+      // Forward stops at the current month: there is nothing to claim against
+      // a day that has not happened.
+      onNextMonth: month.isBefore(DateTime(now.year, now.month))
+          ? () => step(1)
+          : null,
+      dayOf: (day) {
+        final d = byDay[day];
+        if (d == null) return const CalendarDay();
+
+        // Four colours, one meaning each. An excess used to have its own
+        // amber here, which collided with the amber a leave day wears — the
+        // row already flags "above allowance" in words, and the calendar's job
+        // is where a day *stands*, not how much it cost.
+        final ink = !d.claimable
+            ? AppColors.calendarOff
+            : d.isOpen
+            ? AppColors.calendarPlanned
+            : switch (d.status) {
+                ApprovalStatus.approved => AppColors.calendarDone,
+                ApprovalStatus.rejected => AppColors.calendarProblem,
+                _ => AppColors.calendarPlanned,
+              };
+
+        return CalendarDay(
+          fill: ink.withValues(alpha: 0.12),
+          ink: ink,
+          dot: ink,
+          onTap: () => onPick(d.date),
+        );
+      },
+      legend: [
+        if (days.any((d) => d.claimable && d.status != ApprovalStatus.approved))
+          const CalendarLegendItem(AppColors.calendarPlanned, 'To claim'),
+        if (days.any((d) => d.status == ApprovalStatus.approved))
+          const CalendarLegendItem(AppColors.calendarDone, 'Approved'),
+        if (days.any((d) => d.status == ApprovalStatus.rejected))
+          const CalendarLegendItem(AppColors.calendarProblem, 'Rejected'),
+        if (days.any((d) => !d.claimable))
+          const CalendarLegendItem(AppColors.calendarOff, 'Leave / holiday'),
+      ],
+      footer: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${Fmt.money(claimed)} claimed this month',
+              style: AppTypography.bodySm.copyWith(
+                color: AppColors.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          if (open > 0)
+            StatusBadge(
+              label: '${Fmt.count(open, 'day')} open',
+              tone: StatusTone.warning,
+              dense: true,
+            )
+          else if (days.isNotEmpty)
+            const StatusBadge(
+              label: 'All claimed',
+              tone: StatusTone.success,
+              dense: true,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// One declared day.
 ///
 /// Every state reads without the badge: a claimed day shows its amount in
@@ -338,7 +400,7 @@ class _ClaimSummary extends ConsumerWidget {
 /// on the list, inert — seeing the holiday is what tells the rep this is his
 /// whole month and not a filtered view of it.
 class _DayRow extends ConsumerWidget {
-  const _DayRow({required this.day});
+  const _DayRow({super.key, required this.day});
 
   final ClaimDay day;
 
@@ -462,6 +524,17 @@ class _DayRow extends ConsumerWidget {
                 const SizedBox(width: AppSpacing.sm),
                 StatusBadge.approval(day.status!, dense: true),
               ],
+              // The chevron every other list in this app uses to say "there is
+              // a screen behind this". A claimed row had none, so the only
+              // rows that looked openable were the ones with a button on them.
+              if (worked && !day.isOpen) ...[
+                const SizedBox(width: AppSpacing.xs),
+                const Icon(
+                  Icons.chevron_right,
+                  size: AppSizes.iconMd,
+                  color: AppColors.textSecondary,
+                ),
+              ],
             ],
           ),
 
@@ -488,16 +561,32 @@ class _DayRow extends ConsumerWidget {
             ),
           ],
 
-          // The one-tap path, on the row itself. Opening a form to accept a
-          // figure the app already knows is the tax this design exists to
-          // remove.
+          // Two buttons, not one.
+          //
+          // Confirm alone told the rep what the *app* wanted and nothing about
+          // what else was possible — the row is tappable, but a card that
+          // looks like a card is not obviously a door, and someone opening
+          // this for the first time has no reason to try. Details is the way
+          // in for a day that needs more than the flat allowance; Confirm
+          // stays the loud one because it is right for most days.
           if (day.isOpen) ...[
             const SizedBox(height: AppSpacing.md),
+            // Full width, not indented to the date pill. Indented, the pair
+            // shared what was left of a 375pt row and "Details" truncated to
+            // "Deta…" — and a button that cannot say its own name is the one
+            // thing worse than no button at all.
             Row(
               children: [
-                const SizedBox(width: 52 + AppSpacing.md),
                 Expanded(
-                  flex: 3,
+                  child: SecondaryButton(
+                    label: 'Details',
+                    small: true,
+                    onPressed: () => context.push(Routes.claimDay(day.date)),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  flex: 2,
                   child: PrimaryButton(
                     label: 'Confirm',
                     icon: Icons.check_rounded,
@@ -505,7 +594,6 @@ class _DayRow extends ConsumerWidget {
                     onPressed: () => _confirm(context, ref),
                   ),
                 ),
-                const Spacer(flex: 2),
               ],
             ),
           ],
@@ -571,7 +659,9 @@ class _ClaimDayScreenState extends ConsumerState<ClaimDayScreen> {
   final _place = TextEditingController();
 
   ClaimScope _scope = ClaimScope.local;
-  ExpenseCategory _category = ExpenseCategory.travel;
+  // Daily allowance, ticked. It is what most days are and nothing else, so
+  // the form opens on the answer rather than on a blank.
+  final Set<ExpenseCategory> _categories = {ExpenseCategory.dailyAllowance};
   final List<String> _receipts = [];
   bool _saving = false;
   bool _seeded = false;
@@ -723,14 +813,19 @@ class _ClaimDayScreenState extends ConsumerState<ClaimDayScreen> {
           ],
           const SizedBox(height: AppSpacing.lg),
 
-          DropdownField<ExpenseCategory>(
+          MultiSelectField<ExpenseCategory>(
             label: 'Category',
             required: true,
-            items: ExpenseCategory.values,
-            value: _category,
+            options: ExpenseCategory.values,
+            selected: _categories,
             itemLabel: (c) => c.label,
-            onChanged: (v) =>
-                setState(() => _category = v ?? ExpenseCategory.other),
+            iconOf: (c) => c.icon,
+            onChanged: (v) => setState(() {
+              _categories
+                ..clear()
+                ..addAll(v);
+            }),
+            helper: 'Tick everything the day covers.',
           ),
           const SizedBox(height: AppSpacing.lg),
 
@@ -799,7 +894,7 @@ class _ClaimDayScreenState extends ConsumerState<ClaimDayScreen> {
             employeeId: session.employee.id,
             employeeName: session.employee.name,
             date: day.date,
-            category: _category,
+            categories: _categories.toList(),
             amount: _entered,
             status: ApprovalStatus.draft,
             description: excess > 0
@@ -848,7 +943,7 @@ class _FiledRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    expense.category.label,
+                    expense.categories.map((c) => c.label).join(' · '),
                     style: AppTypography.titleSm,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

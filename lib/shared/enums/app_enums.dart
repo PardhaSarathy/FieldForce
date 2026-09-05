@@ -255,6 +255,11 @@ enum VisitPurpose {
 }
 
 enum ExpenseCategory {
+  /// The flat daily allowance — what a worked day is worth before anything is
+  /// spent above it. First in the list because it is the default and by far
+  /// the commonest: most days are exactly this and nothing else.
+  dailyAllowance('Daily Allowance'),
+
   travel('Travel'),
   food('Food'),
   lodging('Lodging'),
@@ -264,7 +269,13 @@ enum ExpenseCategory {
   const ExpenseCategory(this.label);
   final String label;
 
+  /// The categories a rep can put against an *excess*. The allowance is not
+  /// one of them — it is what the excess is measured against.
+  static List<ExpenseCategory> get spendable =>
+      values.where((c) => c != dailyAllowance).toList();
+
   IconData get icon => switch (this) {
+    dailyAllowance => Icons.payments_outlined,
     travel => Icons.directions_bus_outlined,
     food => Icons.restaurant_outlined,
     lodging => Icons.hotel_outlined,
@@ -332,12 +343,16 @@ enum AttendanceStatus {
   const AttendanceStatus(this.label);
   final String label;
 
+  /// Drawn from the calendar's four colours, so a green dot means the same
+  /// thing on attendance as it does on the tour plan and the expense claim.
+  /// A holiday is a day the company planned, which is what blue means here;
+  /// a week off is the ordinary blank the other four are read against.
   Color get color => switch (this) {
-    present => AppColors.success,
-    leave => AppColors.warning,
-    holiday => AppColors.info,
-    absent => AppColors.error,
-    weekOff => AppColors.textSecondary,
+    present => AppColors.calendarDone,
+    leave => AppColors.calendarOff,
+    holiday => AppColors.calendarPlanned,
+    absent => AppColors.calendarProblem,
+    weekOff => AppColors.grey500,
   };
 }
 

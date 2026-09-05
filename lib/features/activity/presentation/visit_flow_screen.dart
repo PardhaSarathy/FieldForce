@@ -18,6 +18,8 @@ import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
+import 'widgets/call_report_form.dart';
+import 'widgets/visit_photo_field.dart';
 import 'widgets/geo_verification_panel.dart';
 import 'widgets/step_progress.dart';
 
@@ -53,10 +55,17 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
   bool _capturing = false;
   final _reasonController = TextEditingController();
 
+  /// Photos taken at the client. Named rather than stored — the camera comes
+  /// with the device integration; the record and the flow around it are what
+  /// is being built here.
+  final List<String> _photos = [];
+
   // Feedback step
   int _rcpaScore = 0;
   final _feedbackController = TextEditingController();
   final _popController = TextEditingController();
+  final _inputsController = TextEditingController();
+  final _pobController = TextEditingController();
   final _remarksController = TextEditingController();
   final Set<String> _selectedProducts = {};
   DateTime? _nextVisit;
@@ -75,6 +84,8 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
     _reasonController.dispose();
     _feedbackController.dispose();
     _popController.dispose();
+    _inputsController.dispose();
+    _pobController.dispose();
     _remarksController.dispose();
     super.dispose();
   }
@@ -227,8 +238,13 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
       rcpaScore: _rcpaScore > 0 ? _rcpaScore : null,
       feedback: _feedbackController.text.trim(),
       pop: _popController.text.trim(),
+      inputsGiven: _inputsController.text.trim().isEmpty
+          ? null
+          : _inputsController.text.trim(),
+      pobAmount: double.tryParse(_pobController.text.trim()),
       remarks: _remarksController.text.trim(),
       productIds: _selectedProducts.toList(),
+      photoPaths: List.of(_photos),
       expectedNextVisit: _nextVisit,
       syncStatus: ref.read(isOnlineProvider)
           ? SyncStatus.synced
@@ -291,8 +307,10 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
         ),
         body: Column(
           children: [
-            _VisitClientHeader(activity: activity),
-            StepProgress(
+            StepHeader(
+              name: activity.clientName,
+              subtitle:
+                  activity.clientSpecialty ?? activity.clientType.label,
               currentStep: _step,
               labels: const ['Location', 'Call report', 'Review'],
             ),
@@ -336,6 +354,18 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
                   LocationFailure.permissionPermanentlyDenied
               ? () => ref.read(locationServiceProvider).openSettings()
               : null,
+        ),
+
+        // Under the fence panel, because the two are one piece of evidence:
+        // the fence says the rep was near the clinic, the photo says they were
+        // in it.
+        const SizedBox(height: AppSpacing.lg),
+        VisitPhotoField(
+          photos: _photos,
+          onAdd: () => setState(
+            () => _photos.add('visit-${_photos.length + 1}.jpg'),
+          ),
+          onRemove: (p) => setState(() => _photos.remove(p)),
         ),
 
         if (result != null && result.requiresReason) ...[
@@ -409,80 +439,32 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
   // ------------------------------------------------------------- step two
 
   Widget _buildFeedbackStep() {
-    final productsAsync = ref.watch(_productsProvider);
-
+    // The shared form. This step and Add New Activity's had drifted into two
+    // different sets of questions for the same record — see the note on
+    // [CallReportForm].
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.screenH),
       children: [
-        Text('RCPA score', style: AppTypography.bodySm),
-        const SizedBox(height: AppSpacing.sm),
-        _StarRating(
-          value: _rcpaScore,
-          onChanged: (v) => setState(() => _rcpaScore = v),
+        CallReportForm(
+          rcpaScore: _rcpaScore,
+          onRcpaChanged: (v) => setState(() => _rcpaScore = v),
+          selectedProducts: _selectedProducts,
+          onProductsChanged: (v) => setState(() {
+            _selectedProducts
+              ..clear()
+              ..addAll(v);
+          }),
+          feedback: _feedbackController,
+          pop: _popController,
+          inputs: _inputsController,
+          pob: _pobController,
+          remarks: _remarksController,
+          nextVisit: _nextVisit,
+          onNextVisitChanged: (d) => setState(() => _nextVisit = d),
+          // A live visit is being written as it happens; a call report with
+          // nothing in it is a visit nobody can report on.
+          feedbackRequired: true,
         ),
-        const SizedBox(height: AppSpacing.xl),
-
-        AppTextField(
-          label: 'Feedback',
-          hint: 'What did the doctor say?',
-          controller: _feedbackController,
-          maxLines: 4,
-          required: true,
-        ),
-        const SizedBox(height: AppSpacing.lg),
-
-        Text('Products discussed', style: AppTypography.bodySm),
-        const SizedBox(height: AppSpacing.sm),
-        productsAsync.when(
-          loading: () => const Skeleton(height: 38),
-          error: (_, _) => Text(
-            'Products unavailable',
-            style: AppTypography.caption.copyWith(color: AppColors.error),
-          ),
-          data: (products) => Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: [
-              for (final product in products)
-                FilterChip(
-                  label: Text(product.name),
-                  selected: _selectedProducts.contains(product.id),
-                  onSelected: (selected) => setState(() {
-                    if (selected) {
-                      _selectedProducts.add(product.id);
-                    } else {
-                      _selectedProducts.remove(product.id);
-                    }
-                  }),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-
-        AppTextField(
-          label: 'POP / material shared',
-          hint: 'Visual aid, brochure, samples…',
-          controller: _popController,
-          maxLines: 2,
-        ),
-        const SizedBox(height: AppSpacing.lg),
-
-        AppTextField(
-          label: 'Remarks',
-          hint: 'Anything else worth recording',
-          controller: _remarksController,
-          maxLines: 2,
-        ),
-        const SizedBox(height: AppSpacing.lg),
-
-        DateField(
-          label: 'Expected next visit',
-          value: _nextVisit,
-          firstDate: DateTime.now(),
-          onChanged: (d) => setState(() => _nextVisit = d),
-        ),
-        const SizedBox(height: AppSpacing.xxxl),
       ],
     );
   }
@@ -683,76 +665,4 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
   }
 }
 
-final _productsProvider = FutureProvider.autoDispose(
-  (ref) => ref.watch(businessRepositoryProvider).products(),
-);
 
-class _VisitClientHeader extends StatelessWidget {
-  const _VisitClientHeader({required this.activity});
-
-  final Activity activity;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: AppColors.surface,
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.screenH,
-        0,
-        AppSpacing.screenH,
-        AppSpacing.lg,
-      ),
-      child: Row(
-        children: [
-          AppAvatar(name: activity.clientName, size: AppSizes.avatarLg),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(activity.clientName, style: AppTypography.h3),
-                const SizedBox(height: 2),
-                Text(
-                  activity.clientSpecialty ?? activity.clientType.label,
-                  style: AppTypography.bodySm,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StarRating extends StatelessWidget {
-  const _StarRating({required this.value, required this.onChanged});
-
-  final int value;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (var i = 1; i <= 5; i++)
-          IconButton(
-            onPressed: () => onChanged(i == value ? 0 : i),
-            padding: const EdgeInsets.only(right: AppSpacing.xs),
-            constraints: const BoxConstraints(),
-            iconSize: 30,
-            icon: Icon(
-              i <= value ? Icons.star_rounded : Icons.star_outline_rounded,
-              color: i <= value ? AppColors.sand : AppColors.border,
-            ),
-          ),
-        const SizedBox(width: AppSpacing.sm),
-        Text(
-          value == 0 ? 'Not rated' : '$value of 5',
-          style: AppTypography.caption,
-        ),
-      ],
-    );
-  }
-}

@@ -89,8 +89,8 @@ class Expense {
     required this.employeeId,
     required this.employeeName,
     required this.date,
-    required this.category,
     required this.amount,
+    this.categories = const [ExpenseCategory.dailyAllowance],
     required this.status,
     this.description,
     this.remarks,
@@ -112,7 +112,22 @@ class Expense {
   final String employeeId;
   final String employeeName;
   final DateTime date;
-  final ExpenseCategory category;
+
+  /// What the claim covers. A list, because a day out of territory is often a
+  /// fare *and* a meal *and* a bed, and asking the rep to file three separate
+  /// lines for one day's excess is asking them to do the accounting.
+  ///
+  /// Never empty — a claim with no category is a claim nobody can code.
+  final List<ExpenseCategory> categories;
+
+  /// The one the row, the icon and the report group by.
+  ///
+  /// A getter, not a second field: two fields would be two places to say the
+  /// same thing, and they would part company the first time either was set
+  /// without the other.
+  ExpenseCategory get category =>
+      categories.isEmpty ? ExpenseCategory.other : categories.first;
+
   final double amount;
   final ApprovalStatus status;
   final String? description;
@@ -163,6 +178,7 @@ class Expense {
   bool get isStandard => excess == 0;
 
   Expense copyWith({
+    List<ExpenseCategory>? categories,
     ApprovalStatus? status,
     List<ApprovalEvent>? approvalHistory,
     SyncStatus? syncStatus,
@@ -176,7 +192,7 @@ class Expense {
       employeeId: employeeId,
       employeeName: employeeName,
       date: date,
-      category: category,
+      categories: categories ?? this.categories,
       amount: amount ?? this.amount,
       status: status ?? this.status,
       description: description ?? this.description,
@@ -196,6 +212,50 @@ class Expense {
     );
   }
 }
+
+/// A month of tour plan — one entry per calendar day, planned or not.
+///
+/// **Derived, never stored.** The month is the unit a rep submits, but the
+/// records underneath are still one [TravelPlan] per date; building a stored
+/// month object would give the app two places to disagree about what is
+/// planned.
+class TourMonth {
+  const TourMonth({required this.month, required this.plans});
+
+  final DateTime month;
+
+  /// Keyed by day of the month.
+  final Map<int, TravelPlan> plans;
+
+  int get totalDays => DateTime(month.year, month.month + 1, 0).day;
+  int get plannedDays => plans.length;
+  int get missingDays => totalDays - plannedDays;
+
+  /// The whole month has to be planned before any of it can be sent.
+  ///
+  /// A tour plan submitted with gaps in it is a plan the manager cannot
+  /// approve — the days nobody declared are exactly the days they would ask
+  /// about. Leave and holidays count: saying "I am not working" is a plan.
+  bool get isComplete => missingDays == 0;
+
+  bool get isSubmitted =>
+      plans.isNotEmpty &&
+      plans.values.every((p) => p.status != ApprovalStatus.draft);
+
+  /// Only a draft month can be edited. Once it is with an approver, changing
+  /// it underneath them is how an approval comes to mean nothing.
+  bool get isEditable => !isSubmitted;
+
+  TravelPlan? planFor(int day) => plans[day];
+}
+
+/// Whether a work type needs anything beyond itself on a tour plan.
+///
+/// Leave and holidays do not: there is no territory to name, no area to work
+/// and nobody to call on. Asking for them anyway is asking a rep to describe
+/// the geography of a day they are not working.
+bool tourDayNeedsDetail(WorkType type) =>
+    type != WorkType.leave && type != WorkType.holiday;
 
 /// A day the rep declared, and what has been claimed against it.
 ///

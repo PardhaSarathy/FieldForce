@@ -283,6 +283,43 @@ class _Body extends StatelessWidget {
             ],
           ),
 
+        // The photos taken at the client, beside the fix they were taken with.
+        //
+        // `photoPaths` was on the model, settable through `copyWith`, and
+        // rendered on no screen at all — so the moment the camera field went
+        // on the Location step it would have become the seventh field a rep
+        // fills in and never sees again. It is evidence: it belongs next to
+        // the other evidence.
+        if (activity.photoPaths.isNotEmpty)
+          _Section(
+            title: 'Photos',
+            children: [
+              SizedBox(
+                height: 78,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: activity.photoPaths.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(width: AppSpacing.sm),
+                  itemBuilder: (context, i) => Container(
+                    width: 78,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceSecondary,
+                      // A rounded square: it stands in for a photograph, and
+                      // photographs are not round.
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                    child: const Icon(
+                      Icons.image_outlined,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
         const SizedBox(height: AppSpacing.xxxl),
       ],
     );

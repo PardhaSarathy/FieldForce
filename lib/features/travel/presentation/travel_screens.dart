@@ -7,7 +7,6 @@ import '../../../core/providers/app_providers.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_glow.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
@@ -16,271 +15,326 @@ import '../../../shared/models/client.dart';
 import '../../../shared/models/field_ops.dart';
 import '../../../shared/models/organization.dart';
 import '../../../shared/widgets/motion.dart';
+import '../../../shared/widgets/month_calendar.dart';
 import '../../../shared/widgets/approval_timeline.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
 
-enum TravelFilter {
-  all('All'),
-  draft('Draft'),
-  submitted('Submitted'),
-  approved('Approved'),
-  rejected('Rejected');
-
-  const TravelFilter(this.label);
-  final String label;
-
-  bool matches(TravelPlan p) => switch (this) {
-    all => true,
-    draft => p.status == ApprovalStatus.draft,
-    submitted => p.status.awaitsDecision,
-    approved => p.status == ApprovalStatus.approved,
-    rejected => p.status == ApprovalStatus.rejected,
-  };
-}
-
-final _travelFilterProvider = StateProvider.autoDispose<TravelFilter>(
-  (ref) => TravelFilter.all,
-);
-
-final _travelProvider = FutureProvider.autoDispose<List<TravelPlan>>((ref) {
-  final session = ref.watch(sessionProvider);
-  ref.watch(dataRevisionProvider);
-  return ref
-      .watch(travelRepositoryProvider)
-      .list(session, employeeId: session.employee.id);
-});
-
-/// Travel dashboard (§21). Tour planning runs up to 30 days ahead, so the
-/// screen leads with what is coming rather than what has passed.
-class TravelDashboardScreen extends ConsumerWidget {
-  const TravelDashboardScreen({super.key});
+/// Tour Plan (§21) — a month, planned a day at a time.
+///
+/// The screen opens on **next month's calendar**, because that is the one
+/// being planned: a rep files next month's tour during this one. There is no
+/// list in front of it any more. The old dashboard showed counts, filters and
+/// a scroll of plan cards, none of which answers the question a rep opens this
+/// screen with — *which days have I not planned yet* — and all of which a
+/// calendar answers at a glance.
+///
+/// Three rules the shape enforces:
+///
+/// * **The month goes in one piece.** Every day is saved on its own and
+///   nothing is submitted until all of them are — a plan with gaps in it is a
+///   plan the manager cannot approve, because the missing days are exactly the
+///   ones they would ask about.
+/// * **Leave and holidays are plans too.** Saying "I am not working" is an
+///   answer, and it needs no territory, no area and no clients.
+/// * **A draft month stays editable.** Tap the day again. Once it is with an
+///   approver it is read-only, like every other submitted record here.
+class TourPlanScreen extends ConsumerWidget {
+  const TourPlanScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final filter = ref.watch(_travelFilterProvider);
-    final async = ref.watch(_travelProvider);
+    final month = ref.watch(tourMonthProvider);
+    final async = ref.watch(tourMonthPlanProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Tour Plan')),
-      floatingActionButton: AppFab(
-        onPressed: () => context.push(Routes.newTravelPlan),
-        icon: Icons.add_road,
-        label: 'New plan',
+      bottomNavigationBar: async.maybeWhen(
+        data: (tour) {
+          if (tour.isSubmitted) return null;
+          return BottomActionBar(
+            children: [
+              PrimaryButton(
+                label: 'Submit ${Fmt.monthYear(month)}',
+                icon: Icons.send_rounded,
+                // Disabled, not hidden. A missing button says nothing; a
+                // disabled one beside "6 days still to plan" says what to do.
+                onPressed: tour.isComplete
+                    ? () => _submit(context, ref, month)
+                    : null,
+              ),
+            ],
+          );
+        },
+        orElse: () => null,
       ),
-      body: Column(
+      body: async.when(
+        loading: () => const LoadingState(message: 'Loading your month'),
+        error: (_, _) =>
+            ErrorState(onRetry: () => ref.invalidate(tourMonthPlanProvider)),
+        data: (tour) => RefreshIndicator(
+          onRefresh: () async => ref.invalidate(tourMonthPlanProvider),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenH,
+              0,
+              AppSpacing.screenH,
+              AppSpacing.xxxl * 2,
+            ),
+            children: [
+              Arrive(child: _TourCalendar(tour: tour)),
+              const SizedBox(height: AppSpacing.section),
+              Arrive(
+                delay: AppMotion.staggerFor(1),
+                child: SectionHeader(
+                  title: tour.isSubmitted ? 'Submitted' : 'Planned days',
+                ),
+              ),
+              if (tour.plans.isEmpty)
+                Arrive(
+                  delay: AppMotion.staggerFor(2),
+                  child: AppCard(
+                    child: EmptyState(
+                      compact: true,
+                      icon: Icons.map_outlined,
+                      title: 'Nothing planned yet',
+                      message: 'Tap a date above to say where you will be. '
+                          'Every day of the month needs an answer before the '
+                          'plan can go for approval.',
+                    ),
+                  ),
+                ),
+              for (final entry in tour.plans.entries.toList()
+                ..sort((a, b) => a.key.compareTo(b.key)))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.cardGap),
+                  child: Arrive.staggered(
+                    index: entry.key,
+                    child: _TourDayRow(plan: entry.value),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit(
+    BuildContext context,
+    WidgetRef ref,
+    DateTime month,
+  ) async {
+    final go = await showConfirmDialog(
+      context,
+      title: 'Submit ${Fmt.monthYear(month)}?',
+      message: 'The whole month goes to your manager together. You will not '
+          'be able to edit it while they are looking at it — a day that '
+          'changes after this is a deviation, recorded on your day plan.',
+      confirmLabel: 'Submit',
+      cancelLabel: 'Not yet',
+    );
+    if (!go || !context.mounted) return;
+
+    final sent = await ref
+        .read(travelRepositoryProvider)
+        .submitMonth(ref.read(sessionProvider), month);
+
+    if (!context.mounted) return;
+    ref.bumpRevision();
+
+    if (sent == 0) {
+      AppHaptics.failure();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Every day needs a plan before the month can go.'),
+        ),
+      );
+      return;
+    }
+
+    AppHaptics.success();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${Fmt.count(sent, 'day')} sent for approval.'),
+      ),
+    );
+  }
+}
+
+/// The month, and how much of it is still blank.
+class _TourCalendar extends ConsumerWidget {
+  const _TourCalendar({required this.tour});
+
+  final TourMonth tour;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final month = tour.month;
+
+    void step(int delta) => ref.read(tourMonthProvider.notifier).state =
+        DateTime(month.year, month.month + delta);
+
+    return MonthCalendar(
+      month: month,
+      onPreviousMonth: () => step(-1),
+      onNextMonth: () => step(1),
+      dayOf: (day) {
+        final plan = tour.planFor(day);
+        if (plan == null) return const CalendarDay();
+
+        final ink = !tourDayNeedsDetail(plan.workType)
+            ? AppColors.calendarOff
+            : switch (plan.status) {
+                ApprovalStatus.approved => AppColors.calendarDone,
+                ApprovalStatus.rejected => AppColors.calendarProblem,
+                _ => AppColors.calendarPlanned,
+              };
+
+        return CalendarDay(
+          fill: ink.withValues(alpha: 0.12),
+          ink: ink,
+          dot: ink,
+          onTap: () => context.push(
+            Routes.tourPlanDay(DateTime(month.year, month.month, day)),
+          ),
+        );
+      },
+      legend: [
+        const CalendarLegendItem(AppColors.calendarPlanned, 'Working'),
+        if (tour.plans.values.any((p) => !tourDayNeedsDetail(p.workType)))
+          const CalendarLegendItem(AppColors.calendarOff, 'Leave / holiday'),
+        if (tour.plans.values.any((p) => p.status == ApprovalStatus.approved))
+          const CalendarLegendItem(AppColors.calendarDone, 'Approved'),
+        if (tour.plans.values.any((p) => p.status == ApprovalStatus.rejected))
+          const CalendarLegendItem(AppColors.calendarProblem, 'Rejected'),
+      ],
+      footer: Row(
         children: [
-          async.maybeWhen(
-            data: (plans) => Padding(
-              padding: const EdgeInsets.all(AppSpacing.screenH),
-              child: _TravelSummary(plans: plans),
-            ),
-            orElse: () => const SizedBox(height: AppSpacing.md),
-          ),
-          FilterChipBar<TravelFilter>(
-            options: TravelFilter.values,
-            selected: filter,
-            labelOf: (f) => f.label,
-            countOf: (f) => f == TravelFilter.all
-                ? null
-                : async.valueOrNull?.where(f.matches).length,
-            onSelected: (f) =>
-                ref.read(_travelFilterProvider.notifier).state = f,
-          ),
-          const SizedBox(height: AppSpacing.md),
           Expanded(
-            child: async.when(
-              loading: () => const SkeletonList(),
-              error: (_, _) =>
-                  ErrorState(onRetry: () => ref.invalidate(_travelProvider)),
-              data: (plans) {
-                final filtered = plans.where(filter.matches).toList();
-                if (filtered.isEmpty) {
-                  return EmptyState(
-                    icon: Icons.map_outlined,
-                    title: 'No tour plans yet',
-                    message:
-                        'Plan your tours up to 30 days ahead so your '
-                        'manager can approve them in time.',
-                    actionLabel: 'Create a plan',
-                    onAction: () => context.push(Routes.newTravelPlan),
-                  );
-                }
-                return ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenH,
-                    0,
-                    AppSpacing.screenH,
-                    AppSpacing.xxxl * 3,
-                  ),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, _) =>
-                      const SizedBox(height: AppSpacing.cardGap),
-                  itemBuilder: (context, i) => Arrive.staggered(
-                    index: i,
-                    child: _TravelCard(plan: filtered[i]),
-                  ),
-                );
-              },
+            child: Text(
+              '${tour.plannedDays} of ${tour.totalDays} days planned',
+              style: AppTypography.bodySm.copyWith(
+                color: AppColors.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
+          const SizedBox(width: AppSpacing.sm),
+          if (tour.isSubmitted)
+            const StatusBadge(
+              label: 'Submitted',
+              tone: StatusTone.success,
+              dense: true,
+            )
+          else if (tour.isComplete)
+            const StatusBadge(
+              label: 'Ready to send',
+              tone: StatusTone.success,
+              dense: true,
+            )
+          else
+            StatusBadge(
+              label: '${Fmt.count(tour.missingDays, 'day')} left',
+              tone: StatusTone.warning,
+              dense: true,
+            ),
         ],
       ),
     );
   }
 }
 
-class _TravelSummary extends StatelessWidget {
-  const _TravelSummary({required this.plans});
-
-  final List<TravelPlan> plans;
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final upcoming = plans.where((p) => p.date.isAfter(now)).toList();
-    final pending = plans.where((p) => p.status.awaitsDecision).length;
-    final visits = upcoming.fold<int>(0, (s, p) => s + p.plannedVisits);
-
-    return AppCard(
-      child: Row(
-        children: [
-          Expanded(
-            child: _Cell(label: 'Upcoming tours', value: '${upcoming.length}'),
-          ),
-          Container(width: 1, height: 34, color: AppColors.border),
-          Expanded(
-            child: _Cell(label: 'Planned visits', value: '$visits'),
-          ),
-          Container(width: 1, height: 34, color: AppColors.border),
-          Expanded(
-            child: _Cell(
-              label: 'Awaiting approval',
-              value: '$pending',
-              color: pending > 0 ? AppColors.warning : null,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Cell extends StatelessWidget {
-  const _Cell({required this.label, required this.value, this.color});
-
-  final String label;
-  final String value;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      Text(value, style: AppTypography.metricSm.copyWith(color: color)),
-      const SizedBox(height: 2),
-      Text(label, style: AppTypography.caption, textAlign: TextAlign.center),
-    ],
-  );
-}
-
-class _TravelCard extends StatelessWidget {
-  const _TravelCard({required this.plan});
+/// One planned day, listed under the calendar so the month can be read before
+/// it is sent.
+class _TourDayRow extends StatelessWidget {
+  const _TourDayRow({required this.plan});
 
   final TravelPlan plan;
 
   @override
   Widget build(BuildContext context) {
+    final working = tourDayNeedsDetail(plan.workType);
+
     return AppCard(
-      onTap: () => context.push(Routes.travelDetail(plan.id)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      onTap: () => context.push(Routes.tourPlanDay(plan.date)),
+      padding: const EdgeInsets.all(AppSpacing.cardPadding),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                width: 46,
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                decoration: BoxDecoration(
-                  color: AppColors.sandSoft,
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      Fmt.monthShort(plan.date).toUpperCase(),
-                      style: AppTypography.overline.copyWith(fontSize: 9),
-                    ),
-                    Text('${plan.date.day}', style: AppTypography.titleMd),
-                  ],
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      plan.areaName ?? 'Tour',
-                      style: AppTypography.titleMd,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${plan.tourType.label} · ${plan.travelMode.label}',
-                      style: AppTypography.caption,
-                    ),
-                  ],
-                ),
-              ),
-              StatusBadge.approval(plan.status, dense: true),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Row(
-            children: [
-              const Icon(
-                Icons.people_outline,
-                size: 13,
-                color: AppColors.textSecondary,
-              ),
-              const SizedBox(width: AppSpacing.xs),
-              Flexible(
-                child: Text(
-                  Fmt.count(plan.plannedVisits, 'visit'),
-                  style: AppTypography.caption,
-                  overflow: TextOverflow.ellipsis,
-                  softWrap: false,
-                ),
-              ),
-              if (plan.estimatedKm != null) ...[
-                const SizedBox(width: AppSpacing.lg),
-                const Icon(
-                  Icons.route_outlined,
-                  size: 13,
-                  color: AppColors.textSecondary,
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                Flexible(
-                  child: Text(
-                    '${plan.estimatedKm!.round()} km',
-                    style: AppTypography.caption,
-                    overflow: TextOverflow.ellipsis,
-                    softWrap: false,
+          Container(
+            width: 52,
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: working
+                  ? AppColors.brandSoft
+                  : AppColors.warningSoft,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${plan.date.day}',
+                  style: AppTypography.titleMd.copyWith(
+                    height: 1.05,
+                    color: working
+                        ? AppColors.calendarPlanned
+                        : AppColors.calendarOff,
                   ),
                 ),
+                Text(
+                  Fmt.weekdayShort(plan.date).toUpperCase(),
+                  style: AppTypography.overline.copyWith(fontSize: 9),
+                ),
               ],
-            ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  working
+                      ? (plan.areaName ?? plan.territoryName ?? 'Field work')
+                      : plan.workType.label,
+                  style: AppTypography.titleSm,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  working
+                      ? [
+                          plan.workType.label,
+                          if (plan.clientNames.isNotEmpty)
+                            Fmt.count(plan.clientNames.length, 'client'),
+                        ].join(' · ')
+                      : 'No work planned',
+                  style: AppTypography.caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          StatusBadge.approval(plan.status, dense: true),
+          const SizedBox(width: AppSpacing.xs),
+          const Icon(
+            Icons.chevron_right,
+            size: AppSizes.iconMd,
+            color: AppColors.textSecondary,
           ),
         ],
       ),
     );
   }
 }
-
-// ================================================================= detail ==
 
 final _travelDetailProvider = FutureProvider.autoDispose
     .family<TravelPlan, String>((ref, id) {
@@ -300,32 +354,23 @@ class TravelDetailScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Tour Plan Detail')),
+      // No actions here any more. A tour plan is edited a day at a time from
+      // the calendar and submitted a *month* at a time from it — a per-plan
+      // Edit and Submit on this screen would let a rep send one day of a month
+      // on its own, which is the half-plan the month rule exists to prevent.
       bottomNavigationBar: async.maybeWhen(
-        data: (plan) => plan.status == ApprovalStatus.draft
-            ? BottomActionBar(
+        data: (plan) => plan.status != ApprovalStatus.draft
+            ? null
+            : BottomActionBar(
                 children: [
-                  SecondaryButton(
-                    label: 'Edit',
-                    onPressed: () => context.push(Routes.editTravelPlan(plan.id)),
-                  ),
                   PrimaryButton(
-                    label: 'Submit for approval',
-                    onPressed: () async {
-                      await ref.read(travelRepositoryProvider).submit(plan.id);
-                      AppHaptics.success();
-                      ref.bumpRevision();
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Tour plan submitted.'),
-                          ),
-                        );
-                      }
-                    },
+                    label: 'Edit this day',
+                    icon: Icons.edit_outlined,
+                    onPressed: () =>
+                        context.push(Routes.tourPlanDay(plan.date)),
                   ),
                 ],
-              )
-            : null,
+              ),
         orElse: () => null,
       ),
       body: async.when(
@@ -405,81 +450,58 @@ class TravelDetailScreen extends ConsumerWidget {
 /// One screen, as with the client form: the date picker, the territory→area
 /// cascade and the two add-pickers are the whole screen, and a second copy of
 /// them would drift.
-class NewTravelPlanScreen extends ConsumerStatefulWidget {
-  const NewTravelPlanScreen({super.key, this.existing});
+/// The day this screen is planning, loaded by its date.
+///
+/// By date, not by record id: the screen exists before the record does — the
+/// whole point is planning a day nothing has been saved against yet.
+final tourPlanDayProvider =
+    FutureProvider.autoDispose.family<TravelPlan?, DateTime>((ref, date) async {
+  final session = ref.watch(sessionProvider);
+  ref.watch(dataRevisionProvider);
 
-  /// Null to create. Only ever a **draft** — the detail screen offers Edit on
-  /// nothing else, because a submitted plan is already in front of an approver.
-  final TravelPlan? existing;
+  final tour = await ref
+      .watch(travelRepositoryProvider)
+      .month(session, DateTime(date.year, date.month));
+  return tour.planFor(date.day);
+});
 
-  bool get isEditing => existing != null;
+/// One day of the tour plan.
+///
+/// There is no Submit here. A day is **saved**; the month is submitted, once,
+/// from the calendar. Splitting it any other way lets a rep send half a plan,
+/// and half a plan is the one thing a manager cannot approve.
+class TourPlanDayScreen extends ConsumerStatefulWidget {
+  const TourPlanDayScreen({super.key, required this.date});
+
+  final DateTime date;
 
   @override
-  ConsumerState<NewTravelPlanScreen> createState() =>
-      _NewTravelPlanScreenState();
+  ConsumerState<TourPlanDayScreen> createState() => _TourPlanDayScreenState();
 }
 
-/// Loads a plan, then hands it to the form.
-class EditTravelPlanScreen extends ConsumerWidget {
-  const EditTravelPlanScreen({super.key, required this.planId});
-
-  final String planId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ref.watch(_travelDetailProvider(planId)).when(
-          loading: () => const Scaffold(
-            backgroundColor: Colors.transparent,
-            body: LoadingState(message: 'Loading plan'),
-          ),
-          error: (_, _) => Scaffold(
-            backgroundColor: Colors.transparent,
-            appBar: AppBar(title: const Text('Edit Tour Plan')),
-            body: ErrorState(
-              onRetry: () => ref.invalidate(_travelDetailProvider(planId)),
-            ),
-          ),
-          data: (plan) => NewTravelPlanScreen(existing: plan),
-        );
-  }
-}
-
-class _NewTravelPlanScreenState extends ConsumerState<NewTravelPlanScreen> {
+class _TourPlanDayScreenState extends ConsumerState<TourPlanDayScreen> {
   final _formKey = GlobalKey<FormState>();
   final _remarks = TextEditingController();
 
-  DateTime _date = DateTime.now().add(const Duration(days: 1));
   WorkType _workType = WorkType.fieldWork;
   Territory? _territory;
   Area? _area;
 
-  // Pending selection in the client picker, and what has been added from it.
   Client? _pendingClient;
   final List<Client> _clients = [];
-
-  bool _submitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final plan = widget.existing;
-    if (plan == null) return;
-
-    _date = plan.date;
-    _workType = plan.workType;
-    _remarks.text = plan.remarks ?? '';
-    // The client chips are stored as names, so they are restored as names too
-    // — resolving them back to records would need a lookup the plan does not
-    // carry ids for.
-    _restoredClients = plan.clientNames;
-  }
-
-  /// Names carried over from a saved plan, shown as chips alongside anything
-  /// added in this session.
   List<String> _restoredClients = const [];
+
+  bool _saving = false;
+  bool _seeded = false;
+  bool _scopeSeeded = false;
 
   List<String> get _clientNames =>
       [..._restoredClients, for (final c in _clients) c.name];
+
+  /// Leave and holidays need nothing but themselves. There is no territory to
+  /// name, no area to work and nobody to call on, and asking anyway is asking
+  /// a rep to describe the geography of a day they are not working.
+  bool get _needsDetail => tourDayNeedsDetail(_workType);
 
   @override
   void dispose() {
@@ -487,164 +509,212 @@ class _NewTravelPlanScreenState extends ConsumerState<NewTravelPlanScreen> {
     super.dispose();
   }
 
-  Future<void> _save({required bool submit}) async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _submitting = true);
+  void _seed(TravelPlan? plan) {
+    if (_seeded) return;
+    _seeded = true;
+    if (plan == null) return;
 
-    final session = ref.read(sessionProvider);
-    final existing = widget.existing;
-    final plan = TravelPlan(
-      // An edit keeps the id, and with it the approval history already
-      // attached to this plan.
-      id: existing?.id ?? const Uuid().v4(),
-      employeeId: session.employee.id,
-      employeeName: session.employee.name,
-      date: _date,
-      workType: _workType,
-      status: submit ? ApprovalStatus.submitted : ApprovalStatus.draft,
-      areaId: _area?.id,
-      areaName: _area?.name,
-      territoryName: _territory?.name ?? session.employee.territoryName,
-      destination: _area?.name,
-      // The plan's size is the list the rep actually built, not a number they
-      // typed beside it — two figures for one fact always drift apart.
-      plannedVisits: _clientNames.length,
-      clientNames: _clientNames,
-      remarks: _remarks.text.trim().isEmpty ? null : _remarks.text.trim(),
-      createdAt: existing?.createdAt ?? DateTime.now(),
-      approvalHistory: existing?.approvalHistory ?? const [],
-    );
+    _workType = plan.workType;
+    _remarks.text = plan.remarks ?? '';
+    // Client chips are stored as names, so they come back as names — resolving
+    // them to records would need ids the plan does not carry.
+    _restoredClients = plan.clientNames;
+  }
 
-    final repository = ref.read(travelRepositoryProvider);
-    if (widget.isEditing) {
-      await repository.update(plan);
-    } else {
-      await repository.create(plan);
-    }
-    if (!mounted) return;
+  /// Puts the saved territory and area back into the pickers.
+  ///
+  /// Separate from [_seed] because it cannot run until the reference lists
+  /// have loaded — the dropdowns hold *records*, and the plan stores an area
+  /// id. Without this, reopening a day you had already planned showed
+  /// "Select" in both, and the validator then refused to save until you
+  /// re-picked what you had picked yesterday. Editing a saved day is the whole
+  /// point of a month you fill in over several sittings.
+  ///
+  /// The territory comes from the area rather than from `territoryName`: the
+  /// area knows which territory owns it, and matching a name against a list is
+  /// a lookup that breaks the first time anyone renames one.
+  void _seedScope(TravelPlan? plan, List<Area> areas, List<Territory> terrs) {
+    if (_scopeSeeded || plan == null) return;
+    _scopeSeeded = true;
 
-    AppHaptics.success();
-    ref.bumpRevision();
-    setState(() => _submitting = false);
-    context.pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          submit
-              ? 'Tour plan submitted for approval.'
-              : 'Tour plan saved as a draft.',
-        ),
-      ),
-    );
+    final area = areas.where((a) => a.id == plan.areaId).firstOrNull;
+    if (area == null) return;
+    final territory =
+        terrs.where((t) => t.id == area.territoryId).firstOrNull;
+
+    // After the frame: this runs from inside `build`, and setting state
+    // during a build is illegal.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _area = area;
+        _territory = territory;
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final areasAsync = ref.watch(_travelAreasProvider);
-    final territoriesAsync = ref.watch(_travelTerritoriesProvider);
-    final clientsAsync = ref.watch(_travelClientsProvider);
-    final now = DateTime.now();
+    final async = ref.watch(tourPlanDayProvider(widget.date));
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(title: const Text('New Tour Plan')),
-      bottomNavigationBar: BottomActionBar(
-        children: [
-          SecondaryButton(
-            label: 'Save draft',
-            onPressed: _submitting ? null : () => _save(submit: false),
-          ),
-          PrimaryButton(
-            label: 'Submit',
-            isLoading: _submitting,
-            onPressed: () => _save(submit: true),
-          ),
-        ],
+      appBar: AppBar(title: Text(Fmt.date(widget.date))),
+      body: async.when(
+        loading: () => const LoadingState(),
+        error: (_, _) => ErrorState(
+          onRetry: () => ref.invalidate(tourPlanDayProvider(widget.date)),
+        ),
+        data: (plan) {
+          _seed(plan);
+          final locked = plan != null && plan.status != ApprovalStatus.draft;
+          return _buildForm(plan, locked: locked);
+        },
       ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.screenH),
-          children: [
-            // A month grid, not a date field: a tour plan is built day by
-            // day across the coming month, so the rep needs to see the shape
-            // of the month while choosing, not one date at a time.
-            _TourDatePicker(
-              selected: _date,
-              firstDate: now,
-              // 30-day forward planning window (§21).
-              lastDate: now.add(const Duration(days: 30)),
-              onSelected: (d) => setState(() => _date = d),
-            ),
-            const SizedBox(height: AppSpacing.lg),
+      bottomNavigationBar: async.maybeWhen(
+        data: (plan) {
+          if (plan != null && plan.status != ApprovalStatus.draft) {
+            return null;
+          }
+          return BottomActionBar(
+            children: [
+              SecondaryButton(
+                label: 'Cancel',
+                onPressed: _saving ? null : () => context.pop(),
+              ),
+              PrimaryButton(
+                label: 'Save day',
+                isLoading: _saving,
+                onPressed: () => _save(plan),
+              ),
+            ],
+          );
+        },
+        orElse: () => null,
+      ),
+    );
+  }
 
-            DropdownField<WorkType>(
-              label: 'Work type',
-              required: true,
-              items: WorkType.values,
-              value: _workType,
-              itemLabel: (w) => w.label,
-              onChanged: (v) =>
-                  setState(() => _workType = v ?? WorkType.fieldWork),
-            ),
-            const SizedBox(height: AppSpacing.lg),
+  Widget _buildForm(TravelPlan? plan, {required bool locked}) {
+    final areasAsync = ref.watch(_travelAreasProvider);
+    final territoriesAsync = ref.watch(_travelTerritoriesProvider);
+    final clientsAsync = ref.watch(_travelClientsProvider);
 
+    final areas = areasAsync.valueOrNull;
+    final territories = territoriesAsync.valueOrNull;
+    if (areas != null && territories != null) {
+      _seedScope(plan, areas, territories);
+    }
+
+    return Form(
+      key: _formKey,
+      child: ListView(
+        padding: const EdgeInsets.all(AppSpacing.screenH),
+        children: [
+          if (locked)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+              child: AppCard(
+                color: AppColors.surfaceSecondary,
+                borderColor: Colors.transparent,
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.lock_outline,
+                      size: AppSizes.iconMd,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'This month is with your manager. A change from here '
+                        'is a deviation — record it on the day plan.',
+                        style: AppTypography.bodySm,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          DropdownField<WorkType>(
+            label: 'Work type',
+            required: true,
+            enabled: !locked,
+            items: WorkType.values,
+            value: _workType,
+            itemLabel: (w) => w.label,
+            onChanged: (v) =>
+                setState(() => _workType = v ?? WorkType.fieldWork),
+          ),
+
+          // Everything below belongs to a day that is actually worked. On
+          // leave or a holiday the form ends here.
+          if (_needsDetail) ...[
+            const SizedBox(height: AppSpacing.lg),
             territoriesAsync.when(
               loading: () => const Skeleton(height: 48),
-              error: (_, _) => const SizedBox.shrink(),
+              error: (_, _) => const ErrorState(compact: true),
               data: (territories) => DropdownField<Territory>(
                 label: 'Territory',
                 required: true,
+                enabled: !locked,
                 items: territories,
                 value: _territory,
                 itemLabel: (t) => t.name,
                 onChanged: (v) => setState(() {
                   _territory = v;
+                  // The area belongs to the territory above it; keeping a
+                  // stale one is how a plan ends up naming an area in a
+                  // territory the rep does not cover.
                   _area = null;
                 }),
+                validator: (_) =>
+                    _territory == null ? 'Select a territory' : null,
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-
             areasAsync.when(
               loading: () => const Skeleton(height: 48),
-              error: (_, _) => const SizedBox.shrink(),
+              error: (_, _) => const ErrorState(compact: true),
               data: (areas) {
                 final scoped = _territory == null
-                    ? areas
+                    ? <Area>[]
                     : areas
-                          .where((a) => a.territoryId == _territory!.id)
-                          .toList();
+                        .where((a) => a.territoryId == _territory!.id)
+                        .toList();
                 return DropdownField<Area>(
                   label: 'Area',
                   required: true,
+                  enabled: !locked && scoped.isNotEmpty,
+                  hint: _territory == null
+                      ? 'Select a territory first'
+                      : 'Select',
                   items: scoped,
                   value: _area,
                   itemLabel: (a) => a.name,
                   onChanged: (v) => setState(() => _area = v),
+                  validator: (_) => _area == null ? 'Select an area' : null,
                 );
               },
             ),
             const SizedBox(height: AppSpacing.lg),
-
-            // Pick-then-Add: a list, because a tour day holds several clients
-            // and a plan naming one is not a plan.
             clientsAsync.when(
               loading: () => const Skeleton(height: 48),
               error: (_, _) => const SizedBox.shrink(),
               data: (clients) {
                 final scoped = _area == null
-                    ? clients
-                    : clients.where((c) => c.areaId == _area?.id).toList();
+                    ? <Client>[]
+                    : clients
+                        .where((c) =>
+                            c.areaId == _area!.id && !_clients.contains(c))
+                        .toList();
                 return _AddPicker<Client>(
                   label: 'Clients',
-                  required: true,
-                  hint: _area == null
-                      ? 'Select an area first'
-                      : 'Select a client',
-                  items: scoped.where((c) => !_clients.contains(c)).toList(),
+                  hint: _area == null ? 'Select an area first' : 'Select',
+                  items: scoped,
                   value: _pendingClient,
-                  itemLabel: (c) => '${c.name} · ${c.areaName}',
+                  itemLabel: (c) => c.name,
                   added: _clients,
                   restored: _restoredClients,
                   onRemoveRestored: (name) => setState(
@@ -664,19 +734,64 @@ class _NewTravelPlanScreenState extends ConsumerState<NewTravelPlanScreen> {
                 );
               },
             ),
-            const SizedBox(height: AppSpacing.lg),
-
-            AppTextField(
-              label: 'Remarks',
-              controller: _remarks,
-              maxLines: 4,
-              hint: 'Anything your manager should know about this tour',
-            ),
-            const SizedBox(height: AppSpacing.xxxl),
           ],
-        ),
+
+          const SizedBox(height: AppSpacing.lg),
+          AppTextField(
+            label: 'Remarks',
+            controller: _remarks,
+            enabled: !locked,
+            maxLines: 3,
+            hint: _needsDetail
+                ? 'Anything your manager should know'
+                : 'Optional',
+          ),
+          const SizedBox(height: AppSpacing.xxxl),
+        ],
       ),
     );
+  }
+
+  Future<void> _save(TravelPlan? existing) async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+
+    final session = ref.read(sessionProvider);
+    final detail = _needsDetail;
+
+    await ref.read(travelRepositoryProvider).saveDay(
+          TravelPlan(
+            // Client-generated, and kept across an edit so the approval trail
+            // already attached to this day survives it.
+            id: existing?.id ?? const Uuid().v4(),
+            employeeId: session.employee.id,
+            employeeName: session.employee.name,
+            date: widget.date,
+            workType: _workType,
+            status: ApprovalStatus.draft,
+            // Cleared on a leave or holiday rather than carried over: a day
+            // switched from field work to leave must not keep the area and
+            // the client list it had a moment ago.
+            areaId: detail ? _area?.id : null,
+            areaName: detail ? _area?.name : null,
+            territoryName: detail
+                ? (_territory?.name ?? session.employee.territoryName)
+                : null,
+            destination: detail ? _area?.name : null,
+            plannedVisits: detail ? _clientNames.length : 0,
+            clientNames: detail ? _clientNames : const [],
+            remarks:
+                _remarks.text.trim().isEmpty ? null : _remarks.text.trim(),
+            createdAt: existing?.createdAt ?? DateTime.now(),
+            approvalHistory: existing?.approvalHistory ?? const [],
+          ),
+        );
+
+    if (!mounted) return;
+    AppHaptics.success();
+    ref.bumpRevision();
+    setState(() => _saving = false);
+    context.pop();
   }
 }
 
@@ -692,166 +807,6 @@ final _travelClientsProvider = FutureProvider.autoDispose<List<Client>>((ref) {
   final session = ref.watch(sessionProvider);
   return ref.watch(clientRepositoryProvider).list(session);
 });
-
-/// A month grid for choosing the tour date.
-///
-/// A plain date field hides the shape of the month, which is exactly what a
-/// rep is reasoning about when building a tour: which days are already spoken
-/// for, where the weekends fall, how far ahead the window reaches.
-class _TourDatePicker extends StatefulWidget {
-  const _TourDatePicker({
-    required this.selected,
-    required this.firstDate,
-    required this.lastDate,
-    required this.onSelected,
-  });
-
-  final DateTime selected;
-  final DateTime firstDate;
-  final DateTime lastDate;
-  final ValueChanged<DateTime> onSelected;
-
-  @override
-  State<_TourDatePicker> createState() => _TourDatePickerState();
-}
-
-class _TourDatePickerState extends State<_TourDatePicker> {
-  late DateTime _month = DateTime(widget.selected.year, widget.selected.month);
-
-  bool _isSelectable(DateTime day) {
-    final first = DateTime(
-      widget.firstDate.year,
-      widget.firstDate.month,
-      widget.firstDate.day,
-    );
-    final last = DateTime(
-      widget.lastDate.year,
-      widget.lastDate.month,
-      widget.lastDate.day,
-    );
-    return !day.isBefore(first) && !day.isAfter(last);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
-    // DateTime.weekday is 1=Mon; the grid starts on Monday, so the offset is
-    // one less than the first day's weekday.
-    final leading = DateTime(_month.year, _month.month, 1).weekday - 1;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Tour date', style: AppTypography.overline),
-        const SizedBox(height: AppSpacing.sm),
-        AppCard(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left),
-                    tooltip: 'Previous month',
-                    onPressed: () => setState(
-                      () => _month = DateTime(_month.year, _month.month - 1),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      Fmt.monthYear(_month),
-                      textAlign: TextAlign.center,
-                      style: AppTypography.titleSm,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    tooltip: 'Next month',
-                    onPressed: () => setState(
-                      () => _month = DateTime(_month.year, _month.month + 1),
-                    ),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  for (final label in ['M', 'T', 'W', 'T', 'F', 'S', 'S'])
-                    Expanded(
-                      child: Text(
-                        label,
-                        textAlign: TextAlign.center,
-                        style: AppTypography.caption,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: leading + daysInMonth,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 7,
-                  mainAxisExtent: 38,
-                ),
-                itemBuilder: (context, i) {
-                  if (i < leading) return const SizedBox.shrink();
-
-                  final day = DateTime(
-                    _month.year,
-                    _month.month,
-                    i - leading + 1,
-                  );
-                  final selectable = _isSelectable(day);
-                  final isSelected =
-                      day.year == widget.selected.year &&
-                      day.month == widget.selected.month &&
-                      day.day == widget.selected.day;
-
-                  return GestureDetector(
-                    onTap: selectable ? () => widget.onSelected(day) : null,
-                    behavior: HitTestBehavior.opaque,
-                    child: Container(
-                      margin: const EdgeInsets.all(2),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        gradient: isSelected
-                            ? AppGlow.fill(AppColors.brand)
-                            : null,
-                        borderRadius: BorderRadius.circular(AppRadius.md),
-                        boxShadow: isSelected
-                            ? AppGlow.halo(AppColors.brand, 40, strength: 0.6)
-                            : null,
-                      ),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          '${day.day}',
-                          style: AppTypography.bodySm.copyWith(
-                            color: isSelected
-                                ? AppColors.textOnBrand
-                                : selectable
-                                ? AppColors.textPrimary
-                                : AppColors.textSecondary.withValues(
-                                    alpha: 0.4,
-                                  ),
-                            fontWeight: isSelected
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 /// A dropdown with an Add button, and the chips it has produced.
 ///

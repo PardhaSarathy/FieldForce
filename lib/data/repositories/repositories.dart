@@ -118,6 +118,24 @@ abstract interface class TravelRepository {
   /// is how an approval comes to mean nothing.
   Future<TravelPlan> update(TravelPlan plan);
   Future<TravelPlan> submit(String id);
+
+  /// One month of tour plan, as a day-by-day picture.
+  Future<TourMonth> month(Session session, DateTime month,
+      {String? employeeId});
+
+  /// Saves one day, replacing whatever was planned for that date.
+  ///
+  /// Replace rather than add: a rep correcting Tuesday is correcting Tuesday,
+  /// and a second record for the same date would leave the manager two
+  /// answers to one question.
+  Future<TravelPlan> saveDay(TravelPlan plan);
+
+  /// Sends the whole month for approval.
+  ///
+  /// Refuses an incomplete month and returns 0. The screen disables the button
+  /// too, but the screen is working from a snapshot taken when it loaded —
+  /// the rule has to live where the data is.
+  Future<int> submitMonth(Session session, DateTime month);
 }
 
 abstract interface class ExpenseRepository {

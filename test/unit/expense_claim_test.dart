@@ -11,7 +11,7 @@ void main() {
         employeeId: 'emp-1',
         employeeName: 'Rahul',
         date: DateTime(2026, 9, 3),
-        category: ExpenseCategory.other,
+        categories: const [ExpenseCategory.dailyAllowance],
         amount: amount,
         status: status ?? ApprovalStatus.draft,
         allowance: 250,

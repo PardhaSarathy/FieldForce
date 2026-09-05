@@ -6,6 +6,7 @@ import 'package:pharmaconnect/core/routing/app_router.dart';
 import 'package:pharmaconnect/core/theme/app_theme.dart';
 import 'package:pharmaconnect/data/repositories/mock_repositories.dart';
 import 'package:pharmaconnect/shared/models/organization.dart';
+import 'package:pharmaconnect/features/activity/presentation/widgets/activity_card.dart';
 import 'package:pharmaconnect/shared/widgets/primitives.dart';
 
 /// Navigation tests that drive the real router.
@@ -65,6 +66,19 @@ void main() {
         ),
       ),
     );
+    await settle(tester);
+  }
+
+  /// Opens Sales the way a rep now does — from the side menu.
+  ///
+  /// It came off Home's module grid when Expenses took its place. A rep
+  /// touches expenses every working day; sales is a figure they read now and
+  /// then, and dropping the tile only matters if the screen became
+  /// unreachable, which is what these tests check.
+  Future<void> openSales(WidgetTester tester) async {
+    await tester.tap(find.byIcon(Icons.menu).first);
+    await settle(tester);
+    await tester.tap(find.text('Sales').last);
     await settle(tester);
   }
 
@@ -151,13 +165,17 @@ void main() {
       // It opens on the client question. The three steps — Location, Call
       // report, Review — only mean anything once there is a client, so the
       // picker comes before the step header rather than being step one.
-      expect(find.text('Who did you call on?'), findsOneWidget);
+      // One short form: who, when, what for. Adding an activity *plans* a
+      // call; recording one is the visit flow, and it begins from the
+      // activity itself once the rep is standing at the door.
       expect(find.text('Client'), findsWidgets);
-      // The step header is not up yet, and neither is Submit: there is
-      // nothing to measure a geo-fence against until a client is chosen.
+      expect(find.text('When'), findsOneWidget);
+      expect(find.text('Purpose'), findsOneWidget);
+      expect(find.text('Add activity'), findsOneWidget);
+
+      // The three steps are not here — they are behind Start visit.
       expect(find.text('Call report'), findsNothing);
-      expect(find.text('Submit'), findsNothing);
-      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('Review'), findsNothing);
     });
 
     testWidgets('My Day Plan opens the intimation form', (tester) async {
@@ -182,8 +200,7 @@ void main() {
     testWidgets('Sales opens, pushed above the shell', (tester) async {
       await pumpApp(tester, size: const Size(420, 1800));
 
-      await tester.tap(find.text('Sales'));
-      await settle(tester);
+      await openSales(tester);
 
       // Business is pushed above the shell now, so Home is gone from view and
       // the user has a back button rather than a tab to return by.
@@ -197,18 +214,64 @@ void main() {
         (tester) async {
       await pumpApp(tester, size: const Size(420, 1800));
 
-      await tester.tap(find.text('Travel'));
+      // The tile is named for the screen it opens. It said "Travel" and opened
+      // a hub with two doors in it; Expenses is a module of its own on Home
+      // now, which left the hub asking a question with one answer.
+      await tester.tap(find.text('Tour Plan').first);
       await settle(tester);
-      expect(find.text('Tour Plan'), findsOneWidget);
-      expect(find.text('Expenses'), findsOneWidget);
 
-      // The name must survive the tap. It did not: the tile said Tour Plan and
-      // the screen it opened was headed "Travel Plans", which reads as having
-      // landed somewhere else.
-      await tester.tap(find.text('Tour Plan'));
-      await settle(tester);
       expect(find.text('Tour Plan'), findsWidgets);
       expect(find.text('Travel Plans'), findsNothing);
+      expect(find.textContaining('days planned'), findsOneWidget);
+    });
+  });
+
+  group('my activity', () {
+    testWidgets('tapping a client opens that activity', (tester) async {
+      // My Activity is a manager's tab and a rep reaches it from the module
+      // grid, so it is *pushed* for a rep — the row has to open the detail on
+      // top of a pushed screen, which is the case that broke before.
+      await pumpApp(tester, size: const Size(430, 1800));
+
+      await tester.tap(find.text('My Activity'));
+      await settle(tester);
+      expect(find.text('My Activity'), findsWidgets);
+
+      final card = find.byType(ActivityCard).first;
+      await tester.tap(card, warnIfMissed: false);
+      await settle(tester);
+
+      expect(find.text('Activity Detail'), findsOneWidget);
+      // And it is the record, not an error state laid out perfectly.
+      expect(find.text('Something went wrong'), findsNothing);
+      expect(find.text('Scheduled'), findsOneWidget);
+    });
+  });
+
+  group('adding an activity', () {
+    testWidgets('creating one opens the activity, not a call report',
+        (tester) async {
+      // Picking the client creates the record and lands on it. The Location /
+      // Call report / Review steps begin at Start visit, standing at the door
+      // — walking into them from the form recorded a visit that had not
+      // happened yet.
+      await pumpApp(tester, size: const Size(430, 1800));
+
+      await tester.tap(find.text('My Activity'));
+      await settle(tester);
+      await tester.tap(find.text('Add New Activity'));
+      await settle(tester);
+
+      await tester.tap(find.text('Select a client'));
+      await settle(tester);
+      await tester.tap(find.byType(ListTile).first);
+      await settle(tester);
+
+      await tester.tap(find.text('Add activity'));
+      await settle(tester);
+
+      expect(find.text('Activity Detail'), findsOneWidget);
+      expect(find.text('Start visit'), findsOneWidget);
     });
   });
 
@@ -217,8 +280,7 @@ void main() {
         (tester) async {
       await pumpApp(tester, size: const Size(430, 1800));
 
-      await tester.tap(find.text('Travel'));
-      await settle(tester);
+      // Expenses is its own tile on Home now, not a door inside Travel.
       await tester.tap(find.text('Expenses'));
       await settle(tester);
 
@@ -235,8 +297,6 @@ void main() {
       // deep link lands on the same screen a tap does.
       await pumpApp(tester, size: const Size(430, 2400));
 
-      await tester.tap(find.text('Travel'));
-      await settle(tester);
       await tester.tap(find.text('Expenses'));
       await settle(tester);
 
@@ -251,20 +311,25 @@ void main() {
       expect(find.text('Add to claim'), findsOneWidget);
     });
 
-    testWidgets('the + sheet lands on the month, not a blank form',
+    testWidgets('the + sheet does not offer to add an expense',
         (tester) async {
-      // A claim hangs off a declared day, so "add an expense" has to start by
-      // choosing which day — and that list is the month screen. The sheet
-      // used to open a standalone form that could write an orphan record.
+      // A claim is not a thing you *add* — it is a day you confirm, and the
+      // month screen is where the days are. The sheet used to open a
+      // standalone form that could write a record with no day behind it, and
+      // then a shortcut to the month, which was one entry point too many for
+      // something reached from Home's own grid.
       await pumpApp(tester, size: const Size(430, 1800));
 
       await tester.tap(find.byTooltip('Add'));
       await settle(tester);
-      expect(find.text('Claim a day'), findsOneWidget);
 
-      await tester.tap(find.text('Claim a day'));
-      await settle(tester);
-      expect(find.textContaining('claimed this month'), findsOneWidget);
+      expect(find.text('Add new'), findsOneWidget);
+      expect(find.text('Claim a day'), findsNothing);
+      expect(find.text('New expense'), findsNothing);
+
+      // The things that genuinely are new records still are.
+      expect(find.text('Add activity'), findsOneWidget);
+      expect(find.text('Tour plan'), findsOneWidget);
     });
   });
 
@@ -303,10 +368,9 @@ void main() {
       // exist, so a render-only smoke test passes — an ErrorState lays out
       // perfectly well. This taps the tile and asserts on a figure, which is
       // the only thing that separates a working screen from a broken one.
-      await pumpApp(tester, size: const Size(430, 1500));
+      await pumpApp(tester, size: const Size(430, 1800));
 
-      await tester.tap(find.text('Sales'));
-      await settle(tester);
+      await openSales(tester);
 
       expect(find.text('Something went wrong'), findsNothing,
           reason: 'the Sales report must actually load');
@@ -401,8 +465,7 @@ void main() {
         (tester) async {
       await pumpApp(tester, size: const Size(420, 1800));
 
-      await tester.tap(find.text('Sales'));
-      await settle(tester);
+      await openSales(tester);
       expect(find.byType(BackButton), findsOneWidget);
 
       await tester.binding.handlePopRoute();

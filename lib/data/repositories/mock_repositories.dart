@@ -528,6 +528,84 @@ class MockTravelRepository implements TravelRepository {
     _store.travelPlans[index] = updated;
     return updated;
   }
+
+  // ---------------------------------------------------------- by the month
+
+  @override
+  Future<TourMonth> month(
+    Session session,
+    DateTime month, {
+    String? employeeId,
+  }) async {
+    await _latency(240);
+    final id = employeeId ?? session.employee.id;
+
+    return TourMonth(
+      month: month,
+      plans: {
+        for (final p in _store.travelPlans)
+          if (p.employeeId == id &&
+              p.date.year == month.year &&
+              p.date.month == month.month)
+            p.date.day: p,
+      },
+    );
+  }
+
+  @override
+  Future<TravelPlan> saveDay(TravelPlan plan) async {
+    await _latency(400);
+
+    // Replace by date, not by id. A rep correcting Tuesday is correcting
+    // Tuesday; adding a second record would leave the manager two answers to
+    // one question, and the calendar would have to pick one of them.
+    final index = _store.travelPlans.indexWhere(
+      (p) =>
+          p.employeeId == plan.employeeId &&
+          _sameDay(p.date, plan.date),
+    );
+    if (index >= 0) {
+      _store.travelPlans[index] = plan;
+    } else {
+      _store.travelPlans.add(plan);
+    }
+    return plan;
+  }
+
+  @override
+  Future<int> submitMonth(Session session, DateTime month) async {
+    await _latency(600);
+
+    final current = await this.month(session, month);
+    // Asked of the store, not of anything the caller passed in. The screen
+    // disables its button on a snapshot taken when it loaded; a month can
+    // have lost a day since.
+    if (!current.isComplete) return 0;
+
+    var sent = 0;
+    for (var i = 0; i < _store.travelPlans.length; i++) {
+      final p = _store.travelPlans[i];
+      if (p.employeeId != session.employee.id) continue;
+      if (p.date.year != month.year || p.date.month != month.month) continue;
+      if (p.status != ApprovalStatus.draft) continue;
+
+      _store.travelPlans[i] = p.copyWith(
+        status: ApprovalStatus.submitted,
+        approvalHistory: [
+          ...p.approvalHistory,
+          ApprovalEvent(
+            status: ApprovalStatus.submitted,
+            actorId: p.employeeId,
+            actorName: p.employeeName,
+            actorRole: 'MR',
+            at: DateTime.now(),
+          ),
+        ],
+      );
+      sent++;
+    }
+    return sent;
+  }
 }
 
 // ============================================================== expenses ==
@@ -675,7 +753,7 @@ class MockExpenseRepository implements ExpenseRepository {
           employeeId: session.employee.id,
           employeeName: session.employee.name,
           date: day.date,
-          category: ExpenseCategory.other,
+          categories: const [ExpenseCategory.dailyAllowance],
           amount: day.allowance,
           status: ApprovalStatus.draft,
           description: 'Daily allowance',

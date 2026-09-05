@@ -180,6 +180,8 @@ class Activity {
     String? feedback,
     String? remarks,
     String? pop,
+    String? inputsGiven,
+    double? pobAmount,
     int? rcpaScore,
     List<RcpaEntry>? rcpaEntries,
     List<String>? productIds,
@@ -222,8 +224,12 @@ class Activity {
       photoPaths: photoPaths ?? this.photoPaths,
       attachmentPaths: attachmentPaths ?? this.attachmentPaths,
       syncStatus: syncStatus ?? this.syncStatus,
-      inputsGiven: inputsGiven,
-      pobAmount: pobAmount,
+      // Settable now, not merely carried. The visit flow collects both — it
+      // shares its call-report form with Add New Activity — and a field a
+      // screen gathers and `copyWith` silently drops is a field the rep types
+      // into thin air.
+      inputsGiven: inputsGiven ?? this.inputsGiven,
+      pobAmount: pobAmount ?? this.pobAmount,
       dayPlanId: dayPlanId,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),

@@ -12,8 +12,6 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/activity.dart';
-import '../../../shared/widgets/buttons.dart';
-import '../../../shared/models/field_ops.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../shared/widgets/motion.dart';
 import '../../../shared/widgets/primitives.dart';
@@ -111,11 +109,6 @@ class HomeScreen extends ConsumerWidget {
                               delay: AppMotion.staggerFor(2),
                               child: _TodaysVisits(summary: summary),
                             ),
-                            // Only when there is something to confirm. A card
-                            // that says "nothing owed" every day is a card the
-                            // rep learns to scroll past, and then misses on
-                            // the day it matters.
-                            const _TodayClaimSection(),
                           ],
                         ),
                       ),
@@ -746,18 +739,25 @@ class _QuickActionsGrid extends StatefulWidget {
       Routes.clients,
       ModulePalette.clients,
     ),
+    // "Tour Plan", because that is the screen it opens. It said "Travel" back
+    // when it opened a hub with two doors in it; with the hub gone the tile
+    // was the last place in the app still calling this something else, and a
+    // label that changes on the way through reads as a different screen.
     _QuickAction(
-      Icons.near_me_outlined,
-      'Travel',
-      Routes.travel,
+      Icons.map_outlined,
+      'Tour Plan',
+      Routes.travelPlans,
       ModulePalette.travel,
     ),
     _QuickAction(Icons.person_outline, 'HR', Routes.hr, ModulePalette.hr),
+    // Expenses, not Sales. A rep touches this every working day; Sales is a
+    // figure they read now and then, and it is still one tap away in the side
+    // menu and on the Business dashboard.
     _QuickAction(
-      Icons.bar_chart_rounded,
-      'Sales',
-      Routes.sales,
-      ModulePalette.sales,
+      Icons.receipt_long_outlined,
+      'Expenses',
+      Routes.expenses,
+      ModulePalette.expenses,
     ),
   ];
 }
@@ -871,149 +871,6 @@ class _QuickActionTile extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Today's allowance, as one tick.
-///
-/// The whole expense design in a card. Everything on it is already known from
-/// the day plan the rep filed this morning, so the only thing left is
-/// confirmation — a rep who never opens Expenses still ends the month fully
-/// claimed. It also carries the days behind him: a card that knew only about
-/// *today* would quietly lose every day he was too busy to confirm, which is
-/// exactly the rep this is for.
-class _TodayClaimSection extends ConsumerWidget {
-  const _TodayClaimSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final claim = ref.watch(todayClaimProvider).valueOrNull;
-    if (claim == null || claim.isEmpty) return const SizedBox.shrink();
-
-    final today = claim.today;
-    final showToday = today != null && today.isOpen;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.section),
-      child: Arrive(
-        delay: AppMotion.staggerFor(3),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SectionHeader(title: "Today's expense"),
-            AppCard(
-              padding: const EdgeInsets.all(AppSpacing.cardPadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (showToday) ...[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${today.workType.label} · ${today.place}'
-                                    .toUpperCase(),
-                                style: AppTypography.overline,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: AppSpacing.xs),
-                              Text(
-                                'Daily allowance',
-                                style: AppTypography.titleMd,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.md),
-                        Text(
-                          Fmt.money(today.allowance),
-                          style: AppTypography.metricSm,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                  ],
-
-                  if (claim.earlierOpen > 0)
-                    Padding(
-                      padding: EdgeInsets.only(
-                        bottom: showToday ? AppSpacing.md : 0,
-                      ),
-                      child: InkWell(
-                        onTap: () => context.push(Routes.expenses),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.history,
-                              size: AppSizes.iconSm,
-                              color: AppColors.warning,
-                            ),
-                            const SizedBox(width: AppSpacing.sm),
-                            Expanded(
-                              child: Text(
-                                '${Fmt.count(claim.earlierOpen, 'earlier day')}'
-                                ' still unclaimed',
-                                style: AppTypography.bodySm.copyWith(
-                                  color: AppColors.warning,
-                                ),
-                              ),
-                            ),
-                            const Icon(
-                              Icons.chevron_right,
-                              size: AppSizes.iconSm,
-                              color: AppColors.warning,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                  if (showToday)
-                    PrimaryButton(
-                      label: 'Confirm ${Fmt.money(today.allowance)}',
-                      icon: Icons.check_rounded,
-                      small: true,
-                      onPressed: () => _confirm(context, ref, today),
-                    )
-                  else
-                    SecondaryButton(
-                      label: 'Open expenses',
-                      icon: Icons.receipt_long_outlined,
-                      small: true,
-                      onPressed: () => context.push(Routes.expenses),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirm(
-    BuildContext context,
-    WidgetRef ref,
-    ClaimDay day,
-  ) async {
-    final session = ref.read(sessionProvider);
-    await ref
-        .read(expenseRepositoryProvider)
-        .confirmStandardDays(session, [day]);
-
-    if (!context.mounted) return;
-    AppHaptics.success();
-    ref.bumpRevision();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${Fmt.money(day.allowance)} added to this month.'),
       ),
     );
   }
@@ -1280,13 +1137,13 @@ class _RowAction extends StatelessWidget {
       message: tooltip,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.md),
+        customBorder: const CircleBorder(),
         child: Container(
           width: 38,
           height: 38,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadius.md),
+            shape: BoxShape.circle,
             border: Border.all(color: AppColors.border),
           ),
           child: Icon(icon, size: AppSizes.iconSm, color: AppColors.brand),

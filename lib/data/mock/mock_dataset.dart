@@ -915,16 +915,19 @@ class MockDataset {
         // rail meaning nothing — a demo where everything is flagged shows the
         // same as one where nothing is.
         final isExcess = n % 4 == 0;
+        // The allowance is never one of the excess categories — it is what an
+        // excess is measured against.
+        final spendable = ExpenseCategory.spendable;
         final category = isExcess
-            ? ExpenseCategory.values[n % ExpenseCategory.values.length]
-            : ExpenseCategory.other;
+            ? spendable[n % spendable.length]
+            : ExpenseCategory.dailyAllowance;
         final amount = isExcess
             ? switch (category) {
                 ExpenseCategory.travel => 620.0 + (n % 8) * 50,
                 ExpenseCategory.food => 480.0 + (n % 6) * 40,
                 ExpenseCategory.lodging => 1450.0 + (n % 4) * 250,
                 ExpenseCategory.fuel => 700.0 + (n % 5) * 60,
-                ExpenseCategory.other => 560.0 + (n % 7) * 45,
+                _ => 560.0 + (n % 7) * 45,
               }
             : 250.0;
 
@@ -954,7 +957,7 @@ class MockDataset {
             employeeId: mr.id,
             employeeName: mr.name,
             date: date,
-            category: category,
+            categories: [category],
             amount: amount,
             status: status,
             dayPlanId: plan.id,
@@ -1028,46 +1031,71 @@ class MockDataset {
 
   late final List<TravelPlan> travelPlans = _buildTravelPlans();
 
+  /// Tour plans, by the month — which is the unit a rep now submits.
+  ///
+  /// The old seed filed one plan every third day, which was fine for a list
+  /// and wrong for a calendar: a month with holes in it is exactly the state
+  /// the screen refuses to submit, so the demo could never show a finished
+  /// one. Three months are laid down instead:
+  ///
+  /// * **last month** — complete and approved, so history reads properly;
+  /// * **this month** — complete and submitted, the month in flight;
+  /// * **next month** — the first eight days as drafts and the rest blank,
+  ///   which is the state the screen opens on and the one worth demoing.
   List<TravelPlan> _buildTravelPlans() {
     final result = <TravelPlan>[];
     // Everyone tours, including the national manager — theirs are outstation
     // rather than local, but they still file a plan.
-    final mrs = fieldForce;
     var n = 0;
 
-    for (final mr in mrs) {
-      for (var dayOffset = -14; dayOffset <= 24; dayOffset += 3) {
-        final date = today.add(Duration(days: dayOffset));
-        if (date.weekday == DateTime.sunday) continue;
+    void plan(Employee mr, DateTime date, ApprovalStatus status) {
+      final area = areas[n % areas.length];
+      // Sundays are a day off, and every sixth Saturday is leave. A month of
+      // unbroken field work is not a plan anyone files.
+      final workType = date.weekday == DateTime.sunday
+          ? WorkType.holiday
+          : (n % 17 == 0 ? WorkType.leave : WorkType.fieldWork);
+      final working = workType == WorkType.fieldWork;
 
-        final area = areas[n % areas.length];
-        final status = dayOffset < -2
-            ? ApprovalStatus.approved
-            : dayOffset < 4
-                ? ApprovalStatus.submitted
-                : (n % 5 == 0 ? ApprovalStatus.draft : ApprovalStatus.submitted);
+      result.add(
+        TravelPlan(
+          id: 'tp-${++n}',
+          employeeId: mr.id,
+          employeeName: mr.name,
+          date: date,
+          workType: workType,
+          status: status,
+          areaId: working ? area.id : null,
+          areaName: working ? area.name : null,
+          territoryName: working ? mr.territoryName : null,
+          tourType: n % 6 == 0 ? TourType.outstation : TourType.local,
+          travelMode: n % 6 == 0 ? TravelMode.train : TravelMode.bike,
+          destination: working ? area.name : null,
+          purpose: working ? 'Routine coverage and RCPA in ${area.name}' : null,
+          plannedVisits: working ? 6 + n % 5 : 0,
+          estimatedKm: working ? 14.0 + (n % 11) * 3 : null,
+          approvalHistory: _historyFor(status, mr, date, 0),
+          createdAt: DateTime(date.year, date.month - 1, 20),
+        ),
+      );
+    }
 
-        result.add(
-          TravelPlan(
-            id: 'tp-${++n}',
-            employeeId: mr.id,
-            employeeName: mr.name,
-            date: date,
-            workType: WorkType.fieldWork,
-            status: status,
-            areaId: area.id,
-            areaName: area.name,
-            territoryName: mr.territoryName,
-            tourType: n % 6 == 0 ? TourType.outstation : TourType.local,
-            travelMode: n % 6 == 0 ? TravelMode.train : TravelMode.bike,
-            destination: area.name,
-            purpose: 'Routine coverage and RCPA in ${area.name}',
-            plannedVisits: 6 + n % 5,
-            estimatedKm: 14.0 + (n % 11) * 3,
-            approvalHistory: _historyFor(status, mr, date, 0),
-            createdAt: date.subtract(const Duration(days: 3)),
-          ),
-        );
+    for (final mr in fieldForce) {
+      for (final (offset, status) in [
+        (-1, ApprovalStatus.approved),
+        (0, ApprovalStatus.submitted),
+      ]) {
+        final month = DateTime(today.year, today.month + offset);
+        final days = DateTime(month.year, month.month + 1, 0).day;
+        for (var d = 1; d <= days; d++) {
+          plan(mr, DateTime(month.year, month.month, d), status);
+        }
+      }
+
+      // Next month, part-planned. The rest of it is the demo.
+      final next = DateTime(today.year, today.month + 1);
+      for (var d = 1; d <= 8; d++) {
+        plan(mr, DateTime(next.year, next.month, d), ApprovalStatus.draft);
       }
     }
     return result;

@@ -56,8 +56,8 @@ class AppDrawer extends ConsumerWidget {
                 ),
                 (
                   icon: Icons.map_outlined,
-                  label: 'Travel',
-                  route: Routes.travel,
+                  label: 'Tour Plan',
+                  route: Routes.travelPlans,
                 ),
                 (
                   icon: Icons.receipt_long_outlined,

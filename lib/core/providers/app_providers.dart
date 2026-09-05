@@ -223,6 +223,26 @@ final monthlyVisitTargetProvider =
   return targets.isEmpty ? null : targets.first;
 });
 
+/// The month the tour plan screen is showing.
+///
+/// Defaults to **next** month, because that is the one being planned. A rep
+/// files next month's tour during this one; opening on the current month would
+/// land them on a plan already with their manager.
+final tourMonthProvider = StateProvider<DateTime>((ref) {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month + 1);
+});
+
+/// The chosen month as a day-by-day tour plan.
+final tourMonthPlanProvider =
+    FutureProvider.autoDispose<TourMonth>((ref) async {
+  final session = ref.watch(sessionProvider);
+  final month = ref.watch(tourMonthProvider);
+  ref.watch(dataRevisionProvider);
+
+  return ref.watch(travelRepositoryProvider).month(session, month);
+});
+
 /// The month the expense claim screen is showing. Not auto-disposed: stepping
 /// into a day and back should return to the month you were in, not to today.
 final claimMonthProvider = StateProvider<DateTime>((ref) {
@@ -246,50 +266,6 @@ final claimMonthDaysProvider =
 
   return ref.watch(expenseRepositoryProvider).claimMonth(session, month);
 });
-
-/// Today's day, if the rep intimated and has not yet claimed for it, plus how
-/// many earlier days are still open.
-///
-/// Home asks one question of this — "is there anything to confirm?" — so the
-/// answer is computed once here rather than by the card. A widget deciding it
-/// would be a second opinion on what "claimed" means.
-final todayClaimProvider =
-    FutureProvider.autoDispose<TodayClaim>((ref) async {
-  final session = ref.watch(sessionProvider);
-  ref.watch(dataRevisionProvider);
-
-  final now = DateTime.now();
-  final days = await ref
-      .watch(expenseRepositoryProvider)
-      .claimMonth(session, DateTime(now.year, now.month));
-
-  final today = days
-      .where((d) =>
-          d.date.year == now.year &&
-          d.date.month == now.month &&
-          d.date.day == now.day)
-      .firstOrNull;
-
-  return TodayClaim(
-    today: today,
-    // Earlier days only. Today is the card's subject, so counting it in the
-    // catch-up line would have the card chase itself.
-    earlierOpen: days
-        .where((d) => d.isOpen && d.date.isBefore(DateTime(now.year, now.month, now.day)))
-        .length,
-  );
-});
-
-/// What Home needs to know about claiming, in one value.
-class TodayClaim {
-  const TodayClaim({required this.today, required this.earlierOpen});
-
-  final ClaimDay? today;
-  final int earlierOpen;
-
-  /// Nothing to show: no plan filed today and nothing owed behind it.
-  bool get isEmpty => (today == null || !today!.isOpen) && earlierOpen == 0;
-}
 
 /// Bumped after any write so dependent lists refetch. A crude but honest
 /// invalidation signal for the mock build; the real app will use targeted

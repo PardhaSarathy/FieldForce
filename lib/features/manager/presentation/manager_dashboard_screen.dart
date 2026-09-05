@@ -290,7 +290,7 @@ class _ExceptionRow extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: tone.background,
-                borderRadius: BorderRadius.circular(AppRadius.md),
+                shape: BoxShape.circle,
               ),
               child: Icon(icon, size: 19, color: tone.foreground),
             ),

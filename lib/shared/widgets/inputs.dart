@@ -7,6 +7,7 @@ import '../../core/theme/app_glow.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/formatters.dart';
+import 'buttons.dart';
 import 'primitives.dart';
 
 /// A labelled field wrapper.
@@ -221,6 +222,217 @@ class SearchField extends StatelessWidget {
               )
             : null,
         contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+      ),
+    );
+  }
+}
+
+/// A closed set where more than one answer is true at once.
+///
+/// A **dropdown**, like every other picker in this app — the options live in
+/// the bottom sheet, not stacked open in the form. Rendered inline, six
+/// categories cost six rows of vertical space on a form a rep fills in one
+/// hand on a pavement, and pushed the amount field below the fold. The field
+/// collapses to what has been ticked and the sheet does the choosing.
+///
+/// The sheet ticks rather than closing on the first tap, because more than one
+/// answer is the point.
+class MultiSelectField<T> extends StatelessWidget {
+  const MultiSelectField({
+    super.key,
+    required this.options,
+    required this.itemLabel,
+    required this.selected,
+    required this.onChanged,
+    this.label,
+    this.hint = 'Select',
+    this.required = false,
+    this.enabled = true,
+    this.helper,
+    this.iconOf,
+  });
+
+  final List<T> options;
+  final String Function(T) itemLabel;
+  final Set<T> selected;
+  final ValueChanged<Set<T>> onChanged;
+  final String? label;
+  final String hint;
+  final bool required;
+  final bool enabled;
+  final String? helper;
+  final IconData Function(T)? iconOf;
+
+  Future<void> _open(BuildContext context) async {
+    final picked = await showModalBottomSheet<Set<T>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _MultiOptionSheet<T>(
+        title: label ?? hint,
+        items: options,
+        itemLabel: itemLabel,
+        iconOf: iconOf,
+        selected: selected,
+      ),
+    );
+    if (picked == null || picked.isEmpty) return;
+    onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Ordered by the option list, not by the order they were ticked, so the
+    // same selection always reads the same way.
+    final chosen = options.where(selected.contains).map(itemLabel).join(' · ');
+
+    return FieldShell(
+      label: label,
+      required: required,
+      helper: helper,
+      child: InkWell(
+        onTap: enabled && options.isNotEmpty ? () => _open(context) : null,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: InputDecorator(
+          isEmpty: selected.isEmpty,
+          decoration: InputDecoration(
+            fillColor:
+                enabled ? AppColors.surface : AppColors.surfaceSecondary,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  selected.isEmpty ? hint : chosen,
+                  style: AppTypography.body.copyWith(
+                    color: selected.isEmpty
+                        ? AppColors.textSecondary
+                        : AppColors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const Icon(
+                Icons.keyboard_arrow_down,
+                color: AppColors.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The ticking sheet behind [MultiSelectField].
+///
+/// Deliberately not [_OptionSheet] with a flag: that one closes on the first
+/// tap, which is right for a single answer and exactly wrong here. Sharing it
+/// would have meant a boolean threaded through every branch of a widget whose
+/// whole job is "pick one".
+class _MultiOptionSheet<T> extends StatefulWidget {
+  const _MultiOptionSheet({
+    required this.title,
+    required this.items,
+    required this.itemLabel,
+    required this.selected,
+    this.iconOf,
+  });
+
+  final String title;
+  final List<T> items;
+  final String Function(T) itemLabel;
+  final Set<T> selected;
+  final IconData Function(T)? iconOf;
+
+  @override
+  State<_MultiOptionSheet<T>> createState() => _MultiOptionSheetState<T>();
+}
+
+class _MultiOptionSheetState<T> extends State<_MultiOptionSheet<T>> {
+  late final Set<T> _chosen = Set<T>.of(widget.selected);
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenH,
+                AppSpacing.xs,
+                AppSpacing.screenH,
+                AppSpacing.md,
+              ),
+              child: Text(widget.title, style: AppTypography.h3),
+            ),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                itemCount: widget.items.length,
+                itemBuilder: (context, i) {
+                  final item = widget.items[i];
+                  final isChecked = _chosen.contains(item);
+
+                  return ListTile(
+                    leading: Icon(
+                      isChecked
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank,
+                      color: isChecked ? AppColors.brand : AppColors.grey500,
+                    ),
+                    title: Text(
+                      widget.itemLabel(item),
+                      style: AppTypography.titleSm.copyWith(
+                        color: isChecked
+                            ? AppColors.brand
+                            : AppColors.textPrimary,
+                      ),
+                    ),
+                    trailing: widget.iconOf == null
+                        ? null
+                        : Icon(
+                            widget.iconOf!(item),
+                            size: AppSizes.iconSm,
+                            color: AppColors.textSecondary,
+                          ),
+                    onTap: () {
+                      AppHaptics.selection();
+                      setState(() {
+                        // The last tick holds: a record with no category is
+                        // one nobody can code.
+                        if (!_chosen.remove(item)) {
+                          _chosen.add(item);
+                        } else if (_chosen.isEmpty) {
+                          _chosen.add(item);
+                        }
+                      });
+                    },
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenH,
+                AppSpacing.sm,
+                AppSpacing.screenH,
+                AppSpacing.md,
+              ),
+              child: PrimaryButton(
+                label: 'Done',
+                onPressed: () => Navigator.of(context).pop(_chosen),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -836,9 +1048,12 @@ class _StepButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Circular splash, like every other icon-sized control. A rounded-square
+    // ripple on a 40pt icon button is the one shape in this app that says
+    // "card" doing the job of one that says "press".
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadius.md),
+      customBorder: const CircleBorder(),
       child: SizedBox(
         width: 40,
         height: 40,

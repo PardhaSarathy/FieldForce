@@ -56,12 +56,20 @@ abstract final class Routes {
   static String clientHistory(String id) => '/clients/detail/$id/history';
   static String editClient(String id) => '/clients/detail/$id/edit';
 
-  // travel — a hub with two jobs behind it: plans and expenses
-  static const travel = '/travel';
+  // travel — the tour plan. It was a hub with two doors behind it, and the
+  // second one (expenses) is now a module of its own on Home, which left the
+  // hub asking a question with a single answer.
   static const travelPlans = '/travel/plans';
-  static const newTravelPlan = '/travel/new';
+
+  /// One day of the tour plan, addressed by its date.
+  ///
+  /// By date rather than by record id, because the screen exists before the
+  /// record does — the whole point is planning a day nothing has been saved
+  /// against yet. On one line so `no_dead_controls_test`, which reads this
+  /// file as text, can still find the path behind the name.
+  static String tourPlanDay(DateTime d) => '/travel/plans/day/${isoDay(d)}';
+
   static String travelDetail(String id) => '/travel/detail/$id';
-  static String editTravelPlan(String id) => '/travel/detail/$id/edit';
 
   // expenses
   static const expenses = '/expenses';

@@ -5,16 +5,20 @@ import 'package:pharmaconnect/data/mock/mock_dataset.dart';
 import 'package:pharmaconnect/core/providers/app_providers.dart';
 import 'package:pharmaconnect/core/routing/routes.dart';
 import 'package:pharmaconnect/core/theme/app_spacing.dart';
+import 'package:pharmaconnect/shared/widgets/month_calendar.dart';
 import 'package:pharmaconnect/shared/widgets/primitives.dart';
 import 'package:pharmaconnect/core/theme/app_background.dart';
 import 'package:pharmaconnect/core/theme/app_colors.dart';
 import 'package:pharmaconnect/core/theme/app_theme.dart';
+import 'package:pharmaconnect/core/utils/formatters.dart';
 import 'package:pharmaconnect/shared/models/activity.dart';
 import 'package:pharmaconnect/shared/enums/app_enums.dart';
 import 'package:pharmaconnect/core/location/geo_math.dart';
 import 'package:pharmaconnect/data/repositories/mock_repositories.dart';
 import 'package:pharmaconnect/features/activity/presentation/activity_list_screen.dart';
 import 'package:pharmaconnect/features/activity/presentation/add_activity_screen.dart';
+import 'package:pharmaconnect/features/activity/presentation/visit_flow_screen.dart';
+import 'package:pharmaconnect/features/activity/presentation/widgets/call_report_form.dart';
 import 'package:pharmaconnect/features/admin/presentation/admin_screens.dart';
 import 'package:pharmaconnect/features/approvals/presentation/approval_screens.dart';
 import 'package:pharmaconnect/features/business/presentation/business_screens.dart';
@@ -34,7 +38,6 @@ import 'package:pharmaconnect/features/more/presentation/more_screens.dart';
 import 'package:pharmaconnect/features/reports/presentation/report_screens.dart';
 import 'package:pharmaconnect/features/shell/presentation/app_drawer.dart';
 import 'package:pharmaconnect/features/shell/presentation/app_shell.dart';
-import 'package:pharmaconnect/features/travel/presentation/travel_hub_screen.dart';
 import 'package:pharmaconnect/features/travel/presentation/travel_screens.dart';
 import 'package:pharmaconnect/shared/models/organization.dart';
 
@@ -136,10 +139,15 @@ void main() {
     testWidgets('Add new activity', (tester) async {
       await pumpScreen(tester, const AddActivityScreen());
       expect(find.text('Add New Activity'), findsOneWidget);
-      // The screen opens on the client question — the step header and the
-      // fields arrive once there is a client to measure and report against.
-      expect(find.text('Who did you call on?'), findsOneWidget);
+
+      // One short form: who, when, what for. Adding an activity *plans* a
+      // call — recording one is the visit flow, which begins from the
+      // activity once the rep is standing at the door.
       expect(find.text('Client'), findsWidgets);
+      expect(find.text('When'), findsOneWidget);
+      expect(find.text('Purpose'), findsOneWidget);
+      expect(find.text('Add activity'), findsOneWidget);
+
       // Cut at the review's request, along with the travel plan's version.
       expect(find.text('Joint work'), findsNothing);
     });
@@ -187,6 +195,37 @@ void main() {
 
       // Live: the explanation is on screen and editable.
       expect(find.text('Met at the OPD block'), findsOneWidget);
+    });
+
+    testWidgets('the live visit uses the shared call report', (tester) async {
+      await pumpScreen(tester, const VisitFlowScreen(activityId: 'act-1'),
+          size: const Size(430, 2200));
+
+      // Step two is where the report lives; step one is the geo-fence.
+      await tester.tap(find.text('Continue'));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+      expect(find.byType(CallReportForm), findsOneWidget);
+    });
+
+    testWidgets('correcting a call uses the same call report', (tester) async {
+      // They had drifted: the live visit asked for a star rating, the products
+      // discussed and the material shared; this screen asked for samples, a
+      // *typed* RCPA number and a POB figure. Same record, same step, same
+      // title, two sets of questions — so what a call report contained
+      // depended on which door the rep came through.
+      //
+      // Creating an activity no longer walks the steps at all — it plans a
+      // call — so the shared form is reached by correcting one.
+      await pumpScreen(tester, const EditActivityScreen(activityId: 'act-1'),
+          size: const Size(430, 2200));
+
+      await tester.tap(find.text('Continue'));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+      expect(find.byType(CallReportForm), findsOneWidget);
     });
 
     testWidgets('Client list', (tester) async {
@@ -263,6 +302,55 @@ void main() {
       expect(find.textContaining('No cut-off'), findsOneWidget);
     });
 
+    testWidgets('the calendar drives the list, and only on declared days',
+        (tester) async {
+      // The calendar has two jobs and has to do both or it is decoration: it
+      // shows where every day stands, and tapping one selects that day so the
+      // list can be scrolled to it. A calendar that only paints state leaves
+      // the rep scrolling to find the day they just looked at.
+      //
+      // Nothing here awaits the repository. A `testWidgets` body that awaits
+      // the mock's simulated latency deadlocks — the fake clock only advances
+      // when the test pumps — and the first version of this test hung for the
+      // full ten-minute timeout instead of failing.
+      await pumpScreen(tester, const ExpenseClaimScreen(),
+          size: const Size(420, 1800));
+
+      final cells = find.byWidgetPredicate(
+        (w) => w.runtimeType.toString() == '_DayCell',
+      );
+      expect(cells, findsWidgets, reason: 'the month is drawn as a calendar');
+
+      // Every day of the month gets a cell, declared or not — a calendar
+      // missing its blank days is a list wearing a grid.
+      final now = DateTime.now();
+      expect(cells.evaluate().length, DateTime(now.year, now.month + 1, 0).day);
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ExpenseClaimScreen)),
+      );
+      expect(container.read(claimSelectedDayProvider), isNull);
+
+      // Tap along the month until a declared day answers. Which dates are
+      // declared depends on the day the suite runs, so the test asks the
+      // screen rather than assuming — and a day with no plan behind it is
+      // deliberately inert, which is the other half of what is being checked.
+      var selected = false;
+      for (var day = 1; day <= cells.evaluate().length && !selected; day++) {
+        final cell = find.descendant(
+          of: cells.at(day - 1),
+          matching: find.text('$day'),
+        );
+        if (cell.evaluate().isEmpty) continue;
+        await tester.tap(cell, warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 400));
+        selected = container.read(claimSelectedDayProvider) != null;
+      }
+
+      expect(selected, isTrue,
+          reason: 'tapping a declared day must select it');
+    });
+
     testWidgets('a day with no plan behind it cannot be claimed',
         (tester) async {
       // The rule the whole feature rests on. A date the rep never intimated
@@ -275,52 +363,61 @@ void main() {
       expect(find.text('Nothing to claim'), findsOneWidget);
     });
 
-    testWidgets('Travel hub', (tester) async {
-      await pumpScreen(tester, const TravelHubScreen());
-      // Both tiles carry the name of the screen they open, exactly.
-      expect(find.text('Tour Plan'), findsOneWidget);
-      expect(find.text('Expenses'), findsOneWidget);
-    });
+    testWidgets('Tour plan opens on the calendar, not a list', (tester) async {
+      await pumpScreen(tester, const TourPlanScreen(),
+          size: const Size(420, 1600));
 
-    testWidgets('Tour plan list', (tester) async {
-      await pumpScreen(tester, const TravelDashboardScreen(),
-          size: const Size(420, 1400));
-
-      // The heading matches the tile that opened it. It said "Travel Plans",
-      // which is a third name for a thing the app elsewhere calls a tour plan.
       expect(find.text('Tour Plan'), findsOneWidget);
       expect(find.text('Travel Plans'), findsNothing);
 
-      // And the plans are actually on it. The summary strip and the filter
-      // counts are computed from the same list, so a screen showing "7
-      // upcoming tours" above an empty body is not an empty state — it is a
-      // body that failed to build, and nothing in a render-only assertion on
-      // the title would catch it.
-      expect(
-        find.byWidgetPredicate((w) => w.runtimeType.toString() == '_TravelCard'),
-        findsWidgets,
-        reason: 'the counters and the list must agree',
-      );
-      expect(find.text('No travel plans'), findsNothing);
+      // A calendar, not a dashboard. The old screen led with counts, filters
+      // and a scroll of cards, none of which answers the question a rep opens
+      // this with — which days have I not planned yet.
+      // All four calendars in the app are the same widget now — attendance,
+      // the day plan, the expense claim and this one — so the assertion is on
+      // that rather than on a private cell each screen used to own.
+      expect(find.byType(MonthCalendar), findsOneWidget,
+          reason: 'the month is the screen');
+      expect(find.textContaining('days planned'), findsOneWidget);
+
+      // An escaped interpolation compiles, renders, and reads as a literal in
+      // every cell — the label assertions above would all still pass while the
+      // grid was nonsense.
+      expect(find.textContaining(r'${'), findsNothing);
     });
 
-    testWidgets('New travel plan', (tester) async {
-      await pumpScreen(tester, const NewTravelPlanScreen(),
+    testWidgets('the tour month opens on next month', (tester) async {
+      // A rep files next month's tour during this one. Opening on the current
+      // month lands them on a plan already with their manager.
+      await pumpScreen(tester, const TourPlanScreen(),
+          size: const Size(420, 1600));
+
+      final now = DateTime.now();
+      expect(
+        find.text(Fmt.monthYear(DateTime(now.year, now.month + 1))),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a tour day asks where, and saves rather than submits',
+        (tester) async {
+      // A date far enough out that the seed cannot have planned it. Tomorrow
+      // is already submitted in the demo data, and a submitted day is
+      // correctly read-only — which is a different screen from the one this
+      // test is about.
+      await pumpScreen(tester, TourPlanDayScreen(date: DateTime(2030, 1, 15)),
           size: const Size(420, 1800));
+
       expect(find.text('Work type'), findsOneWidget);
       expect(find.text('Territory'), findsOneWidget);
-      expect(find.text('Joint work'), findsNothing);
       expect(find.text('Clients'), findsOneWidget);
-      // One picker now, where there were two.
-      expect(find.text('Add'), findsOneWidget);
-      expect(find.text('Remarks'), findsOneWidget);
 
-      // The calendar renders real day numbers. An escaped interpolation
-      // compiles, renders and reads as '\${day.day}' in every cell — the
-      // label assertions above all pass while the grid is nonsense, so the
-      // values have to be asserted too.
-      expect(find.text('15'), findsOneWidget);
-      expect(find.textContaining(r'${'), findsNothing);
+      // There is no Submit here. The day is saved; the month is submitted,
+      // once, from the calendar — splitting it lets a rep send half a plan,
+      // which is the one thing a manager cannot approve.
+      expect(find.text('Save day'), findsOneWidget);
+      expect(find.text('Submit'), findsNothing);
+      expect(find.text('Submit for approval'), findsNothing);
     });
 
     testWidgets('Business dashboard', (tester) async {
@@ -637,16 +734,19 @@ void main() {
         'My Day Plan',
         'My Activity',
         'Clients',
-        'Travel',
+        'Tour Plan',
         'HR',
-        'Sales',
+        'Expenses',
       ]) {
         expect(find.text(label), findsOneWidget, reason: '$label missing');
       }
       // No expander — all six are always on screen.
       expect(find.text('Show all'), findsNothing);
-      // To-Do moved to the bottom bar; Business became Sales.
+      // To-Do moved to the bottom bar, and Sales came off the grid when
+      // Expenses took its place — a rep touches expenses every working day.
+      // Sales is still one tap away in the side menu.
       expect(find.text('Business'), findsNothing);
+      expect(find.text('Sales'), findsNothing);
     });
 
     testWidgets('the six tiles lay out as three columns by two rows',
@@ -657,9 +757,9 @@ void main() {
         'My Day Plan',
         'My Activity',
         'Clients',
-        'Travel',
+        'Tour Plan',
         'HR',
-        'Sales',
+        'Expenses',
       ];
       // The tiles, not the labels: a label's vertical centre moves with how
       // many lines it wraps to, so measuring text would report a row per
@@ -803,7 +903,7 @@ void main() {
 
       // Field-operations group is at the top of the menu.
       expect(find.text('FIELD OPERATIONS'), findsOneWidget);
-      // 'Calendar' is unique to the menu — 'My Day Plan', 'Clients', 'Travel',
+      // 'Calendar' is unique to the menu — 'My Day Plan', 'Clients',
       // 'To-Do' and 'Expenses' all appear on Home's grid as well.
       expect(find.text('Calendar'), findsOneWidget);
       // Logout is pinned outside the scrolling list.
@@ -859,13 +959,10 @@ void main() {
       // A real seeded id — 'cl-1' is a cluster, and the screen would have
       // rendered its error state, proving nothing about the prefill.
       ('Edit client', const EditClientScreen(clientId: 'cli-1'), 'MR1001'),
-      ('Edit travel plan', const EditTravelPlanScreen(planId: 'tp-1'), 'MR1001'),
       ('Edit expense', const EditExpenseScreen(expenseId: 'exp-1'), 'MR1001'),
       ('Edit activity', const EditActivityScreen(activityId: 'act-1'), 'MR1001'),
       ('Expenses', const ExpenseClaimScreen(), 'MR1001'),
-      ('Travel hub', const TravelHubScreen(), 'MR1001'),
-      ('Travel plans', const TravelDashboardScreen(), 'MR1001'),
-      ('New travel plan', const NewTravelPlanScreen(), 'MR1001'),
+      ('Tour plan', const TourPlanScreen(), 'MR1001'),
       ('Business', const BusinessDashboardScreen(), 'MR1001'),
       ('Sales', const SalesScreen(), 'MR1001'),
       ('Targets', const TargetsScreen(), 'MR1001'),

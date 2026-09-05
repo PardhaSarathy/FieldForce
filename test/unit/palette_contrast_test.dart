@@ -181,6 +181,41 @@ void main() {
       expect(contrast(AppColors.grey500, AppColors.surface), lessThan(4.5));
     });
 
+    test('the calendar palette is four colours that cannot be confused', () {
+      // Every calendar in the app draws from this set and nothing else. They
+      // had grown to six hues between them, with the same colour meaning
+      // different things on different screens.
+      const set = {
+        'planned': AppColors.calendarPlanned,
+        'done': AppColors.calendarDone,
+        'off': AppColors.calendarOff,
+        'problem': AppColors.calendarProblem,
+      };
+
+      for (final entry in set.entries) {
+        expect(contrast(entry.value, AppColors.surface),
+            greaterThanOrEqualTo(4.5),
+            reason: '${entry.key} carries the day number and its own dot');
+      }
+
+      // And each has to be told from the others at 5pt across, which is the
+      // size of the dot. Channel distance, not luminance: two hues can share a
+      // luminance and still be obviously different.
+      final names = set.keys.toList();
+      for (var i = 0; i < names.length; i++) {
+        for (var j = i + 1; j < names.length; j++) {
+          final a = set[names[i]]!;
+          final b = set[names[j]]!;
+          final delta = (_luminance(a) - _luminance(b)).abs();
+          final hueApart = (a.r - b.r).abs() +
+              (a.g - b.g).abs() +
+              (a.b - b.b).abs();
+          expect(delta > 0.02 || hueApart > 0.35, isTrue,
+              reason: '${names[i]} and ${names[j]} are too close to separate');
+        }
+      }
+    });
+
     test('the named tokens are the ramp, not a second set of values', () {
       // The whole point: one spine. If these drift apart the app has two
       // greys that are nearly the same and no rule for choosing between them.
