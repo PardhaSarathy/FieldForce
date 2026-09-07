@@ -479,6 +479,16 @@ an analytics dashboard.) Two rules have already been re-learned the hard way:
   make, under a figure reading "1 out of 10". The next call is the row with the
   rail and the button on it; that row **is** the deleted "Next action" card,
   and re-adding the card would put the same appointment on screen twice.
+- **The module grid shows one row, and folds the rest.** Three of the six
+  carry nearly all the traffic — declare the day, log a call, look up a client
+  — and the other three were costing a whole row of Home to modules a rep
+  opens now and then; folded, the visit list starts four rows higher. It is
+  `columns` that are shown, not a hardcoded three, so a tablet running six
+  across hides nothing and folds nothing. The control reads **"Show 3 more"**,
+  never "See all": the count is the reason to tap, and this screen already has
+  a "See all" thirty points below meaning something else entirely. Nothing is
+  deleted — the three are one tap away here and still in the side menu, which
+  is the app's full index.
 - **Never name a widget in the UI.** "Quick actions", "Overview", "At a
   glance", "Key metrics" — these name the *pattern*, not the content, and a
   screen full of them reads as assembled rather than written. The review's word

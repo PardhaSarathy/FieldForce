@@ -837,6 +837,15 @@ class _QuickActionsGrid extends StatefulWidget {
 }
 
 class _QuickActionsGridState extends State<_QuickActionsGrid> {
+  /// Whether the rows below the first are showing.
+  ///
+  /// Collapsed by default. Three of the six carry nearly all the traffic —
+  /// declare the day, log a call, look up a client — and the other three were
+  /// costing a whole row of Home to the modules a rep opens now and then. The
+  /// row is not deleted, it is folded: Tour Plan, HR and Expenses are one tap
+  /// away here and still in the side menu, which is the app's full index.
+  bool _expanded = false;
+
   @override
   Widget build(BuildContext context) {
     const actions = _QuickActionsGrid.actions;
@@ -864,20 +873,84 @@ class _QuickActionsGridState extends State<_QuickActionsGrid> {
             final extent =
                 _tilePadding * 2 + _iconChip + AppSpacing.sm + labelBlock;
 
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: actions.length,
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: columns,
-                mainAxisSpacing: AppSpacing.md,
-                crossAxisSpacing: AppSpacing.md,
-                mainAxisExtent: extent,
-              ),
-              itemBuilder: (context, i) => Arrive.staggered(
-                index: i,
-                child: _QuickActionTile(action: actions[i], labelLines: lines),
-              ),
+            // One row, whatever a row happens to be here.
+            //
+            // `columns`, not a hardcoded three: the grid runs six across on a
+            // tablet, where every tile already fits on one line and folding
+            // would hide something for nothing. On a phone it is three, which
+            // is the first row and the three a rep actually uses.
+            final shown = _expanded
+                ? actions
+                : actions.take(columns).toList();
+            final hidden = actions.length - shown.length;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: shown.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    mainAxisSpacing: AppSpacing.md,
+                    crossAxisSpacing: AppSpacing.md,
+                    mainAxisExtent: extent,
+                  ),
+                  itemBuilder: (context, i) => Arrive.staggered(
+                    index: i,
+                    child: _QuickActionTile(
+                      action: shown[i],
+                      labelLines: lines,
+                    ),
+                  ),
+                ),
+
+                // "Show 3 more", not "See all".
+                //
+                // Two things: the count is the reason to tap — "See all" on
+                // its own gives none — and *this screen already has a "See
+                // all"*, on the visit list below, meaning something entirely
+                // different. One phrase, two jobs, thirty points apart.
+                if (hidden > 0 || _expanded)
+                  Align(
+                    alignment: Alignment.center,
+                    child: GestureDetector(
+                      onTap: () {
+                        AppHaptics.selection();
+                        setState(() => _expanded = !_expanded);
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.only(
+                          top: AppSpacing.md,
+                          left: AppSpacing.md,
+                          right: AppSpacing.md,
+                          bottom: AppSpacing.xs,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _expanded ? 'Show less' : 'Show $hidden more',
+                              style: AppTypography.titleSm.copyWith(
+                                color: AppColors.brand,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.xs),
+                            Icon(
+                              _expanded
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
+                              size: AppSizes.iconMd,
+                              color: AppColors.brand,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             );
           },
         ),

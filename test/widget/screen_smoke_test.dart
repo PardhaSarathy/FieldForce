@@ -106,6 +106,18 @@ void main() {
     }
   }
 
+  /// Opens Home's folded module row.
+  ///
+  /// Fixed pumps, not `pumpAndSettle`: the tiles revealed by the tap arrive
+  /// through `Arrive.staggered`, which chains timers, and settling on a
+  /// chained timer trips the binding's pending-timer check.
+  Future<void> showAllModules(WidgetTester tester) async {
+    await tester.tap(find.text('Show 3 more'));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+  }
+
   group('field user screens render', () {
     testWidgets('Home', (tester) async {
       await pumpScreen(tester, const HomeScreen());
@@ -122,6 +134,21 @@ void main() {
       // The module tiles are still there, they simply have no label of their
       // own any more.
       expect(find.text('My Day Plan'), findsOneWidget);
+
+      // Folded to one row. Three of the six carry nearly all the traffic, and
+      // the other three were costing a whole row of Home.
+      expect(find.text('Clients'), findsOneWidget);
+      expect(find.text('Expenses'), findsNothing);
+
+      await showAllModules(tester);
+      expect(find.text('Expenses'), findsOneWidget);
+      expect(find.text('Tour Plan'), findsOneWidget);
+      expect(find.text('HR'), findsOneWidget);
+
+      // And it folds back — the row is not deleted, it is folded.
+      await tester.tap(find.text('Show less'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Expenses'), findsNothing);
     });
 
     testWidgets('My day plan', (tester) async {
@@ -743,21 +770,27 @@ void main() {
       expect(find.textContaining('visits completed today'), findsOneWidget);
     });
 
-    testWidgets('six quick actions, all visible', (tester) async {
+    testWidgets('three tiles, and the other three a tap behind them',
+        (tester) async {
       await pumpScreen(tester, const HomeScreen(), size: const Size(430, 1400));
 
-      for (final label in [
-        'My Day Plan',
-        'My Activity',
-        'Clients',
-        'Tour Plan',
-        'HR',
-        'Expenses',
-      ]) {
+      // The three that carry nearly all the traffic: declare the day, log a
+      // call, look up a client.
+      for (final label in ['My Day Plan', 'My Activity', 'Clients']) {
         expect(find.text(label), findsOneWidget, reason: '$label missing');
       }
-      // No expander — all six are always on screen.
-      expect(find.text('Show all'), findsNothing);
+      for (final label in ['Tour Plan', 'HR', 'Expenses']) {
+        expect(find.text(label), findsNothing, reason: '$label folded');
+      }
+
+      // The count is the reason to tap. "See all" on its own gives none.
+      expect(find.text('Show 3 more'), findsOneWidget);
+      await showAllModules(tester);
+
+      for (final label in ['Tour Plan', 'HR', 'Expenses']) {
+        expect(find.text(label), findsOneWidget, reason: '$label missing');
+      }
+
       // To-Do moved to the bottom bar, and Sales came off the grid when
       // Expenses took its place — a rep touches expenses every working day.
       // Sales is still one tap away in the side menu.
@@ -768,6 +801,7 @@ void main() {
     testWidgets('the six tiles lay out as three columns by two rows',
         (tester) async {
       await pumpScreen(tester, const HomeScreen(), size: const Size(375, 1400));
+      await showAllModules(tester);
 
       const labels = [
         'My Day Plan',

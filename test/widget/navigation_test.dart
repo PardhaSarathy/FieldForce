@@ -33,6 +33,18 @@ void main() {
     }
   }
 
+  /// Opens Home's folded module row.
+  ///
+  /// Three of the six tiles are shown until asked — declare the day, log a
+  /// call, look up a client — so a test reaching for Tour Plan, HR or Expenses
+  /// has to do what a rep does.
+  Future<void> showAllModules(WidgetTester tester) async {
+    final more = find.text('Show 3 more');
+    if (more.evaluate().isEmpty) return;
+    await tester.tap(more.first);
+    await settle(tester);
+  }
+
   /// Boots the real app, already signed in as [code].
   /// [size] defaults to a phone. Tests that tap something far down the page
   /// pass a taller viewport: scrolling a target into the *viewport* is not
@@ -216,6 +228,7 @@ void main() {
       // The tile is named for the screen it opens. It said "Travel" and opened
       // a hub with two doors in it; Expenses is a module of its own on Home
       // now, which left the hub asking a question with one answer.
+      await showAllModules(tester);
       await tester.tap(find.text('Tour Plan').first);
       await settle(tester);
 
@@ -234,6 +247,7 @@ void main() {
       // month that has ended and look for the days nobody filed a plan for.
       await pumpApp(tester, size: const Size(430, 2200));
 
+      await showAllModules(tester);
       await tester.tap(find.text('Expenses').first);
       await settle(tester);
       expect(find.text('Expenses'), findsWidgets);
@@ -355,6 +369,7 @@ void main() {
       await pumpApp(tester, size: const Size(430, 1800));
 
       // Expenses is its own tile on Home now, not a door inside Travel.
+      await showAllModules(tester);
       await tester.tap(find.text('Expenses'));
       await settle(tester);
 
@@ -371,6 +386,7 @@ void main() {
       // deep link lands on the same screen a tap does.
       await pumpApp(tester, size: const Size(430, 2400));
 
+      await showAllModules(tester);
       await tester.tap(find.text('Expenses'));
       await settle(tester);
 
@@ -462,7 +478,7 @@ void main() {
       // Their own day, and the modules that run it.
       expect(find.text("TODAY'S PLANNED VISITS"), findsOneWidget);
       expect(find.text('My Day Plan'), findsOneWidget);
-      expect(find.text('Expenses'), findsWidgets);
+      expect(find.text('Clients'), findsWidgets);
 
       // And the team half, whole — nothing was dropped to make room.
       expect(find.text('TEAM TODAY'), findsOneWidget);
