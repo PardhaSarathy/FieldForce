@@ -98,6 +98,9 @@ abstract final class Routes {
   static const payslips = '/hr/payslips';
   static const documents = '/hr/documents';
 
+  /// What a manager has handed to the team — the list, not the form.
+  static const assignedTasks = '/team/tasks';
+
   /// The four sheets the office asks for, built from what the rep has filed.
   static const exportData = '/export';
 

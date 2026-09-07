@@ -1282,13 +1282,19 @@ class MockTaskRepository implements TaskRepository {
   final _store = MockStore.instance;
 
   @override
-  Future<List<FieldTask>> list(Session session, {String? employeeId, TaskStatus? status}) async {
+  Future<List<FieldTask>> list(
+    Session session, {
+    String? employeeId,
+    String? assignedById,
+    TaskStatus? status,
+  }) async {
     await _latency();
     final visible = _store.visibleEmployeeIds(session);
     return _store.tasks
         .where((t) =>
             visible.contains(t.assignedToId) &&
             (employeeId == null || t.assignedToId == employeeId) &&
+            (assignedById == null || t.assignedById == assignedById) &&
             (status == null || t.effectiveStatus() == status))
         .toList()
       ..sort((a, b) => a.dueDate.compareTo(b.dueDate));

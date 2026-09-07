@@ -323,6 +323,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.documents, builder: (_, _) => const DocumentsScreen()),
 
       GoRoute(
+        path: Routes.assignedTasks,
+        builder: (_, _) => const AssignedTasksScreen(),
+      ),
+      GoRoute(
         path: Routes.exportData,
         builder: (_, _) => const ExportScreen(),
       ),

@@ -362,9 +362,21 @@ that is expensive to unwind later.
   note a thing of their own. Home stacks both, own day first; the two lists
   carry a `ViewScope` switch that defaults to **Mine**, because Home has just
   told them how their own morning is going and two screens must not disagree
-  about whose day it is. The switch also decides what the To-Do button does.
-  Reps never see it — there is only one answer for them — and nothing was
-  taken from the manager to make room.
+  about whose day it is. Reps never see it — there is only one answer for them
+  — and nothing was taken from the manager to make room.
+- **A to-do is personal — always, manager included.** To-Do listed a manager's
+  whole team and its button only said Assign, so they could hand work to
+  anyone and had no way to note a thing of their own. A `ViewScope` switch was
+  tried here too and was the wrong shape: a to-do is a note you write for
+  yourself, and the team's work in the same list turns it into a queue. The
+  two answer different questions — *must I do this* against *did they do it* —
+  so the work a manager hands out has its own screen, `AssignedTasksScreen`,
+  behind **Manage → Tasks**. That tile used to open the assignment *form*, so
+  a manager could give work out and had nowhere to see what they had given;
+  the split fixed a gap rather than making one. On that list `onComplete` is
+  **null, which hides the button** rather than disabling it: a manager does
+  not tick off someone else's work, and a disabled control that cannot act is
+  worse than no control at all.
 - **Scope is resolved once at login** into a `DataScope` and applied at the
   repository layer. Never filter by employee in a screen — the `ViewScope`
   switch changes the `employeeId` *asked of the repository*, it does not sift

@@ -564,7 +564,9 @@ class _ManagerActions extends StatelessWidget {
     const items = [
       (Icons.checklist_outlined, 'Approvals', Routes.approvals),
       (Icons.flag_outlined, 'Targets', Routes.targetAssignment),
-      (Icons.assignment_outlined, 'Tasks', Routes.taskAssignment),
+      // The list, not the form. It opened the assignment form, so a manager
+      // could give work out and had nowhere to see what they had given.
+      (Icons.assignment_outlined, 'Tasks', Routes.assignedTasks),
       (Icons.map_outlined, 'Team map', Routes.teamMap),
       (Icons.payments_outlined, 'Rates', Routes.rateAssignment),
       (Icons.insights_outlined, 'Performance', Routes.teamPerformance),

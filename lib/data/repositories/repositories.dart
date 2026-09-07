@@ -206,7 +206,16 @@ abstract interface class ApprovalRepository {
 }
 
 abstract interface class TaskRepository {
-  Future<List<FieldTask>> list(Session session, {String? employeeId, TaskStatus? status});
+  /// [employeeId] filters by who the task is *for*; [assignedById] by who gave
+  /// it out. They answer different questions and a manager asks both: the
+  /// To-Do list is personal — theirs, like a rep's — and the work they handed
+  /// to the team is a separate list on the management side.
+  Future<List<FieldTask>> list(
+    Session session, {
+    String? employeeId,
+    String? assignedById,
+    TaskStatus? status,
+  });
   Future<FieldTask> create(FieldTask task);
   Future<FieldTask> updateStatus(String id, TaskStatus status);
 }

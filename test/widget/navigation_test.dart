@@ -520,25 +520,37 @@ void main() {
       expect(find.text('Something went wrong'), findsNothing);
     });
 
-    testWidgets('a manager can write down a to-do of their own',
+    testWidgets('To-Do is personal, for a manager as much as a rep',
         (tester) async {
-      // The button only ever said "Assign", so a manager could hand work to
-      // anyone on the team and had no way to note a thing of their own.
+      // It listed the whole team's and the button only said "Assign", so a
+      // manager could hand work to anyone and had no way to note a thing of
+      // their own. A to-do is a note you write for yourself; the team's work
+      // in the same list makes it a queue.
       await pumpApp(tester, code: 'ASM201', size: const Size(430, 2000));
 
-      await tester.tap(find.byIcon(Icons.menu));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
+      await openIndex(tester);
       await tester.tap(find.text('To-Do'));
       await settle(tester);
 
-      // Opens on their own, so the button adds rather than assigns.
       expect(find.text('Add to-do'), findsOneWidget);
+      expect(find.text('Assign'), findsNothing);
+      expect(find.text('Mine'), findsNothing, reason: 'nothing to switch');
+      expect(find.text('Team'), findsNothing);
+    });
 
-      await tester.tap(find.text('Team'));
+    testWidgets('what a manager assigned has a list of its own',
+        (tester) async {
+      // Manage → Tasks opened the assignment *form*: a manager could give work
+      // out and had nowhere to see what they had given. Nothing was taken from
+      // To-Do — this is where it went.
+      await pumpApp(tester, code: 'ASM201', size: const Size(430, 2600));
+
+      await tester.tap(find.text('Tasks'));
       await settle(tester);
-      expect(find.text('Assign'), findsOneWidget,
-          reason: 'assigning is still theirs — nothing was taken away');
+
+      expect(find.text('Assigned Tasks'), findsOneWidget);
+      expect(find.text('Assign'), findsOneWidget);
+      expect(find.text('Something went wrong'), findsNothing);
     });
 
     testWidgets('Export offers the manager their reps by name',

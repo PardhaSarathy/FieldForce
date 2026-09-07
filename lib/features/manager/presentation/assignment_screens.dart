@@ -582,21 +582,20 @@ class _TaskAssignmentScreenState extends ConsumerState<TaskAssignmentScreen> {
 
 // ================================================================== tasks ==
 
-/// Whose to-dos a manager is looking at. Their own first — a to-do is the one
-/// personal thing in this app, and a manager has them too.
-final _taskScopeProvider = StateProvider.autoDispose<ViewScope>(
-  (ref) => ViewScope.mine,
-);
-
+/// **A to-do is personal.** Always the signed-in user's own, manager included.
+///
+/// A manager's list showed the whole team's, and a Mine/Team switch was added
+/// to give them their own back. Both were wrong about what this screen is: a
+/// to-do is a note you write for yourself, and putting the team's work in the
+/// same list makes it a queue. Work a manager hands out is a different thing
+/// with a different question attached — "did they do it" rather than "must I"
+/// — and it has its own screen on the management side.
 final _tasksProvider = FutureProvider.autoDispose<List<FieldTask>>((ref) {
   final session = ref.watch(sessionProvider);
-  final scope = ref.watch(_taskScopeProvider);
   ref.watch(dataRevisionProvider);
-
-  final mine = !session.isManager || scope == ViewScope.mine;
   return ref
       .watch(taskRepositoryProvider)
-      .list(session, employeeId: mine ? session.employee.id : null);
+      .list(session, employeeId: session.employee.id);
 });
 
 class TaskListScreen extends ConsumerStatefulWidget {
@@ -609,14 +608,9 @@ class TaskListScreen extends ConsumerStatefulWidget {
 class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   String _filter = 'Open';
 
-  static bool _assigning(Session session, ViewScope scope) =>
-      session.isManager && scope == ViewScope.team;
-
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(_tasksProvider);
-    final session = ref.watch(sessionProvider);
-    final scope = ref.watch(_taskScopeProvider);
     const filters = ['Open', 'Overdue', 'Completed', 'All'];
 
     return Scaffold(
@@ -633,36 +627,18 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
           const SizedBox(width: AppSpacing.xs),
         ],
       ),
-      // The button follows the list. A manager's only offered "Assign", so
-      // they could hand work to anyone on the team and had no way to write
-      // down a thing of their own — the one screen in this app that is
-      // nobody else's business. On **Mine** it adds their own to-do, on
-      // **Team** it assigns; a rep has one answer and always gets the first.
+      // One button, because there is one thing this screen does. It offered a
+      // manager "Assign", so they could hand work to anyone on the team and
+      // had no way to write down a thing of their own — on the one screen in
+      // this app that is nobody else's business.
       floatingActionButton: AppFab(
-        onPressed: () => context.push(
-          _assigning(session, scope) ? Routes.taskAssignment : Routes.newTask,
-        ),
+        onPressed: () => context.push(Routes.newTask),
         icon: Icons.add,
-        label: _assigning(session, scope) ? 'Assign' : 'Add to-do',
+        label: 'Add to-do',
       ),
       body: Column(
         children: [
           const SizedBox(height: AppSpacing.md),
-          if (session.isManager) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenH,
-              ),
-              child: SegmentedField<ViewScope>(
-                options: ViewScope.values,
-                value: scope,
-                itemLabel: (s) => s.label,
-                onChanged: (s) =>
-                    ref.read(_taskScopeProvider.notifier).state = s,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-          ],
           FilterChipBar<String>(
             options: filters,
             selected: _filter,
@@ -709,13 +685,125 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
                     index: i,
                     child: _TaskCard(
                       task: tasks[i],
-                      showAssignee: _assigning(session, scope),
+                      // Never here: every row is the reader's own.
+                      showAssignee: false,
                       onComplete: () async {
                         await ref
                             .read(taskRepositoryProvider)
                             .updateStatus(tasks[i].id, TaskStatus.completed);
                         ref.bumpRevision();
                       },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ======================================================== assigned tasks ==
+
+final _assignedTasksProvider = FutureProvider.autoDispose<List<FieldTask>>((
+  ref,
+) {
+  final session = ref.watch(sessionProvider);
+  ref.watch(dataRevisionProvider);
+  return ref
+      .watch(taskRepositoryProvider)
+      .list(session, assignedById: session.employee.id);
+});
+
+/// The work a manager has handed to the team.
+///
+/// Split out of To-Do, which is personal. The two lists answer different
+/// questions — "must I do this" against "did they do it" — and holding both in
+/// one list turned a manager's own notes into a queue. It is also the screen
+/// that was simply missing: **Manage → Tasks** opened the assignment *form*,
+/// so a manager could give work out and had nowhere to see what they had
+/// given.
+class AssignedTasksScreen extends ConsumerStatefulWidget {
+  const AssignedTasksScreen({super.key});
+
+  @override
+  ConsumerState<AssignedTasksScreen> createState() =>
+      _AssignedTasksScreenState();
+}
+
+class _AssignedTasksScreenState extends ConsumerState<AssignedTasksScreen> {
+  String _filter = 'Open';
+
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(_assignedTasksProvider);
+    const filters = ['Open', 'Overdue', 'Completed', 'All'];
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('Assigned Tasks')),
+      floatingActionButton: AppFab(
+        onPressed: () => context.push(Routes.taskAssignment),
+        icon: Icons.add,
+        label: 'Assign',
+      ),
+      body: Column(
+        children: [
+          const SizedBox(height: AppSpacing.md),
+          FilterChipBar<String>(
+            options: filters,
+            selected: _filter,
+            labelOf: (f) => f,
+            onSelected: (f) => setState(() => _filter = f),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Expanded(
+            child: async.when(
+              loading: () => const SkeletonList(),
+              error: (_, _) => const ErrorState(),
+              data: (all) {
+                final tasks = all.where((t) {
+                  final status = t.effectiveStatus();
+                  return switch (_filter) {
+                    'Open' => status != TaskStatus.completed,
+                    'Overdue' => status == TaskStatus.overdue,
+                    'Completed' => status == TaskStatus.completed,
+                    _ => true,
+                  };
+                }).toList();
+
+                if (tasks.isEmpty) {
+                  return EmptyState(
+                    icon: Icons.assignment_ind_outlined,
+                    title: 'No $_filter tasks',
+                    message: _filter == 'Overdue'
+                        ? 'Nothing you assigned is past its due date.'
+                        : 'Work you give the team appears here.',
+                  );
+                }
+
+                return ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.screenH,
+                    0,
+                    AppSpacing.screenH,
+                    AppSpacing.xxxl * 3,
+                  ),
+                  itemCount: tasks.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.cardGap),
+                  itemBuilder: (context, i) => Arrive.staggered(
+                    index: i,
+                    child: _TaskCard(
+                      task: tasks[i],
+                      // Always: the name is the point of this list.
+                      showAssignee: true,
+                      // A manager does not tick off someone else's work. The
+                      // rep marks it done on their own To-Do; this screen is
+                      // for seeing whether they have.
+                      onComplete: null,
                     ),
                   ),
                 );
@@ -755,11 +843,6 @@ class TaskCalendarScreen extends ConsumerWidget {
     final month = ref.watch(_taskCalendarMonthProvider);
     final selected = ref.watch(_taskCalendarDayProvider);
     final async = ref.watch(_tasksProvider);
-    final session = ref.watch(sessionProvider);
-    // The calendar shows whatever the list is showing — stepping into it from
-    // "Mine" and finding the team's month would be the switch quietly
-    // forgotten between two screens.
-    final scope = ref.watch(_taskScopeProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -848,8 +931,8 @@ class TaskCalendarScreen extends ConsumerWidget {
                     index: i + 1,
                     child: _TaskCard(
                       task: today[i],
-                      showAssignee:
-                          session.isManager && scope == ViewScope.team,
+                      // Never: every row is the reader's own.
+                      showAssignee: false,
                       onComplete: () async {
                         await ref
                             .read(taskRepositoryProvider)
@@ -876,7 +959,14 @@ class _TaskCard extends StatelessWidget {
 
   final FieldTask task;
   final bool showAssignee;
-  final VoidCallback onComplete;
+
+  /// `null` hides the button entirely rather than disabling it.
+  ///
+  /// A manager does not tick off someone else's work — the rep marks it done
+  /// on their own To-Do, and this list is for seeing whether they have. A
+  /// disabled "Mark complete" would be a control that cannot act, which this
+  /// app treats as worse than no control at all.
+  final VoidCallback? onComplete;
 
   @override
   Widget build(BuildContext context) {
@@ -962,7 +1052,7 @@ class _TaskCard extends StatelessWidget {
               StatusBadge(label: status.label, tone: status.tone, dense: true),
             ],
           ),
-          if (!isDone) ...[
+          if (!isDone && onComplete != null) ...[
             const SizedBox(height: AppSpacing.md),
             SecondaryButton(
               label: 'Mark complete',

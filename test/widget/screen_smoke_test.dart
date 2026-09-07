@@ -496,6 +496,10 @@ void main() {
       await pumpScreen(tester, const PayslipsScreen());
     });
 
+    testWidgets('Assigned tasks', (tester) async {
+      await pumpScreen(tester, const AssignedTasksScreen(), code: 'ASM201');
+    });
+
     testWidgets('Export data', (tester) async {
       await pumpScreen(tester, const ExportScreen());
     });
@@ -1026,6 +1030,7 @@ void main() {
       ('Payslips', const PayslipsScreen(), 'MR1001'),
       ('Documents', const DocumentsScreen(), 'MR1001'),
       ('Holidays', const HolidaysScreen(), 'MR1001'),
+      ('Assigned tasks', const AssignedTasksScreen(), 'ASM201'),
       ('Export data', const ExportScreen(), 'MR1001'),
       ('To-Do calendar', const TaskCalendarScreen(), 'MR1001'),
       ('Chat list', const ChatListScreen(), 'MR1001'),
