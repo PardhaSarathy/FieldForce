@@ -353,8 +353,22 @@ that is expensive to unwind later.
     can be found — but a month before he joined has nothing to give context
     to, and thirty "No day plan" rows would paint a red calendar and export a
     sheet of nothing. It returns empty instead, and the screen says so.
+- **An area manager is a field person who also runs a team, and the app owes
+  them both halves.** They file their own day plan, make their own calls, plan
+  their own month and claim their own allowance — and every screen that could
+  answer "whose is this" answered *the team's*. Home opened on the team
+  dashboard, My Activity listed everyone's calls, and the To-Do button only
+  ever said Assign, so a manager could hand work to anyone and had no way to
+  note a thing of their own. Home stacks both, own day first; the two lists
+  carry a `ViewScope` switch that defaults to **Mine**, because Home has just
+  told them how their own morning is going and two screens must not disagree
+  about whose day it is. The switch also decides what the To-Do button does.
+  Reps never see it — there is only one answer for them — and nothing was
+  taken from the manager to make room.
 - **Scope is resolved once at login** into a `DataScope` and applied at the
-  repository layer. Never filter by employee in a screen.
+  repository layer. Never filter by employee in a screen — the `ViewScope`
+  switch changes the `employeeId` *asked of the repository*, it does not sift
+  a list the screen already holds.
 - Offline-capable records use **client-generated UUIDs** so a retry cannot
   duplicate them.
 

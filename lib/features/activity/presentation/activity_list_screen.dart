@@ -54,19 +54,32 @@ final _activityDateProvider = StateProvider.autoDispose<DateTime>(
   (ref) => DateTime.now(),
 );
 
+/// Whose calls a manager is looking at. Defaults to their own, because that
+/// is what Home just told them about.
+final _activityScopeProvider = StateProvider.autoDispose<ViewScope>(
+  (ref) => ViewScope.mine,
+);
+
 final _activityListProvider = FutureProvider.autoDispose<List<Activity>>((
   ref,
 ) async {
   final session = ref.watch(sessionProvider);
   final date = ref.watch(_activityDateProvider);
+  final scope = ref.watch(_activityScopeProvider);
   ref.watch(dataRevisionProvider);
+
+  // A rep has one answer, so the switch is never shown to them and the scope
+  // is ignored. Asked of the repository either way — filtering a fetched list
+  // in the screen is how a count on one screen stops matching the same count
+  // on another.
+  final mine = !session.isManager || scope == ViewScope.mine;
 
   return ref
       .watch(activityRepositoryProvider)
       .list(
         session,
         date: date,
-        employeeId: session.isManager ? null : session.employee.id,
+        employeeId: mine ? session.employee.id : null,
       );
 });
 
@@ -75,8 +88,10 @@ class ActivityListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionProvider);
     final filter = ref.watch(_activityFilterProvider);
     final date = ref.watch(_activityDateProvider);
+    final scope = ref.watch(_activityScopeProvider);
     final listAsync = ref.watch(_activityListProvider);
 
     return Scaffold(
@@ -99,6 +114,27 @@ class ActivityListScreen extends ConsumerWidget {
             onSelected: (d) =>
                 ref.read(_activityDateProvider.notifier).state = d,
           ),
+
+          // Whose day, then what state. Two axes, and a manager needs both:
+          // the screen used to answer "the team's" and offer no way back to
+          // their own, while Home had just told them how their own morning
+          // was going.
+          if (session.isManager) ...[
+            const SizedBox(height: AppSpacing.md),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.screenH,
+              ),
+              child: SegmentedField<ViewScope>(
+                options: ViewScope.values,
+                value: scope,
+                itemLabel: (s) => s.label,
+                onChanged: (s) =>
+                    ref.read(_activityScopeProvider.notifier).state = s,
+              ),
+            ),
+          ],
+
           const SizedBox(height: AppSpacing.md),
           listAsync.maybeWhen(
             data: (items) => FilterChipBar<ActivityFilter>(
@@ -168,7 +204,11 @@ class ActivityListScreen extends ConsumerWidget {
                       index: i,
                       child: ActivityCard(
                         activity: filtered[i],
-                        showEmployee: ref.watch(sessionProvider).isManager,
+                        // Only when the list actually holds more than one
+                        // person's calls. On "Mine" every row would carry the
+                        // reader's own name.
+                        showEmployee:
+                            session.isManager && scope == ViewScope.team,
                       ),
                     ),
                   ),

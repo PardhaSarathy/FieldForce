@@ -484,6 +484,47 @@ void main() {
           reason: 'their own day is theirs and it is now');
     });
 
+    testWidgets('My Activity opens on their own calls, and can show the team',
+        (tester) async {
+      // It answered "the team's" and offered no way back to their own —
+      // while Home had just told them how their own morning was going. Two
+      // screens disagreeing about whose day it is.
+      await pumpApp(tester, code: 'ASM201', size: const Size(430, 2000));
+
+      // From the module tile on their own Home, which is where it now sits.
+      await tester.tap(find.text('My Activity').first);
+      await settle(tester);
+
+      expect(find.text('Mine'), findsOneWidget);
+      expect(find.text('Team'), findsOneWidget);
+
+      await tester.tap(find.text('Team'));
+      await settle(tester);
+      expect(find.byType(ActivityCard), findsWidgets);
+      expect(find.text('Something went wrong'), findsNothing);
+    });
+
+    testWidgets('a manager can write down a to-do of their own',
+        (tester) async {
+      // The button only ever said "Assign", so a manager could hand work to
+      // anyone on the team and had no way to note a thing of their own.
+      await pumpApp(tester, code: 'ASM201', size: const Size(430, 2000));
+
+      await tester.tap(find.byIcon(Icons.menu));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('To-Do'));
+      await settle(tester);
+
+      // Opens on their own, so the button adds rather than assigns.
+      expect(find.text('Add to-do'), findsOneWidget);
+
+      await tester.tap(find.text('Team'));
+      await settle(tester);
+      expect(find.text('Assign'), findsOneWidget,
+          reason: 'assigning is still theirs — nothing was taken away');
+    });
+
     testWidgets('Export Data is in the index for a manager too', (tester) async {
       await pumpApp(tester, code: 'ASM201', size: const Size(430, 1800));
 

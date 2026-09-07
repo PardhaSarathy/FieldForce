@@ -81,6 +81,23 @@ enum ApprovalStatus {
 }
 
 /// Lifecycle of a planned or executed field activity (§16, §17).
+/// Whose records a manager is looking at.
+///
+/// An area manager is a field person who also runs a team, so every list they
+/// open has two possible answers to "whose is this". My Activity and To-Do
+/// both answered *team* and offered no way back — their Home said "1 out of 3
+/// visits completed today" about their own morning, and the screen behind it
+/// showed everyone's. Two screens disagreeing about whose day it is.
+///
+/// Reps never see this: there is only one answer for them.
+enum ViewScope {
+  mine('Mine'),
+  team('Team');
+
+  const ViewScope(this.label);
+  final String label;
+}
+
 enum ActivityStatus {
   planned('Planned'),
   upcoming('Upcoming'),

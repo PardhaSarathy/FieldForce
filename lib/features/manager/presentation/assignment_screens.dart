@@ -582,15 +582,21 @@ class _TaskAssignmentScreenState extends ConsumerState<TaskAssignmentScreen> {
 
 // ================================================================== tasks ==
 
+/// Whose to-dos a manager is looking at. Their own first — a to-do is the one
+/// personal thing in this app, and a manager has them too.
+final _taskScopeProvider = StateProvider.autoDispose<ViewScope>(
+  (ref) => ViewScope.mine,
+);
+
 final _tasksProvider = FutureProvider.autoDispose<List<FieldTask>>((ref) {
   final session = ref.watch(sessionProvider);
+  final scope = ref.watch(_taskScopeProvider);
   ref.watch(dataRevisionProvider);
+
+  final mine = !session.isManager || scope == ViewScope.mine;
   return ref
       .watch(taskRepositoryProvider)
-      .list(
-        session,
-        employeeId: session.isManager ? null : session.employee.id,
-      );
+      .list(session, employeeId: mine ? session.employee.id : null);
 });
 
 class TaskListScreen extends ConsumerStatefulWidget {
@@ -603,10 +609,14 @@ class TaskListScreen extends ConsumerStatefulWidget {
 class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   String _filter = 'Open';
 
+  static bool _assigning(Session session, ViewScope scope) =>
+      session.isManager && scope == ViewScope.team;
+
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(_tasksProvider);
     final session = ref.watch(sessionProvider);
+    final scope = ref.watch(_taskScopeProvider);
     const filters = ['Open', 'Overdue', 'Completed', 'All'];
 
     return Scaffold(
@@ -623,18 +633,36 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
           const SizedBox(width: AppSpacing.xs),
         ],
       ),
-      // A manager assigns work to someone else; a rep adds their own to-do.
-      // Same button, same place — the sheet behind it is what differs.
+      // The button follows the list. A manager's only offered "Assign", so
+      // they could hand work to anyone on the team and had no way to write
+      // down a thing of their own — the one screen in this app that is
+      // nobody else's business. On **Mine** it adds their own to-do, on
+      // **Team** it assigns; a rep has one answer and always gets the first.
       floatingActionButton: AppFab(
         onPressed: () => context.push(
-          session.isManager ? Routes.taskAssignment : Routes.newTask,
+          _assigning(session, scope) ? Routes.taskAssignment : Routes.newTask,
         ),
         icon: Icons.add,
-        label: session.isManager ? 'Assign' : 'Add to-do',
+        label: _assigning(session, scope) ? 'Assign' : 'Add to-do',
       ),
       body: Column(
         children: [
           const SizedBox(height: AppSpacing.md),
+          if (session.isManager) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.screenH,
+              ),
+              child: SegmentedField<ViewScope>(
+                options: ViewScope.values,
+                value: scope,
+                itemLabel: (s) => s.label,
+                onChanged: (s) =>
+                    ref.read(_taskScopeProvider.notifier).state = s,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
           FilterChipBar<String>(
             options: filters,
             selected: _filter,
@@ -681,7 +709,7 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
                     index: i,
                     child: _TaskCard(
                       task: tasks[i],
-                      showAssignee: session.isManager,
+                      showAssignee: _assigning(session, scope),
                       onComplete: () async {
                         await ref
                             .read(taskRepositoryProvider)
@@ -728,6 +756,10 @@ class TaskCalendarScreen extends ConsumerWidget {
     final selected = ref.watch(_taskCalendarDayProvider);
     final async = ref.watch(_tasksProvider);
     final session = ref.watch(sessionProvider);
+    // The calendar shows whatever the list is showing — stepping into it from
+    // "Mine" and finding the team's month would be the switch quietly
+    // forgotten between two screens.
+    final scope = ref.watch(_taskScopeProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -816,7 +848,8 @@ class TaskCalendarScreen extends ConsumerWidget {
                     index: i + 1,
                     child: _TaskCard(
                       task: today[i],
-                      showAssignee: session.isManager,
+                      showAssignee:
+                          session.isManager && scope == ViewScope.team,
                       onComplete: () async {
                         await ref
                             .read(taskRepositoryProvider)
