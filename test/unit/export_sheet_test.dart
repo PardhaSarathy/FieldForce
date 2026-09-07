@@ -259,6 +259,69 @@ void main() {
     });
   });
 
+  group('a manager can export for their team, and only their team', () {
+    late Session manager;
+    late Employee rep;
+
+    setUpAll(() {
+      final asm =
+          store.seed.employees.firstWhere((e) => e.employeeCode == 'ASM201');
+      manager = Session(employee: asm, loginAt: DateTime(2026, 9));
+      rep = store.seed.employees.firstWhere(
+        (e) => e.managerId == asm.id && e.id != asm.id,
+      );
+    });
+
+    test('the sheet carries the rep, not the manager who asked for it', () async {
+      // A header with the manager's own name on a rep's month is a sheet the
+      // office files under the wrong person.
+      final s = await repo.build(
+        manager,
+        ExportKind.expenses,
+        month,
+        employeeId: rep.id,
+      );
+
+      expect(s.rows[1], ['Name', rep.name]);
+      expect(s.rows[2], ['Emp Code', rep.employeeCode]);
+      expect(s.fileName, contains(rep.employeeCode));
+      expect(s.fileName, isNot(contains(manager.employee.employeeCode)));
+    });
+
+    test('omitting the id still means the caller', () async {
+      final s = await repo.build(manager, ExportKind.expenses, month);
+      expect(s.rows[2], ['Emp Code', manager.employee.employeeCode]);
+    });
+
+    test('a rep cannot export their manager, or a stranger', () async {
+      // Refused, not empty. An empty sheet reads as "that person did nothing
+      // this month", which is a different and far worse answer than "not
+      // yours to ask" — and the picker that hides them is a picker, not a
+      // permission.
+      expect(
+        () => repo.build(
+          session,
+          ExportKind.expenses,
+          month,
+          employeeId: manager.employee.id,
+        ),
+        throwsStateError,
+      );
+    });
+
+    test("a rep's client list is theirs, not the whole territory", () async {
+      final s = await repo.build(
+        manager,
+        ExportKind.clients,
+        month,
+        employeeId: rep.id,
+      );
+      final mine = await repo.build(manager, ExportKind.clients, month);
+      expect(s.dataRowCount, lessThanOrEqualTo(mine.dataRowCount));
+      expect(s.dataRowCount, greaterThan(0));
+    });
+  });
+
   group('the sheet is derived, never stored', () {
     test('confirming a day changes the next sheet built', () async {
       final days = await MockExpenseRepository().claimMonth(

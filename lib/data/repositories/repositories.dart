@@ -218,7 +218,18 @@ abstract interface class TaskRepository {
 /// would be four places to forget a parameter.
 abstract interface class ExportRepository {
   /// [month] is ignored for [ExportKind.clients], which is the whole list.
-  Future<ExportSheet> build(Session session, ExportKind kind, DateTime month);
+  ///
+  /// [employeeId] is whose records to build the sheet from — the signed-in
+  /// user when omitted. A manager can export for anyone on their team, and
+  /// **the check is here**, not on the screen: a sheet is a copy of somebody's
+  /// month leaving the app, and a picker that only *offers* the right people
+  /// is a picker, not a permission.
+  Future<ExportSheet> build(
+    Session session,
+    ExportKind kind,
+    DateTime month, {
+    String? employeeId,
+  });
 }
 
 abstract interface class NotificationRepository {

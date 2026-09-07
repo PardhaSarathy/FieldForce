@@ -525,6 +525,43 @@ void main() {
           reason: 'assigning is still theirs — nothing was taken away');
     });
 
+    testWidgets('Export offers the manager their reps by name',
+        (tester) async {
+      // The office asks a manager for their reps' sheets as often as their
+      // own. The picker holds themselves first and then the team, and the row
+      // says whose month it is about to send.
+      await pumpApp(tester, code: 'ASM201', size: const Size(430, 2000));
+
+      await tester.tap(find.byTooltip('Add'));
+      await settle(tester);
+      await tester.tap(find.text('Export data'));
+      await settle(tester);
+
+      expect(find.text('Export Data'), findsOneWidget);
+      expect(find.text('Whose data'), findsOneWidget);
+      expect(find.textContaining('Me (ASM201)'), findsOneWidget);
+
+      // The dropdown opens as a sheet, like every other one in this app.
+      await tester.tap(find.textContaining('Me (ASM201)'));
+      await settle(tester);
+
+      final store = MockStore.instance;
+      final asm =
+          store.seed.employees.firstWhere((e) => e.employeeCode == 'ASM201');
+      final rep = store.seed.employees.firstWhere(
+        (e) => e.managerId == asm.id && e.id != asm.id,
+      );
+      expect(find.textContaining(rep.employeeCode), findsWidgets,
+          reason: 'a manager must be able to pick a rep by name');
+
+      await tester.tap(find.textContaining(rep.employeeCode).last);
+      await settle(tester);
+
+      // Named on every row, so a rep's month cannot be sent believing it was
+      // the manager's own.
+      expect(find.textContaining(rep.name), findsWidgets);
+    });
+
     testWidgets('Export Data is in the index for a manager too', (tester) async {
       await pumpApp(tester, code: 'ASM201', size: const Size(430, 1800));
 

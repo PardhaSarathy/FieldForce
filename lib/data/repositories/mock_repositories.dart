@@ -1497,13 +1497,16 @@ class MockExportRepository implements ExportRepository {
   Future<ExportSheet> build(
     Session session,
     ExportKind kind,
-    DateTime month,
-  ) async {
+    DateTime month, {
+    String? employeeId,
+  }) async {
+    final target = _target(session, employeeId);
+
     final rows = switch (kind) {
-      ExportKind.expenses => await _expensesRows(session, month),
-      ExportKind.tourPlan => await _tourRows(session, month),
-      ExportKind.dcr => await _dcrRows(session, month),
-      ExportKind.clients => await _clientRows(session),
+      ExportKind.expenses => await _expensesRows(session, target, month),
+      ExportKind.tourPlan => await _tourRows(session, target, month),
+      ExportKind.dcr => await _dcrRows(session, target, month),
+      ExportKind.clients => await _clientRows(session, target),
     };
 
     final stamp = kind.isMonthly
@@ -1515,10 +1518,27 @@ class MockExportRepository implements ExportRepository {
       // No extension: the format is chosen when the file is written, and a
       // name carrying `.csv` was still on the workbook the day it became one.
       fileName:
-          '${kind.label.replaceAll(' ', '-')}_${session.employee.employeeCode}'
+          '${kind.label.replaceAll(' ', '-')}_${target.employeeCode}'
           '_$stamp',
-      rows: [..._heading(session, kind), ...rows],
+      rows: [..._heading(target, kind), ...rows],
     );
+  }
+
+  /// Whose sheet this is — and whether the caller may ask for it.
+  ///
+  /// Resolved against `visibleEmployeeIds`, the same scope every other read
+  /// here goes through, so a manager gets their own team and nobody else's.
+  /// An id outside it is a **refusal**, not an empty sheet: an empty file
+  /// reads as "that rep did nothing this month", which is a different and far
+  /// worse answer than "not yours to ask".
+  Employee _target(Session session, String? employeeId) {
+    if (employeeId == null || employeeId == session.employee.id) {
+      return session.employee;
+    }
+    if (!_store.visibleEmployeeIds(session).contains(employeeId)) {
+      throw StateError('$employeeId is outside this session\'s scope');
+    }
+    return _store.seed.employees.firstWhere((e) => e.id == employeeId);
   }
 
   static String _two(int n) => n.toString().padLeft(2, '0');
@@ -1526,8 +1546,11 @@ class MockExportRepository implements ExportRepository {
       '${d.year}-${_two(d.month)}-${_two(d.day)}';
 
   /// The block at the top of every one of the client's sheets.
-  List<List<String>> _heading(Session session, ExportKind kind) {
-    final e = session.employee;
+  ///
+  /// The *target's* name and code, not the signed-in user's. A manager
+  /// exporting a rep's month is sending the office that rep's sheet, and a
+  /// header carrying the manager's own name would misfile it.
+  List<List<String>> _heading(Employee e, ExportKind kind) {
     return [
       [kind.title],
       ['Name', e.name],
@@ -1565,9 +1588,14 @@ class MockExportRepository implements ExportRepository {
 
   Future<List<List<String>>> _expensesRows(
     Session session,
+    Employee target,
     DateTime month,
   ) async {
-    final days = await _expenses.claimMonth(session, month);
+    final days = await _expenses.claimMonth(
+      session,
+      month,
+      employeeId: target.id,
+    );
     final rows = <List<String>>[
       [
         'Date',
@@ -1603,8 +1631,12 @@ class MockExportRepository implements ExportRepository {
     return rows;
   }
 
-  Future<List<List<String>>> _tourRows(Session session, DateTime month) async {
-    final tour = await _travel.month(session, month);
+  Future<List<List<String>>> _tourRows(
+    Session session,
+    Employee target,
+    DateTime month,
+  ) async {
+    final tour = await _travel.month(session, month, employeeId: target.id);
     final total = DateTime(month.year, month.month + 1, 0).day;
 
     final rows = <List<String>>[
@@ -1652,11 +1684,19 @@ class MockExportRepository implements ExportRepository {
     return rows;
   }
 
-  Future<List<List<String>>> _dcrRows(Session session, DateTime month) async {
+  Future<List<List<String>>> _dcrRows(
+    Session session,
+    Employee target,
+    DateTime month,
+  ) async {
     // The claim month is the one place that already answers "what kind of day
     // was this" for every date, so the DCR is read from it rather than from a
     // second walk over the day plans that could disagree with the first.
-    final days = await _expenses.claimMonth(session, month);
+    final days = await _expenses.claimMonth(
+      session,
+      month,
+      employeeId: target.id,
+    );
     final clients = await _clients.list(session);
     final listing = {for (final c in clients) c.id: c.listing};
 
@@ -1681,7 +1721,7 @@ class MockExportRepository implements ExportRepository {
 
       final calls = _store.activities.where(
         (a) =>
-            a.employeeId == session.employee.id &&
+            a.employeeId == target.id &&
             a.status == ActivityStatus.completed &&
             _sameDay(a.scheduledStart, d.date),
       );
@@ -1699,8 +1739,17 @@ class MockExportRepository implements ExportRepository {
     return rows;
   }
 
-  Future<List<List<String>>> _clientRows(Session session) async {
-    final clients = await _clients.list(session);
+  Future<List<List<String>>> _clientRows(
+    Session session,
+    Employee target,
+  ) async {
+    // A manager's own client list is their whole territory; a rep's is the
+    // clients on their name. Asking for a rep's sheet gives that rep's list,
+    // which is the sheet the office expects to receive.
+    final all = await _clients.list(session);
+    final clients = target.id == session.employee.id
+        ? all
+        : all.where((c) => c.ownerEmployeeId == target.id).toList();
     final rows = <List<String>>[
       [
         'Sr.No.',

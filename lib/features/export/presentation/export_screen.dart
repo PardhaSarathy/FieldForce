@@ -10,6 +10,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/models/export.dart';
+import '../../../shared/models/organization.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/motion.dart';
@@ -26,6 +27,21 @@ final _exportMonthProvider = StateProvider.autoDispose<DateTime>((ref) {
   // reason the expense claim will not submit until then.
   final now = DateTime.now();
   return DateTime(now.year, now.month - 1);
+});
+
+/// Whose records the sheets are built from — the signed-in user by default.
+///
+/// `null` means "me", rather than the employee's own id, so the provider does
+/// not have to be seeded from the session before the screen can read it.
+final _exportWhoProvider = StateProvider.autoDispose<Employee?>((ref) => null);
+
+/// The people a manager may export for: themselves, then their team.
+final _exportTeamProvider = FutureProvider.autoDispose<List<Employee>>((
+  ref,
+) async {
+  final session = ref.watch(sessionProvider);
+  if (!session.isManager) return const [];
+  return ref.watch(employeeRepositoryProvider).teamOf(session);
 });
 
 /// Export Data (§ export).
@@ -49,6 +65,9 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
   @override
   Widget build(BuildContext context) {
     final month = ref.watch(_exportMonthProvider);
+    final session = ref.watch(sessionProvider);
+    final who = ref.watch(_exportWhoProvider);
+    final team = ref.watch(_exportTeamProvider).valueOrNull ?? const [];
     final now = DateTime.now();
 
     // Twelve months back, and never a month that has not finished.
@@ -79,6 +98,30 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
               helper: 'A month that is still running would be half a sheet.',
             ),
           ),
+
+          // Whose month. A manager runs a territory and the office asks them
+          // for their reps' sheets as often as their own, so the picker holds
+          // themselves first and then the team. Reps never see it — there is
+          // one answer for them, and a dropdown with one entry is a question
+          // with no question in it.
+          //
+          // The list only *offers* the right people; the repository is what
+          // enforces it. A sheet is a copy of somebody's month leaving the
+          // app, and a picker is not a permission.
+          if (session.isManager && team.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.lg),
+            DropdownField<Employee>(
+              label: 'Whose data',
+              items: [session.employee, ...team],
+              value: who ?? session.employee,
+              itemLabel: (e) => e.id == session.employee.id
+                  ? 'Me (${e.employeeCode})'
+                  : '${e.name} · ${e.employeeCode}',
+              onChanged: (e) => ref.read(_exportWhoProvider.notifier).state =
+                  (e == null || e.id == session.employee.id) ? null : e,
+            ),
+          ],
+
           const SizedBox(height: AppSpacing.section),
 
           for (var i = 0; i < ExportKind.values.length; i++) ...[
@@ -88,8 +131,9 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
               child: _ExportRow(
                 kind: ExportKind.values[i],
                 month: month,
+                who: who?.name,
                 isBusy: _busy == ExportKind.values[i],
-                onExport: () => _export(ExportKind.values[i], month),
+                onExport: () => _export(ExportKind.values[i], month, who),
               ),
             ),
           ],
@@ -118,7 +162,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     );
   }
 
-  Future<void> _export(ExportKind kind, DateTime month) async {
+  Future<void> _export(ExportKind kind, DateTime month, Employee? who) async {
     setState(() => _busy = kind);
     final session = ref.read(sessionProvider);
 
@@ -131,7 +175,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     try {
       sheet = await ref
           .read(exportRepositoryProvider)
-          .build(session, kind, month);
+          .build(session, kind, month, employeeId: who?.id);
     } catch (_) {
       _finish();
       if (!mounted) return;
@@ -148,8 +192,10 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       _finish();
       AppHaptics.failure();
       _say(
-        'Nothing filed for ${Fmt.monthYear(month)}, so there is nothing to '
-        'export.',
+        who == null
+            ? 'Nothing filed for ${Fmt.monthYear(month)}, so there is nothing '
+                  'to export.'
+            : '${who.name} filed nothing for ${Fmt.monthYear(month)}.',
       );
       return;
     }
@@ -191,7 +237,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
               ),
             ],
             fileNameOverrides: ['${sheet.fileName}.xlsx'],
-            subject: '${kind.title} — ${session.employee.name}',
+            subject: '${kind.title} — ${who?.name ?? session.employee.name}',
           ),
         );
         _finish();
@@ -226,10 +272,15 @@ class _ExportRow extends StatelessWidget {
     required this.month,
     required this.isBusy,
     required this.onExport,
+    this.who,
   });
 
   final ExportKind kind;
   final DateTime month;
+
+  /// Named on the row when the sheet is somebody else's, so a manager cannot
+  /// send the office a rep's month believing it was their own.
+  final String? who;
   final bool isBusy;
   final VoidCallback onExport;
 
@@ -267,9 +318,12 @@ class _ExportRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  // The client list is not a month of anything. Saying so is
-                  // cheaper than a disabled picker beside it.
-                  kind.isMonthly ? Fmt.monthYear(month) : 'Every client',
+                  [
+                    // The client list is not a month of anything. Saying so is
+                    // cheaper than a disabled picker beside it.
+                    if (kind.isMonthly) Fmt.monthYear(month) else 'Every client',
+                    ?who,
+                  ].join(' · '),
                   style: AppTypography.caption,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
