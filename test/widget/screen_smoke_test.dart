@@ -106,18 +106,6 @@ void main() {
     }
   }
 
-  /// Opens Home's folded module row.
-  ///
-  /// Fixed pumps, not `pumpAndSettle`: the tiles revealed by the tap arrive
-  /// through `Arrive.staggered`, which chains timers, and settling on a
-  /// chained timer trips the binding's pending-timer check.
-  Future<void> showAllModules(WidgetTester tester) async {
-    await tester.tap(find.text('Show 3 more'));
-    for (var i = 0; i < 4; i++) {
-      await tester.pump(const Duration(milliseconds: 400));
-    }
-  }
-
   group('field user screens render', () {
     testWidgets('Home', (tester) async {
       await pumpScreen(tester, const HomeScreen());
@@ -135,20 +123,13 @@ void main() {
       // own any more.
       expect(find.text('My Day Plan'), findsOneWidget);
 
-      // Folded to one row. Three of the six carry nearly all the traffic, and
-      // the other three were costing a whole row of Home.
+      // One row: three modules and a door. The other three were spending a
+      // whole row of Home on modules a rep opens now and then, pushing
+      // today's calls below the fold.
       expect(find.text('Clients'), findsOneWidget);
+      expect(find.text('More'), findsOneWidget);
       expect(find.text('Expenses'), findsNothing);
-
-      await showAllModules(tester);
-      expect(find.text('Expenses'), findsOneWidget);
-      expect(find.text('Tour Plan'), findsOneWidget);
-      expect(find.text('HR'), findsOneWidget);
-
-      // And it folds back — the row is not deleted, it is folded.
-      await tester.tap(find.text('Show less'));
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(find.text('Expenses'), findsNothing);
+      expect(find.text('Tour Plan'), findsNothing);
     });
 
     testWidgets('My day plan', (tester) async {
@@ -770,47 +751,34 @@ void main() {
       expect(find.textContaining('visits completed today'), findsOneWidget);
     });
 
-    testWidgets('three tiles, and the other three a tap behind them',
-        (tester) async {
+    testWidgets('three modules and a door, in one row', (tester) async {
       await pumpScreen(tester, const HomeScreen(), size: const Size(430, 1400));
 
       // The three that carry nearly all the traffic: declare the day, log a
-      // call, look up a client.
-      for (final label in ['My Day Plan', 'My Activity', 'Clients']) {
+      // call, look up a client — then More.
+      for (final label in ['My Day Plan', 'My Activity', 'Clients', 'More']) {
         expect(find.text(label), findsOneWidget, reason: '$label missing');
       }
       for (final label in ['Tour Plan', 'HR', 'Expenses']) {
-        expect(find.text(label), findsNothing, reason: '$label folded');
+        expect(find.text(label), findsNothing, reason: '$label is behind More');
       }
 
-      // The count is the reason to tap. "See all" on its own gives none.
-      expect(find.text('Show 3 more'), findsOneWidget);
-      await showAllModules(tester);
-
-      for (final label in ['Tour Plan', 'HR', 'Expenses']) {
-        expect(find.text(label), findsOneWidget, reason: '$label missing');
-      }
+      // No heading and no control bolted underneath. The row is one object.
+      expect(find.text('QUICK ACTIONS'), findsNothing);
+      expect(find.textContaining('Show '), findsNothing);
 
       // To-Do moved to the bottom bar, and Sales came off the grid when
-      // Expenses took its place — a rep touches expenses every working day.
-      // Sales is still one tap away in the side menu.
+      // Expenses took its place. Both are in the side menu, which is what
+      // More opens.
       expect(find.text('Business'), findsNothing);
       expect(find.text('Sales'), findsNothing);
     });
 
-    testWidgets('the six tiles lay out as three columns by two rows',
+    testWidgets('the four tiles lay out as four columns by one row',
         (tester) async {
       await pumpScreen(tester, const HomeScreen(), size: const Size(375, 1400));
-      await showAllModules(tester);
 
-      const labels = [
-        'My Day Plan',
-        'My Activity',
-        'Clients',
-        'Tour Plan',
-        'HR',
-        'Expenses',
-      ];
+      const labels = ['My Day Plan', 'My Activity', 'Clients', 'More'];
       // The tiles, not the labels: a label's vertical centre moves with how
       // many lines it wraps to, so measuring text would report a row per
       // label length rather than a row per row.
@@ -822,10 +790,11 @@ void main() {
           )),
       ];
 
-      // Three distinct columns, two distinct rows. A ragged last row is the
-      // symptom of the tile count and the column count disagreeing.
-      expect(rects.map((r) => r.center.dx.round()).toSet(), hasLength(3));
-      expect(rects.map((r) => r.center.dy.round()).toSet(), hasLength(2));
+      // Four distinct columns, one row. The door takes the last slot so the
+      // row is always full — a ragged gap is the symptom of the tile count
+      // and the column count disagreeing.
+      expect(rects.map((r) => r.center.dx.round()).toSet(), hasLength(4));
+      expect(rects.map((r) => r.center.dy.round()).toSet(), hasLength(1));
     });
 
     testWidgets('the tile grows with the text size, not the device width',

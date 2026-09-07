@@ -780,7 +780,7 @@ final _quickActionLabelStyle = AppTypography.caption.copyWith(
 /// adapts to text size, and a long word on a 320pt phone at 1.3x still
 /// ellipsizes rather than overflowing.
 int _quickActionColumns(double width) =>
-    width >= AppBreakpoints.expanded ? 6 : 3;
+    width >= AppBreakpoints.expanded ? 7 : 4;
 
 class _QuickActionsGrid extends StatefulWidget {
   const _QuickActionsGrid();
@@ -837,24 +837,26 @@ class _QuickActionsGrid extends StatefulWidget {
 }
 
 class _QuickActionsGridState extends State<_QuickActionsGrid> {
-  /// Whether the rows below the first are showing.
-  ///
-  /// Collapsed by default. Three of the six carry nearly all the traffic —
-  /// declare the day, log a call, look up a client — and the other three were
-  /// costing a whole row of Home to the modules a rep opens now and then. The
-  /// row is not deleted, it is folded: Tour Plan, HR and Expenses are one tap
-  /// away here and still in the side menu, which is the app's full index.
-  bool _expanded = false;
-
   @override
   Widget build(BuildContext context) {
     const actions = _QuickActionsGrid.actions;
 
     // No heading. It said "QUICK ACTIONS", which names the *widget* rather
     // than the content — the tell of a screen assembled from patterns instead
-    // of written for a rep. Six labelled tiles need no label of their own, and
-    // dropping it gives the block back about 30pt, which is most of what made
-    // it feel tall.
+    // of written for a rep. Labelled tiles need no label of their own, and
+    // dropping it gave the block back about 30pt.
+    //
+    // **One row: three modules and a door.** Three of the six carried nearly
+    // all the traffic — declare the day, log a call, look up a client — and
+    // the other three were spending a whole row of Home on modules a rep
+    // opens now and then, pushing today's calls below the fold. They are not
+    // deleted: the fourth tile opens the side menu, which is the app's full
+    // index and already lists every one of them.
+    //
+    // A "Show 3 more" control under the row was tried first. It worked and it
+    // read as a control bolted onto a grid; a fourth tile is the same object
+    // as the other three, so the row stays one thing, and it costs no
+    // expand/collapse state and no layout shift.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -873,88 +875,71 @@ class _QuickActionsGridState extends State<_QuickActionsGrid> {
             final extent =
                 _tilePadding * 2 + _iconChip + AppSpacing.sm + labelBlock;
 
-            // One row, whatever a row happens to be here.
-            //
-            // `columns`, not a hardcoded three: the grid runs six across on a
-            // tablet, where every tile already fits on one line and folding
-            // would hide something for nothing. On a phone it is three, which
-            // is the first row and the three a rep actually uses.
-            final shown = _expanded
-                ? actions
-                : actions.take(columns).toList();
-            final hidden = actions.length - shown.length;
+            // The door takes the last slot, so the row is always full and the
+            // grid never leaves a ragged gap. On a wide screen every module
+            // fits beside it and nothing is behind the door but the rest of
+            // the app.
+            final shown = actions.take(columns - 1).toList();
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: shown.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    mainAxisSpacing: AppSpacing.md,
-                    crossAxisSpacing: AppSpacing.md,
-                    mainAxisExtent: extent,
-                  ),
-                  itemBuilder: (context, i) => Arrive.staggered(
-                    index: i,
-                    child: _QuickActionTile(
-                      action: shown[i],
-                      labelLines: lines,
-                    ),
-                  ),
-                ),
-
-                // "Show 3 more", not "See all".
-                //
-                // Two things: the count is the reason to tap — "See all" on
-                // its own gives none — and *this screen already has a "See
-                // all"*, on the visit list below, meaning something entirely
-                // different. One phrase, two jobs, thirty points apart.
-                if (hidden > 0 || _expanded)
-                  Align(
-                    alignment: Alignment.center,
-                    child: GestureDetector(
-                      onTap: () {
-                        AppHaptics.selection();
-                        setState(() => _expanded = !_expanded);
-                      },
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.only(
-                          top: AppSpacing.md,
-                          left: AppSpacing.md,
-                          right: AppSpacing.md,
-                          bottom: AppSpacing.xs,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _expanded ? 'Show less' : 'Show $hidden more',
-                              style: AppTypography.titleSm.copyWith(
-                                color: AppColors.brand,
-                              ),
-                            ),
-                            const SizedBox(width: AppSpacing.xs),
-                            Icon(
-                              _expanded
-                                  ? Icons.keyboard_arrow_up_rounded
-                                  : Icons.keyboard_arrow_down_rounded,
-                              size: AppSizes.iconMd,
-                              color: AppColors.brand,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: shown.length + 1,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisSpacing: AppSpacing.md,
+                crossAxisSpacing: AppSpacing.md,
+                mainAxisExtent: extent,
+              ),
+              itemBuilder: (context, i) => Arrive.staggered(
+                index: i,
+                child: i < shown.length
+                    ? _QuickActionTile(action: shown[i], labelLines: lines)
+                    : _MoreTile(labelLines: lines),
+              ),
             );
           },
         ),
       ],
+    );
+  }
+}
+
+/// The fourth tile: everything else.
+///
+/// It opens the side menu rather than expanding the grid, because the menu is
+/// already the app's full index — a second, shorter index that showed three of
+/// the twenty destinations would be a list to keep in step with the real one.
+class _MoreTile extends ConsumerWidget {
+  const _MoreTile({required this.labelLines});
+
+  final int labelLines;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return _TileShell(
+      onTap: () {
+        AppHaptics.selection();
+        openAppDrawer(ref);
+      },
+      labelLines: labelLines,
+      // Grey, not a seventh hue. The six colours mean *which module*; this
+      // tile is not a module, and giving it one would say it was.
+      chip: Container(
+        width: _iconChip,
+        height: _iconChip,
+        decoration: const BoxDecoration(
+          color: AppColors.surfaceSecondary,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.more_horiz,
+          size: 21,
+          color: AppColors.textSecondary,
+        ),
+      ),
+      label: 'More',
+      labelColor: AppColors.textSecondary,
     );
   }
 }
@@ -982,8 +967,46 @@ class _QuickActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
+    return _TileShell(
       onTap: () => navigateTo(context, action.route),
+      labelLines: labelLines,
+      chip: IconWell(
+        icon: action.icon,
+        size: _iconChip,
+        glyphSize: _tileGlyph,
+        color: action.palette.ink,
+      ),
+      label: action.label,
+    );
+  }
+}
+
+/// The card every tile in the row is built from.
+///
+/// Shared so the door in the last slot is the *same object* as the three
+/// beside it — same card, same chip size, same label block. Built separately
+/// they would drift apart the first time either changed, and a row where one
+/// tile is subtly taller is the thing a reviewer notices without being able
+/// to name.
+class _TileShell extends StatelessWidget {
+  const _TileShell({
+    required this.onTap,
+    required this.labelLines,
+    required this.chip,
+    required this.label,
+    this.labelColor,
+  });
+
+  final VoidCallback onTap;
+  final int labelLines;
+  final Widget chip;
+  final String label;
+  final Color? labelColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      onTap: onTap,
       padding: const EdgeInsets.symmetric(
         vertical: _tilePadding,
         horizontal: AppSpacing.xs,
@@ -995,12 +1018,7 @@ class _QuickActionTile extends StatelessWidget {
         // tile was the same height.
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          IconWell(
-            icon: action.icon,
-            size: _iconChip,
-            glyphSize: _tileGlyph,
-            color: action.palette.ink,
-          ),
+          chip,
           const SizedBox(height: AppSpacing.sm),
           // The label takes the rest of the tile and centres in it. The chips
           // stay aligned across the row because the column is top-aligned,
@@ -1009,11 +1027,13 @@ class _QuickActionTile extends StatelessWidget {
           Expanded(
             child: Center(
               child: Text(
-                action.label,
+                label,
                 textAlign: TextAlign.center,
                 maxLines: labelLines,
                 overflow: TextOverflow.ellipsis,
-                style: _quickActionLabelStyle,
+                style: labelColor == null
+                    ? _quickActionLabelStyle
+                    : _quickActionLabelStyle.copyWith(color: labelColor),
               ),
             ),
           ),

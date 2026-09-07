@@ -479,16 +479,29 @@ an analytics dashboard.) Two rules have already been re-learned the hard way:
   make, under a figure reading "1 out of 10". The next call is the row with the
   rail and the button on it; that row **is** the deleted "Next action" card,
   and re-adding the card would put the same appointment on screen twice.
-- **The module grid shows one row, and folds the rest.** Three of the six
-  carry nearly all the traffic — declare the day, log a call, look up a client
-  — and the other three were costing a whole row of Home to modules a rep
-  opens now and then; folded, the visit list starts four rows higher. It is
-  `columns` that are shown, not a hardcoded three, so a tablet running six
-  across hides nothing and folds nothing. The control reads **"Show 3 more"**,
-  never "See all": the count is the reason to tap, and this screen already has
-  a "See all" thirty points below meaning something else entirely. Nothing is
-  deleted — the three are one tap away here and still in the side menu, which
-  is the app's full index.
+- **The module row is three modules and a door.** Three of the six carried
+  nearly all the traffic — declare the day, log a call, look up a client — and
+  the other three were spending a whole row of Home on modules a rep opens now
+  and then, pushing today's calls below the fold. The fourth tile is **More**,
+  and it opens the side menu: the menu is already the app's full index, and a
+  second shorter one listing three of twenty destinations would be a list to
+  keep in step with the real one.
+  - A **"Show 3 more" control under the row** was built first and rejected on
+    sight: it worked, and it read as a control bolted onto a grid. A fourth
+    tile is the same object as the other three, so the row stays one thing,
+    and it costs no expand/collapse state and no layout shift. `_TileShell` is
+    shared between them for that reason — built separately they would drift,
+    and a row where one tile is subtly taller is what a reviewer notices
+    without being able to name.
+  - The door takes the **last slot**, so `columns - 1` modules are shown and
+    the row is never ragged.
+  - The More chip is **grey, not a seventh hue**. The six colours mean *which
+    module*; this tile is not a module, and giving it a colour would say it
+    was.
+  - And still no heading. "QUICK ACTIONS" names the *widget*, which is what
+    the review called the AI-generated feel — and there is no honest content
+    name for a grid of six unrelated modules, which is why it went in the
+    first place.
 - **Never name a widget in the UI.** "Quick actions", "Overview", "At a
   glance", "Key metrics" — these name the *pattern*, not the content, and a
   screen full of them reads as assembled rather than written. The review's word

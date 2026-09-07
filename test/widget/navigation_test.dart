@@ -33,16 +33,16 @@ void main() {
     }
   }
 
-  /// Opens Home's folded module row.
+  /// Opens the app's index, which is where the modules Home does not show
+  /// now live.
   ///
-  /// Three of the six tiles are shown until asked — declare the day, log a
-  /// call, look up a client — so a test reaching for Tour Plan, HR or Expenses
-  /// has to do what a rep does.
-  Future<void> showAllModules(WidgetTester tester) async {
-    final more = find.text('Show 3 more');
-    if (more.evaluate().isEmpty) return;
-    await tester.tap(more.first);
-    await settle(tester);
+  /// Home's row is three modules and a door: declare the day, log a call,
+  /// look up a client, then More. A test reaching for Tour Plan, HR or
+  /// Expenses has to do what a rep does — go through the menu.
+  Future<void> openIndex(WidgetTester tester) async {
+    await tester.tap(find.byIcon(Icons.menu));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
   }
 
   /// Boots the real app, already signed in as [code].
@@ -228,7 +228,7 @@ void main() {
       // The tile is named for the screen it opens. It said "Travel" and opened
       // a hub with two doors in it; Expenses is a module of its own on Home
       // now, which left the hub asking a question with one answer.
-      await showAllModules(tester);
+      await openIndex(tester);
       await tester.tap(find.text('Tour Plan').first);
       await settle(tester);
 
@@ -247,7 +247,7 @@ void main() {
       // month that has ended and look for the days nobody filed a plan for.
       await pumpApp(tester, size: const Size(430, 2200));
 
-      await showAllModules(tester);
+      await openIndex(tester);
       await tester.tap(find.text('Expenses').first);
       await settle(tester);
       expect(find.text('Expenses'), findsWidgets);
@@ -369,7 +369,7 @@ void main() {
       await pumpApp(tester, size: const Size(430, 1800));
 
       // Expenses is its own tile on Home now, not a door inside Travel.
-      await showAllModules(tester);
+      await openIndex(tester);
       await tester.tap(find.text('Expenses'));
       await settle(tester);
 
@@ -386,7 +386,7 @@ void main() {
       // deep link lands on the same screen a tap does.
       await pumpApp(tester, size: const Size(430, 2400));
 
-      await showAllModules(tester);
+      await openIndex(tester);
       await tester.tap(find.text('Expenses'));
       await settle(tester);
 
@@ -576,6 +576,21 @@ void main() {
       // Named on every row, so a rep's month cannot be sent believing it was
       // the manager's own.
       expect(find.textContaining(rep.name), findsWidgets);
+    });
+
+    testWidgets('More opens the app index, where the rest of the modules are',
+        (tester) async {
+      // The fourth tile is a door, not a control: the menu is already the
+      // app's full index, and a second, shorter one showing three of twenty
+      // destinations would be a list to keep in step with the real one.
+      await pumpApp(tester, size: const Size(430, 1800));
+
+      await tester.tap(find.text('More'));
+      await settle(tester);
+
+      for (final label in ['Tour Plan', 'Expenses', 'HR']) {
+        expect(find.text(label), findsWidgets, reason: label);
+      }
     });
 
     testWidgets('Export Data is in the index for a manager too', (tester) async {
