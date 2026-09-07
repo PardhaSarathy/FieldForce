@@ -578,21 +578,6 @@ void main() {
       expect(find.textContaining(rep.name), findsWidgets);
     });
 
-    testWidgets('More opens the app index, where the rest of the modules are',
-        (tester) async {
-      // The fourth tile is a door, not a control: the menu is already the
-      // app's full index, and a second, shorter one showing three of twenty
-      // destinations would be a list to keep in step with the real one.
-      await pumpApp(tester, size: const Size(430, 1800));
-
-      await tester.tap(find.text('More'));
-      await settle(tester);
-
-      for (final label in ['Tour Plan', 'Expenses', 'HR']) {
-        expect(find.text(label), findsWidgets, reason: label);
-      }
-    });
-
     testWidgets('Export Data is in the index for a manager too', (tester) async {
       await pumpApp(tester, code: 'ASM201', size: const Size(430, 1800));
 

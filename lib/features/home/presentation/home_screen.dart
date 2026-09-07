@@ -780,7 +780,7 @@ final _quickActionLabelStyle = AppTypography.caption.copyWith(
 /// adapts to text size, and a long word on a 320pt phone at 1.3x still
 /// ellipsizes rather than overflowing.
 int _quickActionColumns(double width) =>
-    width >= AppBreakpoints.expanded ? 7 : 4;
+    width >= AppBreakpoints.expanded ? 6 : 3;
 
 class _QuickActionsGrid extends StatefulWidget {
   const _QuickActionsGrid();
@@ -837,6 +837,16 @@ class _QuickActionsGrid extends StatefulWidget {
 }
 
 class _QuickActionsGridState extends State<_QuickActionsGrid> {
+  /// Whether the rows below the first are showing.
+  ///
+  /// Collapsed by default. Three of the six carry nearly all the traffic —
+  /// declare the day, log a call, look up a client — and the other three were
+  /// spending a whole row of Home on modules a rep opens now and then, which
+  /// pushed today's calls below the fold. The row is not deleted, it is
+  /// folded: Tour Plan, HR and Expenses are one tap away here and still in the
+  /// side menu, which is the app's full index.
+  bool _expanded = false;
+
   @override
   Widget build(BuildContext context) {
     const actions = _QuickActionsGrid.actions;
@@ -845,18 +855,6 @@ class _QuickActionsGridState extends State<_QuickActionsGrid> {
     // than the content — the tell of a screen assembled from patterns instead
     // of written for a rep. Labelled tiles need no label of their own, and
     // dropping it gave the block back about 30pt.
-    //
-    // **One row: three modules and a door.** Three of the six carried nearly
-    // all the traffic — declare the day, log a call, look up a client — and
-    // the other three were spending a whole row of Home on modules a rep
-    // opens now and then, pushing today's calls below the fold. They are not
-    // deleted: the fourth tile opens the side menu, which is the app's full
-    // index and already lists every one of them.
-    //
-    // A "Show 3 more" control under the row was tried first. It worked and it
-    // read as a control bolted onto a grid; a fourth tile is the same object
-    // as the other three, so the row stays one thing, and it costs no
-    // expand/collapse state and no layout shift.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -875,71 +873,83 @@ class _QuickActionsGridState extends State<_QuickActionsGrid> {
             final extent =
                 _tilePadding * 2 + _iconChip + AppSpacing.sm + labelBlock;
 
-            // The door takes the last slot, so the row is always full and the
-            // grid never leaves a ragged gap. On a wide screen every module
-            // fits beside it and nothing is behind the door but the rest of
-            // the app.
-            final shown = actions.take(columns - 1).toList();
+            // One row, whatever a row happens to be here.
+            //
+            // `columns`, not a hardcoded three: the grid runs six across on a
+            // tablet, where every tile already fits on one line and folding
+            // would hide something for nothing — there the control does not
+            // appear at all.
+            final shown = _expanded ? actions : actions.take(columns).toList();
+            final hidden = actions.length - shown.length;
 
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: shown.length + 1,
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: columns,
-                mainAxisSpacing: AppSpacing.md,
-                crossAxisSpacing: AppSpacing.md,
-                mainAxisExtent: extent,
-              ),
-              itemBuilder: (context, i) => Arrive.staggered(
-                index: i,
-                child: i < shown.length
-                    ? _QuickActionTile(action: shown[i], labelLines: lines)
-                    : _MoreTile(labelLines: lines),
-              ),
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: shown.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    mainAxisSpacing: AppSpacing.md,
+                    crossAxisSpacing: AppSpacing.md,
+                    mainAxisExtent: extent,
+                  ),
+                  itemBuilder: (context, i) => Arrive.staggered(
+                    index: i,
+                    child: _QuickActionTile(
+                      action: shown[i],
+                      labelLines: lines,
+                    ),
+                  ),
+                ),
+
+                // Right-aligned, like the "See all" on the visit list below —
+                // same words, same place in the block, so the two read as the
+                // same kind of control rather than two inventions.
+                if (hidden > 0 || _expanded)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
+                      onTap: () {
+                        AppHaptics.selection();
+                        setState(() => _expanded = !_expanded);
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.only(
+                          top: AppSpacing.sm,
+                          left: AppSpacing.md,
+                          right: AppSpacing.xs,
+                          bottom: AppSpacing.xs,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _expanded ? 'Show less' : 'See all',
+                              style: AppTypography.titleSm.copyWith(
+                                color: AppColors.brand,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            Icon(
+                              _expanded
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
+                              size: AppSizes.iconMd,
+                              color: AppColors.brand,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             );
           },
         ),
       ],
-    );
-  }
-}
-
-/// The fourth tile: everything else.
-///
-/// It opens the side menu rather than expanding the grid, because the menu is
-/// already the app's full index — a second, shorter index that showed three of
-/// the twenty destinations would be a list to keep in step with the real one.
-class _MoreTile extends ConsumerWidget {
-  const _MoreTile({required this.labelLines});
-
-  final int labelLines;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return _TileShell(
-      onTap: () {
-        AppHaptics.selection();
-        openAppDrawer(ref);
-      },
-      labelLines: labelLines,
-      // Grey, not a seventh hue. The six colours mean *which module*; this
-      // tile is not a module, and giving it one would say it was.
-      chip: Container(
-        width: _iconChip,
-        height: _iconChip,
-        decoration: const BoxDecoration(
-          color: AppColors.surfaceSecondary,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(
-          Icons.more_horiz,
-          size: 21,
-          color: AppColors.textSecondary,
-        ),
-      ),
-      label: 'More',
-      labelColor: AppColors.textSecondary,
     );
   }
 }
@@ -994,14 +1004,12 @@ class _TileShell extends StatelessWidget {
     required this.labelLines,
     required this.chip,
     required this.label,
-    this.labelColor,
   });
 
   final VoidCallback onTap;
   final int labelLines;
   final Widget chip;
   final String label;
-  final Color? labelColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1031,9 +1039,7 @@ class _TileShell extends StatelessWidget {
                 textAlign: TextAlign.center,
                 maxLines: labelLines,
                 overflow: TextOverflow.ellipsis,
-                style: labelColor == null
-                    ? _quickActionLabelStyle
-                    : _quickActionLabelStyle.copyWith(color: labelColor),
+                style: _quickActionLabelStyle,
               ),
             ),
           ),

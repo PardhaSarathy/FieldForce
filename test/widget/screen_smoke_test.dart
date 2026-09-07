@@ -106,6 +106,20 @@ void main() {
     }
   }
 
+  /// Opens Home's folded module row.
+  ///
+  /// `.first`, because Home carries **two** "See all"s — this one and the
+  /// visit list's — and the grid's comes first in the tree. Fixed pumps, not
+  /// `pumpAndSettle`: the revealed tiles arrive through `Arrive.staggered`,
+  /// which chains timers, and settling on a chained timer trips the binding's
+  /// pending-timer check.
+  Future<void> showAllModules(WidgetTester tester) async {
+    await tester.tap(find.text('See all').first);
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+  }
+
   group('field user screens render', () {
     testWidgets('Home', (tester) async {
       await pumpScreen(tester, const HomeScreen());
@@ -123,11 +137,10 @@ void main() {
       // own any more.
       expect(find.text('My Day Plan'), findsOneWidget);
 
-      // One row: three modules and a door. The other three were spending a
-      // whole row of Home on modules a rep opens now and then, pushing
-      // today's calls below the fold.
+      // Folded to one row. The other three were spending a whole row of Home
+      // on modules a rep opens now and then, pushing today's calls below the
+      // fold.
       expect(find.text('Clients'), findsOneWidget);
-      expect(find.text('More'), findsOneWidget);
       expect(find.text('Expenses'), findsNothing);
       expect(find.text('Tour Plan'), findsNothing);
     });
@@ -751,34 +764,53 @@ void main() {
       expect(find.textContaining('visits completed today'), findsOneWidget);
     });
 
-    testWidgets('three modules and a door, in one row', (tester) async {
+    testWidgets('three tiles, and See all opens the rest', (tester) async {
       await pumpScreen(tester, const HomeScreen(), size: const Size(430, 1400));
 
       // The three that carry nearly all the traffic: declare the day, log a
-      // call, look up a client — then More.
-      for (final label in ['My Day Plan', 'My Activity', 'Clients', 'More']) {
+      // call, look up a client.
+      for (final label in ['My Day Plan', 'My Activity', 'Clients']) {
         expect(find.text(label), findsOneWidget, reason: '$label missing');
       }
       for (final label in ['Tour Plan', 'HR', 'Expenses']) {
-        expect(find.text(label), findsNothing, reason: '$label is behind More');
+        expect(find.text(label), findsNothing, reason: '$label folded');
       }
 
-      // No heading and no control bolted underneath. The row is one object.
+      // Still no heading: "QUICK ACTIONS" names the widget rather than the
+      // content, which is what the review called AI-generated.
       expect(find.text('QUICK ACTIONS'), findsNothing);
-      expect(find.textContaining('Show '), findsNothing);
+
+      // The grid's own See all — the visit list below has one too, which is
+      // why this reaches for the first rather than the only.
+      await showAllModules(tester);
+      for (final label in ['Tour Plan', 'HR', 'Expenses']) {
+        expect(find.text(label), findsOneWidget, reason: '$label missing');
+      }
+
+      // And it folds back. The row is not deleted, it is folded.
+      await tester.tap(find.text('Show less'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Expenses'), findsNothing);
 
       // To-Do moved to the bottom bar, and Sales came off the grid when
-      // Expenses took its place. Both are in the side menu, which is what
-      // More opens.
+      // Expenses took its place. Both are in the side menu.
       expect(find.text('Business'), findsNothing);
       expect(find.text('Sales'), findsNothing);
     });
 
-    testWidgets('the four tiles lay out as four columns by one row',
+    testWidgets('the six tiles lay out as three columns by two rows',
         (tester) async {
       await pumpScreen(tester, const HomeScreen(), size: const Size(375, 1400));
+      await showAllModules(tester);
 
-      const labels = ['My Day Plan', 'My Activity', 'Clients', 'More'];
+      const labels = [
+        'My Day Plan',
+        'My Activity',
+        'Clients',
+        'Tour Plan',
+        'HR',
+        'Expenses',
+      ];
       // The tiles, not the labels: a label's vertical centre moves with how
       // many lines it wraps to, so measuring text would report a row per
       // label length rather than a row per row.
@@ -790,11 +822,10 @@ void main() {
           )),
       ];
 
-      // Four distinct columns, one row. The door takes the last slot so the
-      // row is always full — a ragged gap is the symptom of the tile count
-      // and the column count disagreeing.
-      expect(rects.map((r) => r.center.dx.round()).toSet(), hasLength(4));
-      expect(rects.map((r) => r.center.dy.round()).toSet(), hasLength(1));
+      // Three distinct columns, two distinct rows. A ragged last row is the
+      // symptom of the tile count and the column count disagreeing.
+      expect(rects.map((r) => r.center.dx.round()).toSet(), hasLength(3));
+      expect(rects.map((r) => r.center.dy.round()).toSet(), hasLength(2));
     });
 
     testWidgets('the tile grows with the text size, not the device width',
