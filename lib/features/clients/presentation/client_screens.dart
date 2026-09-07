@@ -239,7 +239,9 @@ final _clientProvider = FutureProvider.autoDispose.family<Client, String>((
   id,
 ) {
   ref.watch(dataRevisionProvider);
-  return ref.watch(clientRepositoryProvider).byId(id);
+  return ref
+      .watch(clientRepositoryProvider)
+      .byId(ref.watch(sessionProvider), id);
 });
 
 final _clientHistoryProvider = FutureProvider.autoDispose
@@ -783,7 +785,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
 
     final repository = ref.read(clientRepositoryProvider);
     if (widget.isEditing) {
-      await repository.update(client);
+      await repository.update(ref.read(sessionProvider), client);
     } else {
       await repository.create(client);
     }

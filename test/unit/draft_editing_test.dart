@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pharmaconnect/shared/models/organization.dart';
 import 'package:pharmaconnect/data/repositories/mock_repositories.dart';
 import 'package:pharmaconnect/shared/enums/app_enums.dart';
 import 'package:pharmaconnect/shared/models/field_ops.dart';
@@ -34,7 +35,7 @@ void main() {
       approvalHistory: plan.approvalHistory,
       createdAt: plan.createdAt,
     );
-    final saved = await repo.update(edited);
+    final saved = await repo.update(_asOwner(plan.employeeId), edited);
 
     expect(saved.id, plan.id, reason: 'an edit keeps the id');
     expect(MockStore.instance.travelPlans.length, before,
@@ -51,7 +52,10 @@ void main() {
     final expense = MockStore.instance.expenses
         .firstWhere((e) => e.status == ApprovalStatus.draft);
 
-    final saved = await repo.update(expense.copyWith(amount: 1234));
+    final saved = await repo.update(
+      _asOwner(expense.employeeId),
+      expense.copyWith(amount: 1234),
+    );
 
     expect(saved.id, expense.id);
     expect(MockStore.instance.expenses.length, before,
@@ -69,7 +73,10 @@ void main() {
     final withHistory = MockStore.instance.expenses
         .firstWhere((e) => e.approvalHistory.isNotEmpty);
 
-    final saved = await repo.update(withHistory.copyWith(remarks: 'edited'));
+    final saved = await repo.update(
+      _asOwner(withHistory.employeeId),
+      withHistory.copyWith(remarks: 'edited'),
+    );
     expect(saved.approvalHistory, isNotEmpty);
   });
 
@@ -84,7 +91,10 @@ void main() {
         .firstWhere((c) => c.id == logged.clientId);
     final visitsBefore = client.totalVisits;
 
-    await activities.update(logged.copyWith(feedback: 'corrected note'));
+    await activities.update(
+      _asOwner(logged.employeeId),
+      logged.copyWith(feedback: 'corrected note'),
+    );
 
     final after = MockStore.instance.clients
         .firstWhere((c) => c.id == logged.clientId);
@@ -98,3 +108,14 @@ void main() {
     );
   });
 }
+
+/// A session for whoever owns the record.
+///
+/// `update` is owner-only now — a manager may see a rep's claim and must not
+/// rewrite it — so a test correcting a record has to be the person who filed
+/// it, which is what actually happens in the app.
+Session _asOwner(String employeeId) => Session(
+      employee: MockStore.instance.seed.employees
+          .firstWhere((e) => e.id == employeeId),
+      loginAt: DateTime(2026, 9),
+    );

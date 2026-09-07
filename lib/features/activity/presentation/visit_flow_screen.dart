@@ -92,12 +92,13 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
 
   Future<void> _load() async {
     try {
+      final session = ref.read(sessionProvider);
       final activity = await ref
           .read(activityRepositoryProvider)
-          .byId(widget.activityId);
+          .byId(session, widget.activityId);
       final client = await ref
           .read(clientRepositoryProvider)
-          .byId(activity.clientId);
+          .byId(session, activity.clientId);
 
       // Mark it in progress on the way in, not on the way out.
       //

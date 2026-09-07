@@ -49,9 +49,11 @@ abstract interface class ClientRepository {
     ClientType? type,
     String? areaId,
   });
-  Future<Client> byId(String id);
+  /// Scoped: a client owned by someone outside the caller's scope is a
+  /// refusal, not an empty result.
+  Future<Client> byId(Session session, String id);
   Future<Client> create(Client client);
-  Future<Client> update(Client client);
+  Future<Client> update(Session session, Client client);
 
   /// Completed visits to this client, newest first (§28 client history).
   Future<List<Activity>> historyOf(String clientId);
@@ -76,13 +78,18 @@ abstract interface class ActivityRepository {
     String? clientId,
   });
 
-  Future<Activity> byId(String id);
+  /// Scoped. A manager may open a rep's call — that is what a team list is
+  /// for — but nobody outside the scope may, whatever id they hold.
+  Future<Activity> byId(Session session, String id);
 
   /// Today's derived summary for [employeeId] — the source of Home's content.
   Future<DaySummary> daySummary(String employeeId, DateTime date);
 
   Future<Activity> create(Activity activity);
-  Future<Activity> update(Activity activity);
+  /// **Owner only.** A manager can see a rep's record and must not rewrite
+  /// it: approve and reject are the two things they may do to it, and both
+  /// leave an append-only trail. Correcting a record is the owner's job.
+  Future<Activity> update(Session session, Activity activity);
 
   /// Transitions a planned activity to in-progress and stamps the start time.
   Future<Activity> startVisit(String activityId);
@@ -111,13 +118,13 @@ abstract interface class DayPlanRepository {
 
 abstract interface class TravelRepository {
   Future<List<TravelPlan>> list(Session session, {ApprovalStatus? status, String? employeeId});
-  Future<TravelPlan> byId(String id);
+  Future<TravelPlan> byId(Session session, String id);
   Future<TravelPlan> create(TravelPlan plan);
 
   /// Rewrites a plan. Only a draft should reach this — once a plan is
   /// submitted the approver is looking at it, and changing it underneath them
   /// is how an approval comes to mean nothing.
-  Future<TravelPlan> update(TravelPlan plan);
+  Future<TravelPlan> update(Session session, TravelPlan plan);
   Future<TravelPlan> submit(String id);
 
   /// One month of tour plan, as a day-by-day picture.
@@ -141,9 +148,9 @@ abstract interface class TravelRepository {
 
 abstract interface class ExpenseRepository {
   Future<List<Expense>> list(Session session, {ApprovalStatus? status, String? employeeId});
-  Future<Expense> byId(String id);
+  Future<Expense> byId(Session session, String id);
   Future<Expense> create(Expense expense);
-  Future<Expense> update(Expense expense);
+  Future<Expense> update(Session session, Expense expense);
   Future<Expense> submit(String id);
 
   /// What one worked day is worth. Company reference data, not a literal in a
@@ -216,8 +223,11 @@ abstract interface class TaskRepository {
     String? assignedById,
     TaskStatus? status,
   });
-  Future<FieldTask> create(FieldTask task);
-  Future<FieldTask> updateStatus(String id, TaskStatus status);
+  /// Refuses an assignee outside the caller's scope — an ASM assigning to
+  /// their own RSM is not a hierarchy, it is a bug.
+  Future<FieldTask> create(Session session, FieldTask task);
+  /// Only the person the task was given to may move it.
+  Future<FieldTask> updateStatus(Session session, String id, TaskStatus status);
 }
 
 /// Builds the four sheets the office asks for (§ export).

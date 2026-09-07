@@ -351,7 +351,9 @@ class _TourDayRow extends StatelessWidget {
 final _travelDetailProvider = FutureProvider.autoDispose
     .family<TravelPlan, String>((ref, id) {
       ref.watch(dataRevisionProvider);
-      return ref.watch(travelRepositoryProvider).byId(id);
+      return ref
+          .watch(travelRepositoryProvider)
+          .byId(ref.watch(sessionProvider), id);
     });
 
 class TravelDetailScreen extends ConsumerWidget {

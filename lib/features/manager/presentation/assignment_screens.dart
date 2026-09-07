@@ -462,6 +462,7 @@ class _TaskAssignmentScreenState extends ConsumerState<TaskAssignmentScreen> {
     await ref
         .read(taskRepositoryProvider)
         .create(
+          session,
           FieldTask(
             id: const Uuid().v4(),
             title: _title.text.trim(),
@@ -690,7 +691,11 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
                       onComplete: () async {
                         await ref
                             .read(taskRepositoryProvider)
-                            .updateStatus(tasks[i].id, TaskStatus.completed);
+                            .updateStatus(
+                              ref.read(sessionProvider),
+                              tasks[i].id,
+                              TaskStatus.completed,
+                            );
                         ref.bumpRevision();
                       },
                     ),
@@ -936,7 +941,11 @@ class TaskCalendarScreen extends ConsumerWidget {
                       onComplete: () async {
                         await ref
                             .read(taskRepositoryProvider)
-                            .updateStatus(today[i].id, TaskStatus.completed);
+                            .updateStatus(
+                              ref.read(sessionProvider),
+                              today[i].id,
+                              TaskStatus.completed,
+                            );
                         ref.bumpRevision();
                       },
                     ),
@@ -1102,10 +1111,12 @@ class _NewTaskScreenState extends ConsumerState<NewTaskScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _submitting = true);
 
-    final me = ref.read(sessionProvider).employee;
+    final session = ref.read(sessionProvider);
+    final me = session.employee;
     await ref
         .read(taskRepositoryProvider)
         .create(
+          session,
           FieldTask(
             // Client-generated so a retry after a dropped connection cannot
             // create the same to-do twice.

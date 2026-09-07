@@ -381,6 +381,33 @@ that is expensive to unwind later.
   repository layer. Never filter by employee in a screen — the `ViewScope`
   switch changes the `employeeId` *asked of the repository*, it does not sift
   a list the screen already holds.
+- **A list that scopes correctly is not a permission.** An audit of the MR/ASM
+  boundary found five ways one person could reach another's records, and every
+  screen involved was already doing the right thing: the approval queue removed
+  the caller's own records, the lists filtered by employee, the assignment form
+  offered only the team. None of it protected anything, because the repository
+  took whatever it was handed and the record next door is one route parameter
+  away. `MockStore.requireVisible` and `requireOwner` are the two guards, and
+  `scope_boundary_test.dart` attacks each hole from a rep's session.
+  - **Decisions**: `_decide` checked nothing. A rep with an empty approval
+    queue could approve a colleague's leave, and a manager could approve their
+    own expense — `_project` removed self from the *list*, which is not where
+    it counts. Both rules now sit on the write.
+  - **Reads by id**: every `byId` took an id and no session, so any record was
+    one crafted route away. They take a `Session` and refuse anything outside
+    scope. **Refuse, not return empty** — a filtered-away record reads as
+    "there is nothing there", which is how a missing row gets blamed on the
+    rep who filed it.
+  - **Writes**: `update` is **owner-only**, stricter than reads. A manager may
+    *see* a rep's claim — that is what an approval queue is — and must not
+    rewrite it; approve and reject are the two things they may do, and both
+    leave an append-only trail. A rep could set a colleague's expense to
+    ₹99,999.
+  - **Tasks**: `updateStatus` took no session at all, so any id ticked off
+    anyone's work — a manager completing a rep's task is the manager reporting
+    the rep's progress for them. And `create` let an ASM assign work to their
+    own RSM: a picker that offers only the team is a picker, not a permission.
+    Same lesson as the export's `_target`.
 - Offline-capable records use **client-generated UUIDs** so a retry cannot
   duplicate them.
 

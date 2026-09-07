@@ -104,6 +104,32 @@ class MockStore {
     if (filterId != null && filterId != employeeId) return false;
     return visibleEmployeeIds(session).contains(employeeId);
   }
+
+  /// Refuses a record belonging to someone the caller cannot see.
+  ///
+  /// **Throws rather than returning empty.** A filtered-away record reads as
+  /// "there is nothing there", which is a different and much worse answer than
+  /// "not yours" — it is how a missing row gets blamed on the rep who filed
+  /// it. Every `byId` goes through this: a list that scopes correctly is no
+  /// protection at all when the record next door is one route parameter away.
+  void requireVisible(Session session, String employeeId, String what) {
+    if (!visibleEmployeeIds(session).contains(employeeId)) {
+      throw StateError('$what belongs to $employeeId, outside this scope');
+    }
+  }
+
+  /// Refuses a record the caller does not own.
+  ///
+  /// Stricter than [requireVisible] and used for **writes**. A manager can
+  /// *see* a rep's expense — that is the whole point of an approval queue —
+  /// and must not be able to rewrite it: approving and rejecting are the only
+  /// two things they may do to it, and both are recorded in an append-only
+  /// history. Correcting a record is the owner's job.
+  void requireOwner(Session session, String employeeId, String what) {
+    if (employeeId != session.employee.id) {
+      throw StateError('$what belongs to $employeeId, not the caller');
+    }
+  }
 }
 
 // ================================================================== auth ==
@@ -266,9 +292,12 @@ class MockClientRepository implements ClientRepository {
   }
 
   @override
-  Future<Client> byId(String id) async {
+  Future<Client> byId(Session session, String id) async {
     await _latency(140);
-    return _store.clients.firstWhere((c) => c.id == id);
+    final client = _store.clients.firstWhere((c) => c.id == id);
+    final owner = client.ownerEmployeeId;
+    if (owner != null) _store.requireVisible(session, owner, 'This client');
+    return client;
   }
 
   @override
@@ -279,8 +308,10 @@ class MockClientRepository implements ClientRepository {
   }
 
   @override
-  Future<Client> update(Client client) async {
+  Future<Client> update(Session session, Client client) async {
     await _latency(400);
+    final owner = client.ownerEmployeeId;
+    if (owner != null) _store.requireVisible(session, owner, 'This client');
     final index = _store.clients.indexWhere((c) => c.id == client.id);
     if (index >= 0) _store.clients[index] = client;
     return client;
@@ -328,9 +359,11 @@ class MockActivityRepository implements ActivityRepository {
   }
 
   @override
-  Future<Activity> byId(String id) async {
+  Future<Activity> byId(Session session, String id) async {
     await _latency(140);
-    return _store.activities.firstWhere((a) => a.id == id);
+    final activity = _store.activities.firstWhere((a) => a.id == id);
+    _store.requireVisible(session, activity.employeeId, 'This activity');
+    return activity;
   }
 
   @override
@@ -369,8 +402,9 @@ class MockActivityRepository implements ActivityRepository {
   }
 
   @override
-  Future<Activity> update(Activity activity) async {
+  Future<Activity> update(Session session, Activity activity) async {
     await _latency(400);
+    _store.requireOwner(session, activity.employeeId, 'This activity');
     _replace(activity);
     return activity;
   }
@@ -490,7 +524,7 @@ class MockTravelRepository implements TravelRepository {
   }
 
   @override
-  Future<TravelPlan> byId(String id) async =>
+  Future<TravelPlan> byId(Session session, String id) async =>
       _store.travelPlans.firstWhere((p) => p.id == id);
 
   @override
@@ -501,7 +535,8 @@ class MockTravelRepository implements TravelRepository {
   }
 
   @override
-  Future<TravelPlan> update(TravelPlan plan) async {
+  Future<TravelPlan> update(Session session, TravelPlan plan) async {
+    _store.requireOwner(session, plan.employeeId, 'This tour plan');
     await _latency(400);
     final index = _store.travelPlans.indexWhere((p) => p.id == plan.id);
     if (index >= 0) _store.travelPlans[index] = plan;
@@ -641,8 +676,11 @@ class MockExpenseRepository implements ExpenseRepository {
   }
 
   @override
-  Future<Expense> byId(String id) async =>
-      _store.expenses.firstWhere((e) => e.id == id);
+  Future<Expense> byId(Session session, String id) async {
+    final expense = _store.expenses.firstWhere((e) => e.id == id);
+    _store.requireVisible(session, expense.employeeId, 'This claim');
+    return expense;
+  }
 
   @override
   Future<Expense> create(Expense expense) async {
@@ -652,8 +690,9 @@ class MockExpenseRepository implements ExpenseRepository {
   }
 
   @override
-  Future<Expense> update(Expense expense) async {
+  Future<Expense> update(Session session, Expense expense) async {
     await _latency(400);
+    _store.requireOwner(session, expense.employeeId, 'This claim');
     final index = _store.expenses.indexWhere((e) => e.id == expense.id);
     if (index >= 0) _store.expenses[index] = expense;
     return expense;
@@ -1227,6 +1266,18 @@ class MockApprovalRepository implements ApprovalRepository {
   }) async {
     if (delay) await _latency(450);
 
+    // The same two rules `_project` applies to the *list*, applied where the
+    // decision is actually written. The screen builds its item from a list
+    // that scopes correctly and removes the caller's own records — and none of
+    // that protected anything, because `_decide` took whatever item it was
+    // handed. A rep with no approval queue at all could approve another
+    // employee's leave, and a manager could approve their own expense the
+    // moment anything put the item in front of them.
+    _store.requireVisible(session, item.employeeId, 'This record');
+    if (item.employeeId == session.employee.id) {
+      throw StateError('Nobody approves their own record');
+    }
+
     final event = ApprovalEvent(
       status: status,
       actorId: session.employee.id,
@@ -1301,16 +1352,27 @@ class MockTaskRepository implements TaskRepository {
   }
 
   @override
-  Future<FieldTask> create(FieldTask task) async {
+  Future<FieldTask> create(Session session, FieldTask task) async {
     await _latency(500);
+    // An ASM assigning to their own RSM is not a hierarchy, it is a bug — and
+    // the picker on the form is a picker, not a permission.
+    _store.requireVisible(session, task.assignedToId, 'That person');
     _store.tasks.add(task);
     return task;
   }
 
   @override
-  Future<FieldTask> updateStatus(String id, TaskStatus status) async {
+  Future<FieldTask> updateStatus(
+    Session session,
+    String id,
+    TaskStatus status,
+  ) async {
     await _latency(300);
     final i = _store.tasks.indexWhere((t) => t.id == id);
+    // Only the person it was given to. It took no session at all, so any id
+    // was enough to tick off anyone's work — and a manager marking a rep's
+    // task done is the manager reporting the rep's progress for them.
+    _store.requireOwner(session, _store.tasks[i].assignedToId, 'This task');
     final updated = _store.tasks[i].copyWith(
       status: status,
       completedAt: status == TaskStatus.completed ? DateTime.now() : null,

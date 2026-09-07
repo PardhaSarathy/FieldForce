@@ -22,7 +22,9 @@ final activityByIdProvider = FutureProvider.autoDispose.family<Activity, String>
   id,
 ) {
   ref.watch(dataRevisionProvider);
-  return ref.watch(activityRepositoryProvider).byId(id);
+  return ref
+      .watch(activityRepositoryProvider)
+      .byId(ref.watch(sessionProvider), id);
 });
 
 /// Full record of one activity (§17). Everything captured during the visit,

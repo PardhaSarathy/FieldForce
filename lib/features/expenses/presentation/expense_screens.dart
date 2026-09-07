@@ -30,7 +30,9 @@ final _expenseProvider = FutureProvider.autoDispose.family<Expense, String>((
   id,
 ) {
   ref.watch(dataRevisionProvider);
-  return ref.watch(expenseRepositoryProvider).byId(id);
+  return ref
+      .watch(expenseRepositoryProvider)
+      .byId(ref.watch(sessionProvider), id);
 });
 
 class ExpenseDetailScreen extends ConsumerWidget {
@@ -413,6 +415,7 @@ class _EditClaimFormState extends ConsumerState<_EditClaimForm> {
     // `copyWith`, never a rebuilt constructor: the id, the created date, the
     // day plan and the approval trail all have to survive a correction.
     await ref.read(expenseRepositoryProvider).update(
+          ref.read(sessionProvider),
           e.copyWith(
             categories: _categories.toList(),
             amount: entered,

@@ -358,7 +358,7 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
     );
 
     if (widget.isEditing) {
-      await repository.update(record);
+      await repository.update(session, record);
     } else {
       await repository.create(record);
     }
