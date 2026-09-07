@@ -525,85 +525,123 @@ class _QuickAddButton extends StatelessWidget {
 }
 
 void _showQuickActions(BuildContext context, {required bool isManager}) {
-  // A rep's centre button is Export.
+  // A rep's centre button is Export, and goes straight there.
   //
-  // It was a sheet of four shortcuts — Add activity, New client, New order,
-  // Tour plan — and every one of them is a tap away on the screen it belongs
-  // to: My Activity's own button, the Clients list, Orders, and Home's grid.
-  // The sheet was a second door onto four rooms that already had one.
-  //
-  // What had no door at all was the thing the office asks for every month:
-  // the four sheets. So the button goes straight to Export Data rather than
-  // opening a menu with one useful item in it.
-  //
-  // A manager's button is untouched — assigning work and setting targets are
-  // theirs, and neither is reachable from a rep's bar.
+  // Their sheet used to hold four shortcuts — Add activity, New client, New
+  // order, Tour plan — and every one of them is a tap away on the screen it
+  // belongs to. What had no door at all was the four sheets the office asks
+  // for every month.
   if (!isManager) {
     context.push(Routes.exportData);
     return;
   }
 
+  // A manager's sheet holds **both halves**. An area manager files their own
+  // day, calls their own clients and claims their own allowance *and* runs a
+  // team, so the sheet that used to offer only the management three now opens
+  // with the field actions above them — the same four a rep gets — and ends
+  // with Export, which managers could not reach at all.
   final actions = <(IconData, String, String, String)>[
-    ...[
-      (
-        Icons.assignment_outlined,
-        'Assign task',
-        'Give a team member a task',
-        Routes.taskAssignment,
-      ),
-      (
-        Icons.flag_outlined,
-        'Set targets',
-        'Assign monthly targets',
-        Routes.targetAssignment,
-      ),
-      (
-        Icons.event_busy_outlined,
-        'Apply leave',
-        'Request time off',
-        Routes.newLeave,
-      ),
-    ],
+    (
+      Icons.event_available_outlined,
+      'Add activity',
+      'Log or plan a client visit',
+      Routes.addActivity,
+    ),
+    (
+      Icons.person_add_alt_outlined,
+      'New client',
+      'Register a doctor, hospital or chemist',
+      Routes.newClient,
+    ),
+    (
+      Icons.shopping_bag_outlined,
+      'New order',
+      'Capture an order for a client',
+      Routes.newOrder,
+    ),
+    // Lands on the month, not a blank day. A tour plan is submitted whole,
+    // so "add" starts with the calendar showing which days are still empty.
+    (Icons.map_outlined, 'Tour plan', 'Plan next month', Routes.travelPlans),
+    (
+      Icons.assignment_outlined,
+      'Assign task',
+      'Give a team member a task',
+      Routes.taskAssignment,
+    ),
+    (
+      Icons.flag_outlined,
+      'Set targets',
+      'Assign monthly targets',
+      Routes.targetAssignment,
+    ),
+    (
+      Icons.event_busy_outlined,
+      'Apply leave',
+      'Request time off',
+      Routes.newLeave,
+    ),
+    (
+      Icons.ios_share_outlined,
+      'Export data',
+      'Expenses, tour plan, DCR and clients',
+      Routes.exportData,
+    ),
   ];
 
   showModalBottomSheet<void>(
     context: context,
+    // Eight rows do not fit under a phone's fold. The sheet scrolls rather
+    // than clipping its last entry, which is how Export would have been
+    // invisible on the one screen that offers it.
+    isScrollControlled: true,
     builder: (sheetContext) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenH,
-              AppSpacing.sm,
-              AppSpacing.screenH,
-              AppSpacing.md,
-            ),
-            child: Row(
-              children: [Text('Add new', style: AppTypography.h3)],
-            ),
-          ),
-          for (final (icon, title, subtitle, route) in actions)
-            ListTile(
-              leading: Container(
-                width: 38,
-                height: 38,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: AppColors.brandSoft,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 19, color: AppColors.brand),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.8,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenH,
+                AppSpacing.sm,
+                AppSpacing.screenH,
+                AppSpacing.md,
               ),
-              title: Text(title, style: AppTypography.titleMd),
-              subtitle: Text(subtitle, style: AppTypography.caption),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                context.push(route);
-              },
+              child: Row(children: [Text('Add new', style: AppTypography.h3)]),
             ),
-          const SizedBox(height: AppSpacing.sm),
-        ],
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                children: [
+                  for (final (icon, title, subtitle, route) in actions)
+                    ListTile(
+                      leading: Container(
+                        width: 38,
+                        height: 38,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: AppColors.brandSoft,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(icon, size: 19, color: AppColors.brand),
+                      ),
+                      title: Text(title, style: AppTypography.titleMd),
+                      subtitle: Text(subtitle, style: AppTypography.caption),
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        context.push(route);
+                      },
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+        ),
       ),
     ),
   );

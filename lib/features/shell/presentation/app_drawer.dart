@@ -69,14 +69,14 @@ class AppDrawer extends ConsumerWidget {
                   label: 'To-Do',
                   route: Routes.tasks,
                 ),
-                // Reps only, for now — a manager's month is their team's, and
-                // these four sheets are one person's own records.
-                if (!session.isManager)
-                  (
-                    icon: Icons.ios_share_outlined,
-                    label: 'Export Data',
-                    route: Routes.exportData,
-                  ),
+                // Everyone in the field, manager included. The four sheets
+                // are one person's own records, and an area manager has their
+                // own month exactly as a rep does.
+                (
+                  icon: Icons.ios_share_outlined,
+                  label: 'Export Data',
+                  route: Routes.exportData,
+                ),
               ],
             ),
           (

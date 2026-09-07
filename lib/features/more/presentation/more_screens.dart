@@ -37,8 +37,7 @@ class MoreScreen extends ConsumerWidget {
           (Icons.receipt_long_outlined, 'Expenses', Routes.expenses),
           (Icons.people_outline, 'Clients', Routes.clients),
           (Icons.assignment_outlined, 'To-Do', Routes.tasks),
-          if (!session.isManager)
-            (Icons.ios_share_outlined, 'Export Data', Routes.exportData),
+          (Icons.ios_share_outlined, 'Export Data', Routes.exportData),
         ],
       ),
       (

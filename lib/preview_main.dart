@@ -14,9 +14,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final container = ProviderContainer();
-  await container
-      .read(authControllerProvider.notifier)
-      .login('MR1001', 'demo1234');
+  // `?u=ASM201` signs in as someone else. The app is four different apps
+  // depending on who is holding it, and checking a manager's screen used to
+  // mean editing this file and rebuilding.
+  final code = Uri.base.queryParameters['u'] ?? 'MR1001';
+  await container.read(authControllerProvider.notifier).login(code, 'demo1234');
 
   runApp(
     UncontrolledProviderScope(

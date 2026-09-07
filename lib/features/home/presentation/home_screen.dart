@@ -35,9 +35,16 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
 
-    // A manager's "home" is their team's exceptions, not their own visit list.
-    if (session.isManager) return const ManagerDashboardScreen();
-
+    // An area manager gets **both halves, own day first**.
+    //
+    // Home used to hand a manager straight to the team dashboard, on the
+    // argument that their home is their team's exceptions. That is half true
+    // and it cost them the other half: an ASM files their own day plan, makes
+    // their own calls, plans their own month and claims their own allowance,
+    // and none of it was on the screen they open the app to — it was four
+    // taps away in the side menu. Their own day leads because it is theirs and
+    // it is now; the team's exceptions follow, whole and unchanged.
+    final isManager = session.isManager;
     final summaryAsync = ref.watch(todaySummaryProvider);
     final unread = ref.watch(unreadNotificationsProvider).valueOrNull ?? 0;
     final employee = session.employee;
@@ -56,13 +63,28 @@ class HomeScreen extends ConsumerWidget {
             _HomeTopBar(unreadCount: unread),
             Expanded(
               child: RefreshIndicator(
-                onRefresh: () async => ref.invalidate(todaySummaryProvider),
+                onRefresh: () async {
+                  ref.invalidate(todaySummaryProvider);
+                  // Both halves, since both are on the screen. A pull that
+                  // refreshed only the visits would leave a stale approval
+                  // count sitting under a freshly-updated day.
+                  if (isManager) {
+                    ref.invalidate(managerDashboardProvider);
+                    ref.invalidate(pendingApprovalsProvider);
+                  }
+                },
                 child: CustomScrollView(
                   slivers: [
                     SliverToBoxAdapter(
                       child: _HomeGreeting(
                         name: employee.name.split(' ').first,
                         territory: employee.headquarters,
+                        // A manager's old header named their role and their
+                        // territory. The greeting says it now, so folding the
+                        // two headers into one drops nothing — and two
+                        // headers would have put the name and the bell on
+                        // screen twice.
+                        role: isManager ? session.role.label : null,
                       ),
                     ),
                     summaryAsync.when(
@@ -109,6 +131,13 @@ class HomeScreen extends ConsumerWidget {
                               delay: AppMotion.staggerFor(2),
                               child: _TodaysVisits(summary: summary),
                             ),
+                            if (isManager) ...[
+                              const SizedBox(height: AppSpacing.section),
+                              Arrive(
+                                delay: AppMotion.staggerFor(3),
+                                child: const _TeamHalf(),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -120,6 +149,38 @@ class HomeScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The team half of a manager's Home.
+///
+/// It loads on its own rather than being threaded through the day summary
+/// above it: the two are different reads with different latencies, and making
+/// the visits wait for the team's figures would leave a manager staring at a
+/// spinner where their own morning should be.
+class _TeamHalf extends ConsumerWidget {
+  const _TeamHalf();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(managerDashboardProvider);
+    return async.when(
+      // Quiet on both. The rep half above is already on screen and useful; a
+      // spinner or an error panel under it would say the page had failed when
+      // only its second half had.
+      //
+      // Blocks, not a `SkeletonList` — that is a `ListView`, and an unbounded
+      // one nested in the sliver above has no height to lay out in.
+      loading: () => const Column(
+        children: [
+          Skeleton(height: 92, radius: AppRadius.lg),
+          SizedBox(height: AppSpacing.cardGap),
+          Skeleton(height: 140, radius: AppRadius.lg),
+        ],
+      ),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (data) => ManagerTeamSections(data: data),
     );
   }
 }
@@ -200,10 +261,17 @@ class _HomeTopBar extends ConsumerWidget {
 /// The greeting, which scrolls away. It is a welcome, not a control — there is
 /// no reason to spend pinned height on it.
 class _HomeGreeting extends StatelessWidget {
-  const _HomeGreeting({required this.name, required this.territory});
+  const _HomeGreeting({
+    required this.name,
+    required this.territory,
+    this.role,
+  });
 
   final String name;
   final String territory;
+
+  /// Shown for a manager, whose own header used to carry it.
+  final String? role;
 
   @override
   Widget build(BuildContext context) {
@@ -220,8 +288,14 @@ class _HomeGreeting extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '${Fmt.weekday(now)} · ${Fmt.date(now)} · $territory',
+            [
+              Fmt.weekday(now),
+              Fmt.date(now),
+              territory,
+              ?role,
+            ].join(' · '),
             style: AppTypography.caption,
+            maxLines: 2,
           ),
           const SizedBox(height: AppSpacing.sm),
           Text('${Fmt.greeting()}, $name', style: AppTypography.h1),

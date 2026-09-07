@@ -60,27 +60,7 @@ class ManagerDashboardScreen extends ConsumerWidget {
                   unreadCount: unread,
                 ),
                 const SizedBox(height: AppSpacing.xl),
-
-                if (_hasExceptions(data)) ...[
-                  const SectionHeader(title: 'Needs your attention'),
-                  _ExceptionList(data: data),
-                  const SizedBox(height: AppSpacing.section),
-                ],
-
-                const SectionHeader(title: 'Team today'),
-                _TeamTodayCard(data: data),
-                const SizedBox(height: AppSpacing.section),
-
-                SectionHeader(
-                  title: 'This month',
-                  actionLabel: 'Reports',
-                  onAction: () => navigateTo(context, Routes.reports),
-                ),
-                _MonthPerformance(data: data),
-                const SizedBox(height: AppSpacing.section),
-
-                const SectionHeader(title: 'Manage'),
-                const _ManagerActions(),
+                ManagerTeamSections(data: data),
               ],
             ),
           ),
@@ -89,11 +69,58 @@ class ManagerDashboardScreen extends ConsumerWidget {
     );
   }
 
-  static bool _hasExceptions(ManagerDashboard d) =>
+}
+
+/// The team half of a manager's home, without a header or a scroll view of
+/// its own.
+///
+/// Split out so it can sit **under** the manager's own day on Home. An area
+/// manager is a field person who also runs a team: they file their own day
+/// plan, make their own calls and claim their own allowance, and none of that
+/// was on their home screen — it opened straight onto the team. Both halves
+/// are here now, in the order the day runs, and nothing was dropped from
+/// either.
+class ManagerTeamSections extends StatelessWidget {
+  const ManagerTeamSections({super.key, required this.data});
+
+  final ManagerDashboard data;
+
+  /// Exceptions lead, because a manager opening the app needs to know what is
+  /// wrong, not what is normal.
+  static bool hasExceptions(ManagerDashboard d) =>
       d.pendingApprovals > 0 ||
       d.behindPlanCount > 0 ||
       d.unverifiedVisits > 0 ||
       (d.teamSize > 0 && d.presentToday < d.teamSize);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (hasExceptions(data)) ...[
+          const SectionHeader(title: 'Needs your attention'),
+          _ExceptionList(data: data),
+          const SizedBox(height: AppSpacing.section),
+        ],
+
+        const SectionHeader(title: 'Team today'),
+        _TeamTodayCard(data: data),
+        const SizedBox(height: AppSpacing.section),
+
+        SectionHeader(
+          title: 'This month',
+          actionLabel: 'Reports',
+          onAction: () => navigateTo(context, Routes.reports),
+        ),
+        _MonthPerformance(data: data),
+        const SizedBox(height: AppSpacing.section),
+
+        const SectionHeader(title: 'Manage'),
+        const _ManagerActions(),
+      ],
+    );
+  }
 }
 
 class _ManagerHeader extends ConsumerWidget {
@@ -548,11 +575,25 @@ class _ManagerActions extends StatelessWidget {
         vertical: AppSpacing.md,
         horizontal: AppSpacing.sm,
       ),
+      // Row height from the text, not from an aspect ratio.
+      //
+      // `childAspectRatio: 1.15` derives the tile's height from its *width*,
+      // so the label has whatever room the column happens to leave — and at a
+      // large text size "Performance" wraps to two lines and overflows the
+      // tile. This is the same mistake the calendars made before they were
+      // merged, and it has the same fix: measure the content.
       child: GridView.count(
         crossAxisCount: 3,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: 1.15,
+        mainAxisExtent:
+            22 +
+            AppSpacing.sm +
+            MediaQuery.textScalerOf(context).scale(
+                  AppTypography.caption.fontSize ?? 12,
+                ) *
+                2.6 +
+            AppSpacing.md,
         children: [
           for (final (icon, label, route) in items)
             InkWell(
@@ -563,11 +604,16 @@ class _ManagerActions extends StatelessWidget {
                 children: [
                   Icon(icon, size: 22, color: AppColors.brand),
                   const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    label,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],

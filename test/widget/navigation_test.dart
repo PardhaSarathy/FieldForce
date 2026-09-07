@@ -424,15 +424,77 @@ void main() {
       expect(find.text('DCR'), findsWidgets);
     });
 
-    testWidgets("a manager's centre button is untouched", (tester) async {
-      await pumpApp(tester, code: 'ASM201', size: const Size(430, 1800));
+    testWidgets("a manager's sheet keeps its three and gains the field's",
+        (tester) async {
+      // The merge, in one place. An area manager runs a team *and* works a
+      // territory, so the sheet that offered only the management three now
+      // opens with the same four a rep gets — and ends with Export, which a
+      // manager could not reach at all.
+      await pumpApp(tester, code: 'ASM201', size: const Size(430, 2400));
 
       await tester.tap(find.byTooltip('Add'));
       await settle(tester);
 
       expect(find.text('Add new'), findsOneWidget);
-      expect(find.text('Assign task'), findsOneWidget);
-      expect(find.text('Set targets'), findsOneWidget);
+      for (final item in [
+        'Add activity',
+        'New client',
+        'New order',
+        'Tour plan',
+        'Assign task',
+        'Set targets',
+        'Apply leave',
+        'Export data',
+      ]) {
+        expect(find.text(item), findsOneWidget, reason: item);
+      }
+    });
+  });
+
+  group('an area manager gets both halves', () {
+    testWidgets('Home carries their own day above their team', (tester) async {
+      // Home used to hand a manager straight to the team dashboard, which cost
+      // them the other half of their job: an ASM files their own day plan,
+      // makes their own calls and claims their own allowance, and none of it
+      // was on the screen they open the app to.
+      await pumpApp(tester, code: 'ASM201', size: const Size(430, 2600));
+
+      // Their own day, and the modules that run it.
+      expect(find.text("TODAY'S PLANNED VISITS"), findsOneWidget);
+      expect(find.text('My Day Plan'), findsOneWidget);
+      expect(find.text('Expenses'), findsWidgets);
+
+      // And the team half, whole — nothing was dropped to make room.
+      expect(find.text('TEAM TODAY'), findsOneWidget);
+      expect(find.text('THIS MONTH'), findsOneWidget);
+      expect(find.text('MANAGE'), findsOneWidget);
+      expect(find.text('Approvals'), findsWidgets);
+
+      // The manager's own header named their role; the greeting says it now,
+      // so folding the two headers into one dropped nothing.
+      expect(find.textContaining('Area Sales Manager'), findsWidgets);
+    });
+
+    testWidgets('their own day leads, the team follows', (tester) async {
+      await pumpApp(tester, code: 'ASM201', size: const Size(430, 2600));
+
+      final visits = tester.getTopLeft(find.text("TODAY'S PLANNED VISITS")).dy;
+      final team = tester.getTopLeft(find.text('TEAM TODAY')).dy;
+      expect(visits, lessThan(team),
+          reason: 'their own day is theirs and it is now');
+    });
+
+    testWidgets('Export Data is in the index for a manager too', (tester) async {
+      await pumpApp(tester, code: 'ASM201', size: const Size(430, 1800));
+
+      await tester.tap(find.byIcon(Icons.menu));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Export Data'));
+      await settle(tester);
+
+      expect(find.text('Export Data'), findsWidgets);
+      expect(find.text('DCR'), findsWidgets);
     });
   });
 
