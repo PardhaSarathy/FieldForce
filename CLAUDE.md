@@ -500,27 +500,36 @@ an analytics dashboard.) Two rules have already been re-learned the hard way:
   - It shows `columns`, not a hardcoded three, so the six-across tablet layout
     hides nothing and shows no control — folding there would cost a tap to
     reveal a row that already fit.
-  - The control is **right-aligned and reads "See all"**, matching the visit
-    list's own See all below it in words and placement, so the two read as the
-    same kind of control. Home therefore carries two of them: a test reaching
-    for the grid's takes `.first`, which is the one higher in the tree.
-  - Two other shapes were built and rejected: a **"Show 3 more"** label (the
-    count is a better reason to tap, but two different phrasings of the same
-    control on one screen is worse than the repetition), and a **fourth
-    "More" tile** opening the side menu (tidier as an object, but the request
-    was for See all). `_TileShell` survives from that version and is worth
-    keeping — every tile in the row is built from it, and built separately
-    they drift.
-  - And still no heading. "QUICK ACTIONS" names the *widget*, which is what
-    the review called the AI-generated feel — and there is no honest content
-    name for a grid of six unrelated modules, which is why it went in the
-    first place.
-- **Never name a widget in the UI.** "Quick actions", "Overview", "At a
-  glance", "Key metrics" — these name the *pattern*, not the content, and a
-  screen full of them reads as assembled rather than written. The review's word
-  for it was "AI generated", and the fix is to say what is in the box:
-  "Today's planned visits". Six labelled tiles need no label of their own; the
-  `+` button adds things, so it is called Add.
+  - The heading and the control are one `SectionHeader`, **built exactly like
+    "Today's planned visits"** a few rows below: same object, same action
+    label, same place. Home therefore carries two of each; a test reaching for
+    the grid's See all takes `.first`, which is the one higher in the tree.
+  - The action label is `null` when there is nothing behind it — on a tablet
+    the grid runs six across and every tile is already on screen, so a "See
+    all" there would open what is open.
+  - Three other shapes were built and rejected: a **right-aligned link under
+    the grid**, a **"Show 3 more"** label (the count is a better reason to tap,
+    but two phrasings of one control on one screen is worse than the
+    repetition), and a **fourth "More" tile** opening the side menu (tidier as
+    an object). `_TileShell` survives from the last of those and is worth
+    keeping — every tile in the row is built from it, and tiles built
+    separately drift.
+  - **The "QUICK ACTIONS" heading is a client decision, not a drift.** It was
+    removed for naming the *widget* rather than the content — the rule below —
+    and it is back because the client asked for it directly, twice, and asked
+    for it in this exact shape. The counter-argument still stands and is
+    recorded in that rule; do not remove the heading again on the strength of
+    it without asking them.
+- **Never name a widget in the UI.** "Overview", "At a glance", "Key metrics"
+  — these name the *pattern*, not the content, and a screen full of them reads
+  as assembled rather than written. The review's word for it was "AI
+  generated", and the fix is to say what is in the box: "Today's planned
+  visits". The `+` button adds things, so it is called Add.
+  - **"Quick actions" is the one standing exception**, restored on the
+    client's direct request. It is the canonical example of this rule and it
+    is still a widget name; it stays because they asked for it in that shape
+    and repeated the ask. Keep the rule for everything else, and do not cite
+    the heading as precedent.
 
 ## Motion and feedback
 

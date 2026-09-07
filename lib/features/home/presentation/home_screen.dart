@@ -851,10 +851,16 @@ class _QuickActionsGridState extends State<_QuickActionsGrid> {
   Widget build(BuildContext context) {
     const actions = _QuickActionsGrid.actions;
 
-    // No heading. It said "QUICK ACTIONS", which names the *widget* rather
-    // than the content — the tell of a screen assembled from patterns instead
-    // of written for a rep. Labelled tiles need no label of their own, and
-    // dropping it gave the block back about 30pt.
+    // Heading and "See all", built exactly like "Today's planned visits" a few
+    // rows below: same `SectionHeader`, same action label, same place.
+    //
+    // The heading was removed once for naming the *widget* rather than the
+    // content, which is the rule further down this file. It is back at the
+    // client's explicit request, twice asked — and the shape earns some of it
+    // back: a `SectionHeader` is the app's own object, so the block now
+    // matches the section under it instead of carrying a bare link floating
+    // beneath a grid. If this is ever reconsidered, the argument against is in
+    // the "Never name a widget" rule, not in a preference.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -885,6 +891,19 @@ class _QuickActionsGridState extends State<_QuickActionsGrid> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                SectionHeader(
+                  title: 'Quick actions',
+                  // Only when there is something behind it. On a tablet the
+                  // grid runs six across and every tile is already on screen,
+                  // so a "See all" there would open what is open.
+                  actionLabel: hidden > 0 || _expanded
+                      ? (_expanded ? 'Show less' : 'See all')
+                      : null,
+                  onAction: () {
+                    AppHaptics.selection();
+                    setState(() => _expanded = !_expanded);
+                  },
+                ),
                 GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -904,47 +923,6 @@ class _QuickActionsGridState extends State<_QuickActionsGrid> {
                   ),
                 ),
 
-                // Right-aligned, like the "See all" on the visit list below —
-                // same words, same place in the block, so the two read as the
-                // same kind of control rather than two inventions.
-                if (hidden > 0 || _expanded)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: GestureDetector(
-                      onTap: () {
-                        AppHaptics.selection();
-                        setState(() => _expanded = !_expanded);
-                      },
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.only(
-                          top: AppSpacing.sm,
-                          left: AppSpacing.md,
-                          right: AppSpacing.xs,
-                          bottom: AppSpacing.xs,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _expanded ? 'Show less' : 'See all',
-                              style: AppTypography.titleSm.copyWith(
-                                color: AppColors.brand,
-                              ),
-                            ),
-                            const SizedBox(width: 2),
-                            Icon(
-                              _expanded
-                                  ? Icons.keyboard_arrow_up_rounded
-                                  : Icons.keyboard_arrow_down_rounded,
-                              size: AppSizes.iconMd,
-                              color: AppColors.brand,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
               ],
             );
           },

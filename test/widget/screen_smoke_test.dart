@@ -127,12 +127,11 @@ void main() {
       // The regression this suite was written for: the day's list and
       // everything above it must actually be in the tree.
       expect(find.text("TODAY'S PLANNED VISITS"), findsOneWidget);
-      // Both headings are gone on purpose. "Next action" was a card repeating
-      // the first row of the list below it; "Quick actions" named the widget
-      // rather than the content, which is the thing that made the screen read
-      // as assembled rather than written.
+      // "Next action" stays gone — it was a card repeating the first row of
+      // the list below it. "Quick actions" is back at the client's request,
+      // built exactly like the visits header under it.
       expect(find.text('NEXT ACTION'), findsNothing);
-      expect(find.text('QUICK ACTIONS'), findsNothing);
+      expect(find.text('QUICK ACTIONS'), findsOneWidget);
       // The module tiles are still there, they simply have no label of their
       // own any more.
       expect(find.text('My Day Plan'), findsOneWidget);
@@ -780,12 +779,13 @@ void main() {
         expect(find.text(label), findsNothing, reason: '$label folded');
       }
 
-      // Still no heading: "QUICK ACTIONS" names the widget rather than the
-      // content, which is what the review called AI-generated.
-      expect(find.text('QUICK ACTIONS'), findsNothing);
+      // The heading and its "See all" are one `SectionHeader`, exactly like
+      // the visits section below — which is why Home now carries two of each.
+      expect(find.text('QUICK ACTIONS'), findsOneWidget);
+      expect(find.text("TODAY'S PLANNED VISITS"), findsOneWidget);
+      expect(find.text('See all'), findsNWidgets(2));
 
-      // The grid's own See all — the visit list below has one too, which is
-      // why this reaches for the first rather than the only.
+      // The grid's own See all is the first — it is higher in the tree.
       await showAllModules(tester);
       for (final label in ['Tour Plan', 'HR', 'Expenses']) {
         expect(find.text(label), findsOneWidget, reason: '$label missing');
