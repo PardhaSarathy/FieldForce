@@ -257,50 +257,8 @@ class MockDataset {
       territoryId: 'ter-1',
       territoryName: 'Mumbai South',
       headquarters: 'Mumbai',
-      managerId: 'emp-20',
-      managerName: 'Kavita Rao',
       joiningDate: DateTime(2017, 2, 6),
       bloodGroup: 'B-',
-    ),
-    Employee(
-      id: 'emp-20',
-      employeeCode: 'RSM301',
-      name: 'Kavita Rao',
-      role: UserRole.rsm,
-      designation: 'Regional Sales Manager',
-      mobile: '9810022000',
-      email: 'kavita.rao@pharmaconnect.in',
-      territoryId: 'ter-1',
-      territoryName: 'West Region',
-      headquarters: 'Mumbai',
-      managerId: 'emp-30',
-      managerName: 'Arun Mehta',
-      joiningDate: DateTime(2014, 7, 21),
-    ),
-    Employee(
-      id: 'emp-30',
-      employeeCode: 'NSM401',
-      name: 'Arun Mehta',
-      role: UserRole.nsm,
-      designation: 'National Sales Manager',
-      mobile: '9800033000',
-      email: 'arun.mehta@pharmaconnect.in',
-      territoryId: 'ter-1',
-      territoryName: 'India',
-      headquarters: 'Mumbai',
-      joiningDate: DateTime(2011, 3, 14),
-    ),
-    Employee(
-      id: 'emp-99',
-      employeeCode: 'ADM001',
-      name: 'System Administrator',
-      role: UserRole.admin,
-      designation: 'System Owner',
-      mobile: '9800000000',
-      email: 'admin@pharmaconnect.in',
-      territoryId: 'ter-1',
-      territoryName: 'All',
-      headquarters: 'Mumbai',
     ),
   ];
 
@@ -884,18 +842,18 @@ class MockDataset {
 
   // ============================================================== field ops ==
 
-  /// Everyone who files expenses, leave and tour plans — that is every
-  /// employee except the system owner. Managers were previously excluded,
-  /// which left their Expenses, Travel and Leave screens completely empty.
-  late final List<Employee> fieldForce =
-      employees.where((e) => e.role != UserRole.admin).toList();
+  /// Everyone who files expenses, leave and tour plans.
+  ///
+  /// That is now everybody: the app holds two roles and both work a territory.
+  /// It used to exclude the system owner, who no longer signs in here.
+  late final List<Employee> fieldForce = employees;
 
-  /// Managers who still do field work: an ASM runs joint calls with their reps
-  /// and an RSM does market visits, so both have a real day plan. An NSM does
-  /// not, and seeding them one would be fiction.
-  late final List<Employee> fieldManagers = employees
-      .where((e) => e.role == UserRole.asm || e.role == UserRole.rsm)
-      .toList();
+  /// Managers who still do field work — an area manager runs joint calls with
+  /// their reps, so they have a real day plan of their own. This stays a
+  /// filter rather than becoming `[the ASM]`, because there will be more of
+  /// them: the app does not change, only the number of people in it.
+  late final List<Employee> fieldManagers =
+      employees.where((e) => e.role == UserRole.asm).toList();
 
   late final List<Expense> expenses = _buildExpenses();
 

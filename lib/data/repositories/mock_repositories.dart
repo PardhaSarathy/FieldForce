@@ -106,7 +106,6 @@ class MockStore {
       DataScope.self => {session.employee.id},
       DataScope.subtree =>
         _data.subtreeOf(session.employee.id).map((e) => e.id).toSet(),
-      DataScope.global => _data.employees.map((e) => e.id).toSet(),
     };
   }
 
@@ -154,9 +153,9 @@ class MockAuthRepository implements AuthRepository {
   Session? _current;
 
   /// Any employee code from the seed signs in, with any non-empty password.
-  /// This lets the whole role matrix be explored without a backend: sign in as
-  /// MR1001 for the field experience, ASM201 for the manager one, ADM001 for
-  /// administration.
+  /// This lets both roles be explored without a backend: MR1001 for the field
+  /// experience, ASM201 for the manager one — which is the whole matrix now
+  /// that the office layers live on the web rather than on the phone.
   @override
   Future<Session> login({
     required String employeeCode,
@@ -237,10 +236,6 @@ class MockEmployeeRepository implements EmployeeRepository {
     final ids = _store.visibleEmployeeIds(session)..remove(session.employee.id);
     return _store.seed.employees
         .where((e) => ids.contains(e.id))
-        // The system owner is not part of anyone's sales team. Without this a
-        // national manager's team list showed "System Administrator" while the
-        // dashboard count, which walks the reporting tree, did not.
-        .where((e) => e.role != UserRole.admin)
         .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
   }
@@ -607,10 +602,15 @@ class MockTravelRepository implements TravelRepository {
             h.date.day: h.name,
       },
       weekOff: MockStore.weekOff,
-      // The rule this month was judged under, if it has been sent. Recomputed
-      // on every read before, from the week-off day and holiday list in force
-      // *now* — so moving the company's week off, or adding a holiday to a
-      // past date, silently restated every month already approved.
+      // Frozen the moment the month went in, and computed until then.
+      //
+      // The denominator an approver signed against must not move afterwards.
+      // It was recomputed on every read from the week-off rule in force *now*,
+      // so moving the company's week off — or adding a holiday to a past date
+      // — silently restated every month already approved: a September that
+      // was 26 of 26 and complete comes back 25, with the Sundays the rep did
+      // plan suddenly counting and the Tuesdays they planned no longer doing.
+      // Nobody edited anything; the question changed underneath the answer.
       judgedUnder: _store.tourRules['$id-${month.year}-${month.month}'],
     );
   }
@@ -646,8 +646,8 @@ class MockTravelRepository implements TravelRepository {
     if (!current.isComplete) return 0;
 
     // Keep the rule this month was judged against, before anything can change
-    // it. The rule rather than the figures it produced, so everything derived
-    // from it stays consistent — see the note on [TourRule].
+    // it. The rule rather than the figures, so everything derived from it
+    // stays consistent — see the note on [TourRule].
     _store.tourRules['${session.employee.id}-${month.year}-${month.month}'] =
         TourRule(
       weekOff: MockStore.weekOff,

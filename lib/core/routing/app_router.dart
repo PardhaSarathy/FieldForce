@@ -6,7 +6,6 @@ import '../../features/activity/presentation/activity_detail_screen.dart';
 import '../../features/activity/presentation/activity_list_screen.dart';
 import '../../features/activity/presentation/add_activity_screen.dart';
 import '../../features/activity/presentation/visit_flow_screen.dart';
-import '../../features/admin/presentation/admin_screens.dart';
 import '../../features/approvals/presentation/approval_screens.dart';
 import '../../features/authentication/presentation/auth_flow_screens.dart';
 import '../../features/authentication/presentation/login_screen.dart';
@@ -37,7 +36,7 @@ final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 /// always lands on that tab's screen rather than on whichever route happened
 /// to be declared first in a shared branch.
 final _shellKeys = [
-  for (var i = 0; i < 10; i++)
+  for (var i = 0; i < 7; i++)
     GlobalKey<NavigatorState>(debugLabel: 'branch$i'),
 ];
 
@@ -69,22 +68,17 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       if (!isAuthed) return onAuthRoute ? null : Routes.login;
 
-      if (onAuthRoute) {
-        // Land each role on the home its navigation actually starts from.
-        return auth.session.isAdmin ? Routes.admin : Routes.home;
-      }
+      if (onAuthRoute) return Routes.home;
 
-      // A field user has no business on manager or admin routes.
+      // A rep has no business on a manager's routes. The admin guard that sat
+      // beside this went with the role: the office has a console of its own,
+      // and there is nothing left in the app for an administrator to open.
       final session = auth.session;
       final isManagerRoute = path.startsWith('/team') ||
           path.startsWith('/approvals') ||
           path.startsWith('/manage');
-      final isAdminRoute = path.startsWith('/admin');
 
-      if (isManagerRoute && !session.isManager && !session.isAdmin) {
-        return Routes.home;
-      }
-      if (isAdminRoute && !session.isAdmin) return Routes.home;
+      if (isManagerRoute && !session.isManager) return Routes.home;
 
       return null;
     },
@@ -170,42 +164,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // 6 — Admin dashboard
+          // 6 — To-Do (rep tab; a manager reaches it from the side menu)
           StatefulShellBranch(
             navigatorKey: _shellKeys[6],
-            routes: [
-              GoRoute(
-                path: Routes.admin,
-                builder: (_, _) => const AdminDashboardScreen(),
-              ),
-            ],
-          ),
-
-          // 7 — Admin users
-          StatefulShellBranch(
-            navigatorKey: _shellKeys[7],
-            routes: [
-              GoRoute(
-                path: Routes.adminUsers,
-                builder: (_, _) => const AdminUsersScreen(),
-              ),
-            ],
-          ),
-
-          // 8 — Admin master data
-          StatefulShellBranch(
-            navigatorKey: _shellKeys[8],
-            routes: [
-              GoRoute(
-                path: Routes.adminMasterData,
-                builder: (_, _) => const AdminMasterDataScreen(),
-              ),
-            ],
-          ),
-
-          // 9 — To-Do (rep tab; a manager reaches it from the side menu)
-          StatefulShellBranch(
-            navigatorKey: _shellKeys[9],
             routes: [
               GoRoute(
                 path: Routes.tasks,
@@ -428,15 +389,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, _) => const TaskAssignmentScreen(),
       ),
       GoRoute(path: Routes.newTask, builder: (_, _) => const NewTaskScreen()),
-
-      GoRoute(
-        path: Routes.adminGeoFence,
-        builder: (_, _) => const AdminGeoFenceScreen(),
-      ),
-      GoRoute(
-        path: Routes.adminApprovalRules,
-        builder: (_, _) => const AdminApprovalRulesScreen(),
-      ),
 
       GoRoute(
         path: Routes.notifications,

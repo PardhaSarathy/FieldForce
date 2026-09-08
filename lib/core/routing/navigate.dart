@@ -36,7 +36,6 @@ void navigateTo(BuildContext context, String route) {
   final session = container.read(sessionProvider);
   final tabs = destinationsFor(
     isManager: session.isManager,
-    isAdmin: session.isAdmin,
   ).map((d) => d.route);
 
   if (tabs.contains(route)) {

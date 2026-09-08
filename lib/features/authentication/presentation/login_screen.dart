@@ -34,8 +34,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// Tapping a demo account signs straight in as that role.
   ///
   /// Filling the field and leaving the user to press the button invited exactly
-  /// the failure this replaced: a stray keystroke turned "NSM401" into
-  /// "NSM401s" and the form rejected it. Nothing here needs typing.
+  /// the failure this replaced: a stray keystroke turned "ASM201" into
+  /// "ASM201s" and the form rejected it. Nothing here needs typing.
   Future<void> _signInAsDemoAccount(String code) async {
     ref.read(authControllerProvider.notifier).clearError();
 
@@ -212,6 +212,18 @@ class _Notice extends StatelessWidget {
 /// Visible only because this build has no backend. The mock auth accepts any
 /// seeded employee code, and surfacing them here is what makes the role matrix
 /// explorable without documentation.
+/// The accounts the login screen offers, and the one place they are listed.
+///
+/// Public so the test can assert against the *actual* panel rather than a
+/// hand-copied twin. It was copied, the two drifted the moment the roles were
+/// cut, and the test that existed to catch exactly that failed to compile
+/// instead of failing to pass — so three dead rows shipped on the login
+/// screen and nothing said a word.
+const demoAccounts = <(String, String)>[
+  ('MR1001', 'Field representative'),
+  ('ASM201', 'Area sales manager'),
+];
+
 class _DemoAccountsHint extends StatelessWidget {
   const _DemoAccountsHint({this.onPick});
 
@@ -222,13 +234,15 @@ class _DemoAccountsHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accounts = [
-      ('MR1001', 'Field representative'),
-      ('ASM201', 'Area sales manager'),
-      ('RSM301', 'Regional sales manager'),
-      ('NSM401', 'National sales manager'),
-      ('ADM001', 'Administrator'),
-    ];
+    // Two, because there are two.
+    //
+    // This listed five, and the last three signed in as accounts that had been
+    // removed with the roles — a row that looks like every other row, and
+    // fails. The rule this breaks is the one the app is strictest about: a
+    // control that cannot act must still answer. Here the honest answer is not
+    // a message, it is deletion — RSM, NSM and Administrator are not roles
+    // somebody could be given, they are roles that no longer exist.
+    const accounts = demoAccounts;
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),

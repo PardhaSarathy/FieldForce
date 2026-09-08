@@ -121,7 +121,8 @@ void main() {
     // not their scope — so a manager with no records of their own opens them
     // empty. These assertions cover each role's own data, which is exactly
     // what an earlier seed was missing.
-    for (final code in ['MR1001', 'ASM201', 'RSM301', 'NSM401']) {
+    // Two roles, which is the whole matrix on the phone.
+    for (final code in ['MR1001', 'ASM201']) {
       test('$code has personal records in every personal module', () async {
         final session = sessionFor(code);
         final id = session.employee.id;
@@ -158,7 +159,7 @@ void main() {
     }
 
     test('field-facing managers have a day plan of their own', () async {
-      for (final code in ['ASM201', 'RSM301']) {
+      for (final code in ['ASM201']) {
         final session = sessionFor(code);
         final day = await MockActivityRepository()
             .daySummary(session.employee.id, seed.today);
@@ -169,28 +170,35 @@ void main() {
       }
     });
 
-    test('the administrator is nobody\'s team member', () async {
-      for (final code in ['ASM201', 'RSM301', 'NSM401']) {
-        final team = await MockEmployeeRepository().teamOf(sessionFor(code));
-        expect(
-          team.where((e) => e.role == UserRole.admin),
-          isEmpty,
-          reason: 'the system owner appeared in $code\'s sales team',
-        );
-      }
+    test("a manager's team is their own reports and nobody else", () async {
+      // There is no administrator on the phone any more, and no layer above
+      // an ASM — the office roles live on the web. What replaces the old
+      // "the admin is nobody's team member" check is the stronger one: a
+      // manager's team is exactly the people who report to them.
+      final session = sessionFor('ASM201');
+      final team = await MockEmployeeRepository().teamOf(session);
+
+      expect(team, isNotEmpty, reason: 'a manager would open an empty screen');
+      expect(
+        team.every((e) => e.managerId == session.employee.id),
+        isTrue,
+        reason: 'somebody outside the reporting line is in the team list',
+      );
+      expect(
+        team.any((e) => e.id == session.employee.id),
+        isFalse,
+        reason: 'a manager is not a member of their own team',
+      );
     });
 
-    test('a national manager sees the whole organisation', () async {
-      final session = sessionFor('NSM401');
-      expect(session.scope, DataScope.global);
-
-      final team = await MockEmployeeRepository().teamOf(session);
-      // Everyone except themselves and the administrator.
-      expect(team.length, seed.employees.length - 2);
+    test('a representative has no team at all', () async {
+      final team = await MockEmployeeRepository().teamOf(sessionFor('MR1001'));
+      expect(team, isEmpty,
+          reason: 'a rep with a team would be a manager nobody appointed');
     });
 
     test('managers have approvals waiting and reps do not', () async {
-      for (final code in ['ASM201', 'RSM301', 'NSM401']) {
+      for (final code in ['ASM201']) {
         expect(await MockApprovalRepository().pending(sessionFor(code)),
             isNotEmpty,
             reason: '$code opens an empty approval centre');

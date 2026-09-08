@@ -82,10 +82,7 @@ abstract final class ShellBranch {
   static const reports = 3;
   static const chat = 4;
   static const resources = 5;
-  static const admin = 6;
-  static const adminUsers = 7;
-  static const adminMasterData = 8;
-  static const tasks = 9;
+  static const tasks = 6;
 }
 
 /// Navigation adapts to role (§13) while reusing one visual language.
@@ -99,43 +96,7 @@ abstract final class ShellBranch {
 /// the material they show a doctor, and their numbers. Chat moved to the top
 /// bar — it is checked, not navigated to, so it belongs with notifications
 /// rather than taking a quarter of the bar.
-List<NavDestination> destinationsFor({
-  required bool isManager,
-  required bool isAdmin,
-}) {
-  if (isAdmin) {
-    return const [
-      NavDestination(
-        label: 'Dashboard',
-        icon: Icons.dashboard_outlined,
-        activeIcon: Icons.dashboard,
-        route: Routes.admin,
-        branch: ShellBranch.admin,
-      ),
-      NavDestination(
-        label: 'Users',
-        icon: Icons.people_outline,
-        activeIcon: Icons.people,
-        route: Routes.adminUsers,
-        branch: ShellBranch.adminUsers,
-      ),
-      NavDestination(
-        label: 'Master Data',
-        icon: Icons.storage_outlined,
-        activeIcon: Icons.storage,
-        route: Routes.adminMasterData,
-        branch: ShellBranch.adminMasterData,
-      ),
-      NavDestination(
-        label: 'Reports',
-        icon: Icons.bar_chart_outlined,
-        activeIcon: Icons.bar_chart,
-        route: Routes.reports,
-        branch: ShellBranch.reports,
-      ),
-    ];
-  }
-
+List<NavDestination> destinationsFor({required bool isManager}) {
   if (isManager) {
     return const [
       NavDestination(
@@ -219,7 +180,6 @@ class AppShell extends ConsumerWidget {
 
     final destinations = destinationsFor(
       isManager: session.isManager,
-      isAdmin: session.isAdmin,
     );
 
     // The bar highlights the tab whose branch is showing. A role never sees a
@@ -265,7 +225,6 @@ class AppShell extends ConsumerWidget {
         bottomNavigationBar: _BottomBar(
           destinations: destinations,
           currentIndex: selected,
-          showCentreGap: !session.isAdmin,
           isManager: session.isManager,
           onTap: (index) {
             AppHaptics.selection();
@@ -287,14 +246,12 @@ class _BottomBar extends StatelessWidget {
     required this.destinations,
     required this.currentIndex,
     required this.onTap,
-    required this.showCentreGap,
     this.isManager = false,
   });
 
   final List<NavDestination> destinations;
   final int currentIndex;
   final ValueChanged<int> onTap;
-  final bool showCentreGap;
   final bool isManager;
 
   @override
@@ -347,7 +304,7 @@ class _BottomBar extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   for (var i = 0; i < destinations.length; i++) ...[
-                    if (showCentreGap && i == 2)
+                    if (i == 2)
                       _QuickAddButton(isManager: isManager),
                     // Only the selected item flexes. The others are icon-only
                     // and size to their content — giving all four an equal

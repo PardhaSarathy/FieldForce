@@ -35,9 +35,6 @@ abstract final class Routes {
     chat,
     resources,
     tasks,
-    admin,
-    adminUsers,
-    adminMasterData,
   };
 
   // day plan — the morning intimation, not a schedule
@@ -153,12 +150,6 @@ abstract final class Routes {
   static const tasks = '/tasks';
   static const newTask = '/tasks/new';
 
-  // admin
-  static const admin = '/admin';
-  static const adminUsers = '/admin/users';
-  static const adminMasterData = '/admin/master-data';
-  static const adminGeoFence = '/admin/geo-fence';
-  static const adminApprovalRules = '/admin/approval-rules';
 
   // global
   static const notifications = '/notifications';

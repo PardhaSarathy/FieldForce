@@ -65,16 +65,6 @@ class MoreScreen extends ConsumerWidget {
             (Icons.payments_outlined, 'Travel rates', Routes.rateAssignment),
           ],
         ),
-      if (session.isAdmin)
-        (
-          'Administration',
-          [
-            (Icons.people_alt_outlined, 'Users', Routes.adminUsers),
-            (Icons.storage_outlined, 'Master data', Routes.adminMasterData),
-            (Icons.my_location_outlined, 'Geo-fence', Routes.adminGeoFence),
-            (Icons.rule_outlined, 'Approval rules', Routes.adminApprovalRules),
-          ],
-        ),
       (
         'Account',
         [

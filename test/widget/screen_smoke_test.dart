@@ -19,7 +19,6 @@ import 'package:pharmaconnect/features/activity/presentation/activity_list_scree
 import 'package:pharmaconnect/features/activity/presentation/add_activity_screen.dart';
 import 'package:pharmaconnect/features/activity/presentation/visit_flow_screen.dart';
 import 'package:pharmaconnect/features/activity/presentation/widgets/call_report_form.dart';
-import 'package:pharmaconnect/features/admin/presentation/admin_screens.dart';
 import 'package:pharmaconnect/features/approvals/presentation/approval_screens.dart';
 import 'package:pharmaconnect/features/business/presentation/business_screens.dart';
 import 'package:pharmaconnect/features/business/presentation/order_screens.dart';
@@ -641,30 +640,6 @@ void main() {
     });
   });
 
-  group('admin screens render', () {
-    testWidgets('Admin dashboard', (tester) async {
-      await pumpScreen(tester, const AdminDashboardScreen(), code: 'ADM001');
-      expect(find.text('Administration'), findsOneWidget);
-    });
-
-    testWidgets('Users', (tester) async {
-      await pumpScreen(tester, const AdminUsersScreen(), code: 'ADM001');
-    });
-
-    testWidgets('Master data', (tester) async {
-      await pumpScreen(tester, const AdminMasterDataScreen(), code: 'ADM001');
-    });
-
-    testWidgets('Geo-fence configuration', (tester) async {
-      await pumpScreen(tester, const AdminGeoFenceScreen(), code: 'ADM001');
-      expect(find.text('Geo-fence'), findsOneWidget);
-    });
-
-    testWidgets('Approval rules', (tester) async {
-      await pumpScreen(tester, const AdminApprovalRulesScreen(), code: 'ADM001');
-    });
-  });
-
   group('home header and navigation', () {
     testWidgets('top bar carries the brand, greeting sits below it',
         (tester) async {
@@ -885,12 +860,10 @@ void main() {
     });
 
     test('bottom navigation has four tabs and no More', () {
-      for (final (isManager, isAdmin) in [
-        (false, false),
-        (true, false),
-        (false, true),
-      ]) {
-        final tabs = destinationsFor(isManager: isManager, isAdmin: isAdmin);
+      // Two tab sets, not three. The admin's went with the role — the office
+      // has a console of its own now.
+      for (final isManager in [false, true]) {
+        final tabs = destinationsFor(isManager: isManager);
         expect(tabs, hasLength(4));
         expect(tabs.map((t) => t.label), isNot(contains('More')));
       }
@@ -899,14 +872,14 @@ void main() {
     test('a rep gets Home, To-Do, Resources and Reports', () {
       // Chat moved to the top bar: it is checked, not navigated to.
       expect(
-        destinationsFor(isManager: false, isAdmin: false).map((t) => t.label),
+        destinationsFor(isManager: false).map((t) => t.label),
         ['Home', 'To-Do', 'Resources', 'Reports'],
       );
     });
 
     test('a manager keeps Activity and Team', () {
       expect(
-        destinationsFor(isManager: true, isAdmin: false).map((t) => t.label),
+        destinationsFor(isManager: true).map((t) => t.label),
         ['Home', 'Activity', 'Team', 'Reports'],
       );
     });
@@ -915,12 +888,8 @@ void main() {
       // The branch index is what `goBranch` acts on. If two tabs shared one,
       // or a tab pointed at a branch holding a different screen, the tap would
       // silently open the wrong destination.
-      for (final (isManager, isAdmin) in [
-        (false, false),
-        (true, false),
-        (false, true),
-      ]) {
-        final tabs = destinationsFor(isManager: isManager, isAdmin: isAdmin);
+      for (final isManager in [false, true]) {
+        final tabs = destinationsFor(isManager: isManager);
         expect(tabs.map((t) => t.branch).toSet(), hasLength(tabs.length));
         for (final tab in tabs) {
           expect(Routes.shellRoots, contains(tab.route),
@@ -1077,11 +1046,6 @@ void main() {
       ('Target assignment', const TargetAssignmentScreen(), 'ASM201'),
       ('Rate assignment', const RateAssignmentScreen(), 'ASM201'),
       ('Task assignment', const TaskAssignmentScreen(), 'ASM201'),
-      ('Admin dashboard', const AdminDashboardScreen(), 'ADM001'),
-      ('Admin users', const AdminUsersScreen(), 'ADM001'),
-      ('Admin master data', const AdminMasterDataScreen(), 'ADM001'),
-      ('Admin geo-fence', const AdminGeoFenceScreen(), 'ADM001'),
-      ('Admin approval rules', const AdminApprovalRulesScreen(), 'ADM001'),
     ];
 
     for (final (name, screen, code) in screens) {

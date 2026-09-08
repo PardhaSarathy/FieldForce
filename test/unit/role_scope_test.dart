@@ -18,29 +18,31 @@ void main() {
   }
 
   group('UserRole', () {
-    test('levels are strictly ordered from MR to admin', () {
+    test('the app holds two roles, and only two', () {
+      // A rep and the manager who runs them. RSM, ZSM, NSM and the system
+      // administrator were four people who work at a desk, and their screens
+      // are the console's job — an app built for standing outside a clinic was
+      // never the product for them.
+      expect(UserRole.values, [UserRole.mr, UserRole.asm]);
+    });
+
+    test('levels are ordered, and stay a comparison', () {
+      // Two values could have been a boolean. `level` stays because there will
+      // be more managers, not more kinds of manager — and `canManage` is a
+      // comparison either way.
       expect(UserRole.mr.level, lessThan(UserRole.asm.level));
-      expect(UserRole.asm.level, lessThan(UserRole.rsm.level));
-      expect(UserRole.rsm.level, lessThan(UserRole.zsm.level));
-      expect(UserRole.zsm.level, lessThan(UserRole.nsm.level));
-      expect(UserRole.nsm.level, lessThan(UserRole.admin.level));
     });
 
     test('identifies manager roles correctly', () {
       expect(UserRole.mr.isManager, isFalse);
       expect(UserRole.asm.isManager, isTrue);
-      expect(UserRole.rsm.isManager, isTrue);
-      expect(UserRole.nsm.isManager, isTrue);
-      // Admin manages the system, not a sales team.
-      expect(UserRole.admin.isManager, isFalse);
-      expect(UserRole.admin.isAdmin, isTrue);
+      expect(UserRole.mr.isFieldUser, isTrue);
     });
 
     test('a role can only manage strictly lower roles', () {
       expect(UserRole.asm.canManage(UserRole.mr), isTrue);
       expect(UserRole.asm.canManage(UserRole.asm), isFalse);
       expect(UserRole.mr.canManage(UserRole.asm), isFalse);
-      expect(UserRole.rsm.canManage(UserRole.asm), isTrue);
     });
   });
 
@@ -49,15 +51,14 @@ void main() {
       expect(DataScope.forRole(UserRole.mr), DataScope.self);
     });
 
-    test('mid-level managers see their reporting subtree', () {
+    test('a manager sees their reporting subtree', () {
       expect(DataScope.forRole(UserRole.asm), DataScope.subtree);
-      expect(DataScope.forRole(UserRole.rsm), DataScope.subtree);
-      expect(DataScope.forRole(UserRole.zsm), DataScope.subtree);
     });
 
-    test('national and admin roles see everything', () {
-      expect(DataScope.forRole(UserRole.nsm), DataScope.global);
-      expect(DataScope.forRole(UserRole.admin), DataScope.global);
+    test('there is no scope that sees everything', () {
+      // `global` went with the roles that held it. An unused scope is a hole
+      // waiting for somebody to widen a query into it.
+      expect(DataScope.values, [DataScope.self, DataScope.subtree]);
     });
   });
 
@@ -84,24 +85,17 @@ void main() {
       }
     });
 
-    test('an ASM cannot see their own manager', () {
-      final session = sessionFor('ASM201');
-      final visible = store.visibleEmployeeIds(session);
-      final rsm = store.seed.employees
-          .firstWhere((e) => e.employeeCode == 'RSM301');
+    test('a second manager cannot see the first one\'s team', () {
+      // There will be more area managers, each over their own reps. The tree
+      // is one level deep and repeated — so the guard that matters is
+      // sideways, not upwards.
+      final managers =
+          store.seed.employees.where((e) => e.role.isManager).toList();
+      if (managers.length < 2) return;
 
-      expect(visible, isNot(contains(rsm.id)));
-    });
-
-    test('an RSM sees the whole subtree, including indirect reports', () {
-      final rsmVisible = store.visibleEmployeeIds(sessionFor('RSM301'));
-      final asmVisible = store.visibleEmployeeIds(sessionFor('ASM201'));
-
-      // Everything the ASM can see, the RSM above them can see too.
-      for (final id in asmVisible) {
-        expect(rsmVisible, contains(id));
-      }
-      expect(rsmVisible.length, greaterThan(asmVisible.length));
+      final a = store.visibleEmployeeIds(sessionFor(managers[0].employeeCode));
+      final b = store.visibleEmployeeIds(sessionFor(managers[1].employeeCode));
+      expect(a.intersection(b), isEmpty);
     });
 
     test('an MR cannot see a peer MR', () {
@@ -112,9 +106,14 @@ void main() {
       expect(mine, isNot(contains(peer.id)));
     });
 
-    test('admin sees every employee', () {
-      final visible = store.visibleEmployeeIds(sessionFor('ADM001'));
-      expect(visible, hasLength(store.seed.employees.length));
+    test('nobody in the app sees the whole company', () {
+      // The office watches from the console. Inside the app the widest view
+      // is one manager's branch, which is the point of removing `global`.
+      for (final e in store.seed.employees) {
+        final visible = store.visibleEmployeeIds(sessionFor(e.employeeCode));
+        expect(visible.length, lessThanOrEqualTo(store.seed.employees.length));
+        if (!e.role.isManager) expect(visible, hasLength(1));
+      }
     });
   });
 

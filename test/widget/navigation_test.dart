@@ -825,22 +825,22 @@ void main() {
       await tester.tap(find.byIcon(Icons.event_note_outlined).last);
       await settle(tester);
       expect(find.text('My Activity'), findsOneWidget);
-    });
-  });
 
-  group('an administrator lands on the admin tabs', () {
-    testWidgets('Dashboard, Users, Master Data and Reports', (tester) async {
-      await pumpApp(tester, code: 'ADM001');
-
-      // Each admin tab is its own branch now: tapping Users used to switch to
-      // the branch at position 1 and land on the rep's activity list.
-      await tester.tap(find.byIcon(Icons.people_outline).last);
+      // Every tab lands on its own screen.
+      //
+      // This is what the deleted administrator group was really guarding: each
+      // tab is its own branch, and putting two routes in one makes the
+      // branch's default location whichever was declared first — so the other
+      // role's tab silently opens the wrong screen. Nothing throws and nothing
+      // is logged; the tap just goes somewhere else. The administrator that
+      // group signed in as no longer exists, and the rule it protected does,
+      // so it moves here rather than going away.
+      await tester.tap(find.byIcon(Icons.bar_chart_outlined).last);
       await settle(tester);
-      expect(find.text('My Activity'), findsNothing);
-
-      await tester.tap(find.byIcon(Icons.storage_outlined).last);
-      await settle(tester);
-      expect(find.text('My Activity'), findsNothing);
+      expect(find.text('My Activity'), findsNothing,
+          reason: 'Reports landed on the activity branch');
+      expect(find.text('My Team'), findsNothing,
+          reason: 'Reports landed on the team branch');
     });
   });
 }

@@ -7,13 +7,19 @@ import '../../core/theme/app_colors.dart';
 /// [level] drives data visibility: a user may only see records belonging to
 /// themselves or to employees beneath them in the reporting tree. See
 /// [DataScope] for how that is resolved.
+/// **The app is a field product: a rep, and the manager who runs them.**
+///
+/// It carried six roles — RSM, ZSM, NSM and a System Administrator above these
+/// two — and every one of them was somebody who works at a desk. Their screens
+/// are the console's job now: an owner watching the company, IT creating
+/// logins, HR and Finance reading the month. A regional manager signing into a
+/// phone app built for standing outside a clinic was never the product.
+///
+/// `level` stays even at two values, because `canManage` is a comparison and a
+/// boolean pair would have to be rewritten the day a third field role appears.
 enum UserRole {
   mr('Medical Representative', 'MR', 1),
-  asm('Area Sales Manager', 'ASM', 2),
-  rsm('Regional Sales Manager', 'RSM', 3),
-  zsm('Zonal Sales Manager', 'ZSM', 4),
-  nsm('National Sales Manager', 'NSM', 5),
-  admin('System Administrator', 'Admin', 6);
+  asm('Area Sales Manager', 'ASM', 2);
 
   const UserRole(this.label, this.shortLabel, this.level);
 
@@ -22,10 +28,9 @@ enum UserRole {
   final int level;
 
   /// True for any role that manages a team (§40–§51).
-  bool get isManager => level >= UserRole.asm.level && this != UserRole.admin;
+  bool get isManager => level >= UserRole.asm.level;
 
   bool get isFieldUser => this == UserRole.mr;
-  bool get isAdmin => this == UserRole.admin;
 
   /// A manager may act on records belonging to strictly lower levels.
   bool canManage(UserRole other) => level > other.level;
@@ -42,15 +47,15 @@ enum DataScope {
   self,
 
   /// Own records plus every employee in the reporting subtree.
-  subtree,
+  subtree;
 
-  /// Everything. Admin and national roles.
-  global;
-
+  /// There is no `global` any more. It existed for the national manager and
+  /// the administrator, and with both gone nothing in the app could ever have
+  /// held it — an unused scope is a hole waiting for somebody to widen a query
+  /// into it.
   static DataScope forRole(UserRole role) => switch (role) {
     UserRole.mr => DataScope.self,
-    UserRole.asm || UserRole.rsm || UserRole.zsm => DataScope.subtree,
-    UserRole.nsm || UserRole.admin => DataScope.global,
+    UserRole.asm => DataScope.subtree,
   };
 }
 

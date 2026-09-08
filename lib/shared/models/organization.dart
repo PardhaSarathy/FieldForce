@@ -119,6 +119,5 @@ class Session {
   DataScope get scope => employee.scope;
 
   bool get isManager => role.isManager;
-  bool get isAdmin => role.isAdmin;
   bool get isFieldUser => role.isFieldUser;
 }

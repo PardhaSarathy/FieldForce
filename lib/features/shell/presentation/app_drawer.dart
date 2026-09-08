@@ -35,9 +35,8 @@ class AppDrawer extends ConsumerWidget {
           // An administrator owns the system, not a territory: they have no day
           // plan, expenses or tour plans of their own, so offering those here
           // would be eight guaranteed-empty screens.
-          if (!session.isAdmin)
-            (
-              'Field operations',
+          (
+            'Field operations',
               [
                 (
                   icon: Icons.note_add_outlined,
@@ -98,8 +97,7 @@ class AppDrawer extends ConsumerWidget {
           (
             'Workplace',
             [
-              if (!session.isAdmin)
-                (icon: Icons.badge_outlined, label: 'HR', route: Routes.hr),
+              (icon: Icons.badge_outlined, label: 'HR', route: Routes.hr),
               (
                 icon: Icons.chat_bubble_outline,
                 label: 'Chat',
@@ -158,37 +156,10 @@ class AppDrawer extends ConsumerWidget {
                 ),
               ],
             ),
-          if (session.isAdmin)
-            (
-              'Administration',
-              [
-                (
-                  icon: Icons.people_alt_outlined,
-                  label: 'Users',
-                  route: Routes.adminUsers,
-                ),
-                (
-                  icon: Icons.storage_outlined,
-                  label: 'Master Data',
-                  route: Routes.adminMasterData,
-                ),
-                (
-                  icon: Icons.my_location_outlined,
-                  label: 'Geo-fence',
-                  route: Routes.adminGeoFence,
-                ),
-                (
-                  icon: Icons.rule_outlined,
-                  label: 'Approval Rules',
-                  route: Routes.adminApprovalRules,
-                ),
-              ],
-            ),
           (
             'Account',
             [
-              if (!session.isAdmin)
-                (
+              (
                   icon: Icons.folder_outlined,
                   label: 'My Documents',
                   route: Routes.documents,
