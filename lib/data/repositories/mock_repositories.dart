@@ -34,6 +34,19 @@ class MockStore {
   /// `/master-data/allowances` behind the same call later.
   static const double dailyAllowance = 250;
 
+  /// Which weekday nobody plans or claims for.
+  ///
+  /// Reference data a company maintains, like the allowance above — some field
+  /// forces run Tuesday-off. It was `DateTime.sunday` written into four
+  /// separate places that all had to agree; this is the one they read.
+  static const int weekOff = DateTime.sunday;
+
+  /// The rule each submitted month was judged against.
+  ///
+  /// Keyed by employee and month. Written once, when the month goes in, and
+  /// never recomputed — see the note on `TourMonth.workingDays`.
+  final Map<String, TourRule> tourRules = {};
+
   final _data = MockDataset.instance;
 
   /// The specialty master list.
@@ -593,6 +606,12 @@ class MockTravelRepository implements TravelRepository {
           if (h.date.year == month.year && h.date.month == month.month)
             h.date.day: h.name,
       },
+      weekOff: MockStore.weekOff,
+      // The rule this month was judged under, if it has been sent. Recomputed
+      // on every read before, from the week-off day and holiday list in force
+      // *now* — so moving the company's week off, or adding a holiday to a
+      // past date, silently restated every month already approved.
+      judgedUnder: _store.tourRules['$id-${month.year}-${month.month}'],
     );
   }
 
@@ -625,6 +644,15 @@ class MockTravelRepository implements TravelRepository {
     // disables its button on a snapshot taken when it loaded; a month can
     // have lost a day since.
     if (!current.isComplete) return 0;
+
+    // Keep the rule this month was judged against, before anything can change
+    // it. The rule rather than the figures it produced, so everything derived
+    // from it stays consistent — see the note on [TourRule].
+    _store.tourRules['${session.employee.id}-${month.year}-${month.month}'] =
+        TourRule(
+      weekOff: MockStore.weekOff,
+      holidayDays: current.holidays.keys.toSet(),
+    );
 
     var sent = 0;
     for (var i = 0; i < _store.travelPlans.length; i++) {

@@ -219,11 +219,28 @@ class Expense {
 /// records underneath are still one [TravelPlan] per date; building a stored
 /// month object would give the app two places to disagree about what is
 /// planned.
+/// The rule a tour month was judged under, kept from the moment it went in.
+///
+/// The *rule* rather than the figures it produced. Freezing `workingDays`
+/// alone was tried first and was not enough: `plannedDays` went on counting
+/// against the live week-off day, so a month with a frozen denominator and a
+/// moving numerator reported five missing days out of nowhere. One frozen
+/// rule keeps every figure derived from it consistent; three frozen numbers
+/// is a promise to remember all three every time one is added.
+class TourRule {
+  const TourRule({required this.weekOff, required this.holidayDays});
+
+  final int weekOff;
+  final Set<int> holidayDays;
+}
+
 class TourMonth {
   const TourMonth({
     required this.month,
     required this.plans,
     this.holidays = const {},
+    this.weekOff = DateTime.sunday,
+    this.judgedUnder,
   });
 
   final DateTime month;
@@ -240,20 +257,58 @@ class TourMonth {
 
   int get totalDays => DateTime(month.year, month.month + 1, 0).day;
 
-  /// A day nobody is expected to plan: a Sunday, or a company holiday.
+  /// Which weekday nobody is expected to plan or claim for.
   ///
-  /// **Sunday is the week off, everywhere in this app.** It was not, and the
-  /// tour plan asked a rep to open four or five Sundays a month and tell it
-  /// what it already knew. A day that has one possible answer is not a
-  /// question. A rep who *does* work a Sunday — a camp, a conference — can
+  /// Sunday everywhere in this app, and a **setting** rather than a fact —
+  /// some field forces run Tuesday-off. It was `DateTime.sunday` written into
+  /// this method and three other places, all of which had to agree.
+  final int weekOff;
+
+  /// The rule in force when the month was sent. Null while it is a draft.
+  final TourRule? judgedUnder;
+
+  /// A day nobody is expected to plan: the week off, or a company holiday.
+  ///
+  /// **Sunday is the week off by default, everywhere in this app.** It was
+  /// not, and the tour plan asked a rep to open four or five Sundays a month
+  /// and tell it what it already knew. A day that has one possible answer is
+  /// not a question. A rep who *does* work one — a camp, a conference — can
   /// still tap it and say so; the default is what changed, not the freedom.
-  bool isOff(int day) =>
-      holidays.containsKey(day) ||
-      DateTime(month.year, month.month, day).weekday == DateTime.sunday;
+  ///
+  /// Once the month has gone in this answers from [judgedUnder] instead, so
+  /// every figure below it — working days, planned days, what is missing and
+  /// whether it was complete — is measured against the rule an approver
+  /// actually signed against rather than the one in force today.
+  bool isOff(int day) {
+    final rule = judgedUnder;
+    if (rule != null) {
+      return rule.holidayDays.contains(day) ||
+          DateTime(month.year, month.month, day).weekday == rule.weekOff;
+    }
+    return holidays.containsKey(day) ||
+        DateTime(month.year, month.month, day).weekday == weekOff;
+  }
 
   String? holidayName(int day) => holidays[day];
 
   /// The days that actually need an answer.
+  ///
+  /// **Frozen once the month has been sent.** This was computed every time it
+  /// was read, from the week-off rule and holiday list *in force right now* —
+  /// so the day a company moved its week off from Sunday to Tuesday, or HR
+  /// added a holiday to a past date, every month already approved silently
+  /// restated itself. September 2026 was 26 days and complete; under a
+  /// Tuesday week off the same record reads 25, and the Sundays the rep did
+  /// plan start counting while the Tuesdays they planned stop.
+  ///
+  /// Nobody edited anything. The question changed underneath the answer, and
+  /// an approver asked to explain a decision would be looking at figures they
+  /// never saw. The fence radius is kept on each visit and the allowance on
+  /// each claim for exactly this reason; this is the same rule, on the
+  /// denominator a whole month was judged against.
+  ///
+  /// The freezing happens in [isOff], not here, so [plannedDays] and
+  /// [missingDays] cannot drift away from this figure.
   int get workingDays {
     var n = 0;
     for (var d = 1; d <= totalDays; d++) {

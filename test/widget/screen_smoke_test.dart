@@ -331,6 +331,18 @@ void main() {
       );
 
       // The month never shuts, and the screen says so.
+      //
+      // Scrolled to rather than assumed on screen. The seed's "today" is the
+      // real date, so this list grows a row every day of the month — and a
+      // `ListView(children:)` only inflates the children in view, so the
+      // footnote's element stops existing once enough days precede it. The
+      // test passed on the 8th and failed on the 9th with nothing changed but
+      // the calendar, which is the worst kind of red.
+      await tester.scrollUntilVisible(
+        find.textContaining('No cut-off'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.textContaining('No cut-off'), findsOneWidget);
     });
 
