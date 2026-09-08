@@ -1048,9 +1048,14 @@ class MockHrRepository implements HrRepository {
   }
 
   @override
-  Future<List<Payslip>> payslips(String employeeId) async {
+  Future<List<Payslip>> payslips(Session session, String employeeId) async {
     await _latency();
-    return _store.seed.payslips;
+    // Owner-only, not merely scoped: a manager can see a rep's claim and must
+    // not see their pay. The parameter used to be accepted and thrown away,
+    // so every employee was served one shared list at one salary — the most
+    // sensitive figure in the app, and the same for everybody.
+    _store.requireOwner(session, employeeId, 'This payslip');
+    return _store.seed.payslips.where((p) => p.employeeId == employeeId).toList();
   }
 
   @override

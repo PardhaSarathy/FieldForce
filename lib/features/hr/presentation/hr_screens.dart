@@ -707,7 +707,9 @@ class PayslipsScreen extends ConsumerWidget {
 
 final _payslipsProvider = FutureProvider.autoDispose
     .family<List<Payslip>, String>(
-      (ref, id) => ref.watch(hrRepositoryProvider).payslips(id),
+      (ref, id) => ref
+          .watch(hrRepositoryProvider)
+          .payslips(ref.watch(sessionProvider), id),
     );
 
 class _PayslipCard extends StatefulWidget {

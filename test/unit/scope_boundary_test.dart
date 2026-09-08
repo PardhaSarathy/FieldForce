@@ -159,17 +159,23 @@ void main() {
     test('a manager cannot assign outside their own team', () async {
       // ASM201 could assign work to RSM301 — their own manager. A picker that
       // offers only the team is a picker, not a permission.
-      final outside = store.seed.employees.firstWhere(
-        (e) => !store.visibleEmployeeIds(manager).contains(e.id),
-      );
+      //
+      // The subject is a *fabricated* id rather than a real employee found by
+      // searching outside the subtree. With two mobile roles and one manager
+      // there is nobody outside it, so that search threw "No element" and the
+      // test failed before reaching its own assertion — a test that depended
+      // on the shape of the org chart rather than on the rule it was written
+      // for. An id that does not exist is the honest subject anyway: the
+      // attack is a crafted route parameter, not a colleague.
+      const outsideId = 'emp-not-in-this-tree';
       expect(
         () => MockTaskRepository().create(
           manager,
           FieldTask(
             id: 'probe',
             title: 'Outside the team',
-            assignedToId: outside.id,
-            assignedToName: outside.name,
+            assignedToId: outsideId,
+            assignedToName: 'Somebody else',
             assignedById: manager.employee.id,
             assignedByName: manager.employee.name,
             dueDate: DateTime(2026, 9),
@@ -197,6 +203,42 @@ void main() {
         ),
       );
       expect(saved.id, 'probe-ok');
+    });
+  });
+
+  group('pay is owner-only, not merely scoped', () {
+    // Stricter than every other read here. A manager may see a rep's expense
+    // claim — that is what an approval queue is — and must never see their
+    // pay. `payslips` took an employeeId and discarded it, returning one
+    // shared list to everyone: the most sensitive figure in the app, and the
+    // same for every person who asked.
+    test('a rep cannot read a colleague\'s payslips', () {
+      expect(
+        () => MockHrRepository().payslips(rep, teammate().id),
+        throwsStateError,
+      );
+    });
+
+    test('a manager cannot read their own rep\'s payslips', () {
+      expect(
+        () => MockHrRepository().payslips(manager, teammate().id),
+        throwsStateError,
+      );
+    });
+
+    test('everyone reads their own, and gets only their own', () async {
+      final own = await MockHrRepository().payslips(rep, rep.employee.id);
+      expect(own, isNotEmpty);
+      expect(own.every((p) => p.employeeId == rep.employee.id), isTrue);
+    });
+
+    test('two people are not paid the same figure', () async {
+      final repPay = await MockHrRepository().payslips(rep, rep.employee.id);
+      final mgrPay =
+          await MockHrRepository().payslips(manager, manager.employee.id);
+      // The seed served one list to everybody, so this passed by accident
+      // before: a rep and their manager on an identical salary.
+      expect(repPay.first.grossPay, isNot(mgrPay.first.grossPay));
     });
   });
 

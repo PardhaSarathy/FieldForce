@@ -189,7 +189,15 @@ abstract interface class HrRepository {
   Future<List<LeaveRequest>> leaves(Session session, {String? employeeId});
   Future<LeaveRequest> applyLeave(LeaveRequest request);
   Future<List<Holiday>> holidays(int year);
-  Future<List<Payslip>> payslips(String employeeId);
+  /// Payslips for one person, and **only ever the caller's own**.
+  ///
+  /// Stricter than everything else on this interface. A manager may see a
+  /// rep's expense claim — that is what an approval queue is — and must never
+  /// see their pay: on the phone there are two roles and neither has a
+  /// business reason for another person's salary. The session is the argument
+  /// that makes that enforceable; the old signature took an id and discarded
+  /// it, so any id returned the same list.
+  Future<List<Payslip>> payslips(Session session, String employeeId);
   Future<List<AppDocument>> documents(String employeeId);
 }
 

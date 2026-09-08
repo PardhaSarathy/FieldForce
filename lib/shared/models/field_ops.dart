@@ -573,6 +573,7 @@ class Holiday {
 class Payslip {
   const Payslip({
     required this.id,
+    required this.employeeId,
     required this.month,
     required this.grossPay,
     required this.deductions,
@@ -581,6 +582,18 @@ class Payslip {
   });
 
   final String id;
+
+  /// Whose pay this is.
+  ///
+  /// Required, and it was missing. The record carried a month and a set of
+  /// figures and nothing saying whose they were, which works only while the
+  /// list is fetched for whoever happens to be signed in — and the repository
+  /// took an `employeeId` and threw it away, so every employee was served the
+  /// same twelve payslips at the same salary. One API serving many people
+  /// cannot answer "whose", and a figure this sensitive must never be a
+  /// question the caller answers on the record's behalf.
+  final String employeeId;
+
   final DateTime month;
   final double grossPay;
   final double deductions;

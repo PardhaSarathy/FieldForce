@@ -1191,32 +1191,47 @@ class MockDataset {
         isOptional: true),
   ];
 
+  /// Twelve months for **every** employee, not twelve months shared.
+  ///
+  /// One list served to everybody meant a rep and their manager saw the same
+  /// salary, which is both wrong and the most sensitive figure in the app to
+  /// be wrong about. Incentive varies by month and the manager sits on a
+  /// higher base — a salary identical for everyone, every month, looks
+  /// synthetic because it is.
   late final List<Payslip> payslips = [
-    // Twelve months so the payslip list scrolls like a real record. Incentive
-    // varies by month — a salary that is identical every month looks synthetic.
-    for (var i = 0; i < 12; i++)
-      () {
-        final incentive = 3000.0 + ((i * 37) % 9) * 750;
-        final gross = 58000.0 + incentive;
-        return Payslip(
-          id: 'ps-$i',
-          month: DateTime(today.year, today.month - i, 1),
-          grossPay: gross,
-          deductions: 8400,
-          earnings: {
-            'Basic': 31000,
-            'HRA': 12400,
-            'Conveyance': 6000,
-            'Field Allowance': 8600,
-            'Incentive': incentive,
-          },
-          deductionBreakup: const {
-            'Provident Fund': 3720,
-            'Professional Tax': 200,
-            'TDS': 4480,
-          },
-        );
-      }(),
+    for (final emp in employees)
+      for (var i = 0; i < 12; i++)
+        () {
+          final uplift = emp.role == UserRole.asm ? 1.45 : 1.0;
+          final incentive = (3000.0 + ((i * 37) % 9) * 750) * uplift;
+          final basic = 31000.0 * uplift;
+          final hra = 12400.0 * uplift;
+          final conveyance = 6000.0 * uplift;
+          final field = 8600.0 * uplift;
+          final gross = basic + hra + conveyance + field + incentive;
+          final pf = 3720.0 * uplift;
+          const ptax = 200.0;
+          final tds = 4480.0 * uplift;
+          return Payslip(
+            id: 'ps-${emp.id}-$i',
+            employeeId: emp.id,
+            month: DateTime(today.year, today.month - i, 1),
+            grossPay: gross,
+            deductions: pf + ptax + tds,
+            earnings: {
+              'Basic': basic,
+              'HRA': hra,
+              'Conveyance': conveyance,
+              'Field Allowance': field,
+              'Incentive': incentive,
+            },
+            deductionBreakup: {
+              'Provident Fund': pf,
+              'Professional Tax': ptax,
+              'TDS': tds,
+            },
+          );
+        }(),
   ];
 
   late final List<AppDocument> documents = [
