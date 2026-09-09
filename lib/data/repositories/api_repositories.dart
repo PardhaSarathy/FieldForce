@@ -342,11 +342,7 @@ class ApiHrRepository implements HrRepository {
 /// two would disagree the first time either changed — and the copy in Dart is
 /// the one an attacker does not have to go through.
 class ApiEmployeeRepository implements EmployeeRepository {
-  ApiEmployeeRepository() : _seed = MockEmployeeRepository();
-
-  /// Geography only. Regions, territories, areas and clusters are seeded and
-  /// read-only in this phase; when they move, these three stop delegating.
-  final MockEmployeeRepository _seed;
+  ApiEmployeeRepository();
 
   static const _columns = '*, territories(name)';
 
@@ -404,14 +400,59 @@ class ApiEmployeeRepository implements EmployeeRepository {
     return rows.map(employeeFromRow).toList();
   }
 
-  @override
-  Future<List<Territory>> territories() => _seed.territories();
+  // ── geography, from the database ──────────────────────────────────
+  //
+  // These used to delegate to the seed, and that was a real bug rather than
+  // an acceptable gap. A live employee's `territoryId` is a Supabase uuid;
+  // the seeded areas are keyed by `ter-1`. So `areas(territoryId: <uuid>)`
+  // returned nothing, the day plan's HQ list was empty, the cluster list
+  // below it said "No clusters in this HQ", and the form could not be
+  // submitted at all.
+  //
+  // The tables exist and 0003 seeded them, so there was never a reason to
+  // read anywhere else. Row-level security scopes them to the caller's
+  // organisation.
 
   @override
-  Future<List<Area>> areas({String? territoryId}) =>
-      _seed.areas(territoryId: territoryId);
+  Future<List<Territory>> territories() async {
+    final rows = await db
+        .from('territories')
+        .select('id, name, hq')
+        .order('name', ascending: true);
+    return rows
+        .map((r) => Territory(
+              id: r['id'] as String,
+              name: r['name'] as String,
+              headquarters: r['hq'] as String? ?? '',
+            ))
+        .toList();
+  }
 
   @override
-  Future<List<Cluster>> clusters({String? areaId}) =>
-      _seed.clusters(areaId: areaId);
+  Future<List<Area>> areas({String? territoryId}) async {
+    var q = db.from('areas').select('id, name, territory_id');
+    if (territoryId != null) q = q.eq('territory_id', territoryId);
+    final rows = await q.order('name', ascending: true);
+    return rows
+        .map((r) => Area(
+              id: r['id'] as String,
+              name: r['name'] as String,
+              territoryId: r['territory_id'] as String,
+            ))
+        .toList();
+  }
+
+  @override
+  Future<List<Cluster>> clusters({String? areaId}) async {
+    var q = db.from('clusters').select('id, name, area_id');
+    if (areaId != null) q = q.eq('area_id', areaId);
+    final rows = await q.order('name', ascending: true);
+    return rows
+        .map((r) => Cluster(
+              id: r['id'] as String,
+              name: r['name'] as String,
+              areaId: r['area_id'] as String,
+            ))
+        .toList();
+  }
 }

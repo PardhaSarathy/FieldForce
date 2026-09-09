@@ -296,7 +296,15 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final client = _client;
-    if (client == null) return;
+    if (client == null) {
+      // Never a silent return: the tap would be swallowed and the button would
+      // look broken. Same defect as the client form's missing area.
+      AppHaptics.failure();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a client first.')),
+      );
+      return;
+    }
 
     setState(() => _submitting = true);
     final session = ref.read(sessionProvider);
@@ -480,7 +488,15 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
   Future<void> _create() async {
     if (!_formKey.currentState!.validate()) return;
     final client = _client;
-    if (client == null) return;
+    if (client == null) {
+      // Never a silent return: the tap would be swallowed and the button would
+      // look broken. Same defect as the client form's missing area.
+      AppHaptics.failure();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a client first.')),
+      );
+      return;
+    }
 
     setState(() => _submitting = true);
     final session = ref.read(sessionProvider);

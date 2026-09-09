@@ -731,7 +731,16 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_area == null) return;
+    if (_area == null) {
+      // Never a silent return. This one swallowed the tap and left the button
+      // looking broken — the exact failure `no_dead_controls_test` exists to
+      // catch, reached by a different road.
+      AppHaptics.failure();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a territory and an area first.')),
+      );
+      return;
+    }
 
     setState(() => _submitting = true);
     final session = ref.read(sessionProvider);
@@ -1014,6 +1023,11 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
                   // stale selection is cleared rather than left mismatched.
                   _area = null;
                 }),
+                // `required: true` was a label and nothing else: the form
+                // validated without it, then `_submit` returned silently on a
+                // null area and the button did nothing at all.
+                validator: (_) =>
+                    _territory == null ? 'Select a territory' : null,
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -1032,7 +1046,9 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
                   items: scoped,
                   value: _area,
                   itemLabel: (a) => a.name,
+                  enabled: scoped.isNotEmpty,
                   onChanged: (v) => setState(() => _area = v),
+                  validator: (_) => _area == null ? 'Select an area' : null,
                 );
               },
             ),

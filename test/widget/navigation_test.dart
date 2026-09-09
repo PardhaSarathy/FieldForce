@@ -376,6 +376,17 @@ void main() {
       expect(find.text('Expenses'), findsWidgets);
       // The month, not a flat list of receipts.
       expect(find.textContaining('claimed this month'), findsOneWidget);
+
+      // Scrolled to rather than expected on screen. The month grows a row per
+      // real day, so a footnote that fit under the list in September fell off
+      // the bottom of the test viewport a few days later — and the failure
+      // read as missing copy rather than as an unscrolled list.
+      await tester.scrollUntilVisible(
+        find.textContaining('No cut-off'),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await settle(tester);
       expect(find.textContaining('No cut-off'), findsOneWidget);
     });
 

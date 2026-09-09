@@ -261,6 +261,19 @@ enum WorkType {
 
   const WorkType(this.label);
   final String label;
+
+  /// A day nobody is working. There is no headquarters to name and no
+  /// territory to cover, so a form that demands them is asking a question with
+  /// no answer — which is exactly what it did: a rep filing sick leave could
+  /// not submit the day at all.
+  bool get isNotWorked => this == leave || this == holiday;
+
+  /// They are somewhere, for work. Every worked day has a headquarters.
+  bool get needsHeadquarters => !isNotWorked;
+
+  /// Only field work covers a cluster. An office day, a meeting and a training
+  /// happen at the HQ and cover nobody.
+  bool get needsCluster => this == fieldWork;
 }
 
 enum VisitPurpose {

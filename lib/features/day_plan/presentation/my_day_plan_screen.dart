@@ -159,6 +159,7 @@ class _MyDayPlanScreenState extends ConsumerState<MyDayPlanScreen> {
 
     setState(() => _submitting = true);
     final employee = ref.read(sessionProvider).employee;
+    final workType = _workType ?? WorkType.fieldWork;
     final now = DateTime.now();
 
     await ref
@@ -170,10 +171,12 @@ class _MyDayPlanScreenState extends ConsumerState<MyDayPlanScreen> {
             id: _existing?.id ?? const Uuid().v4(),
             employeeId: employee.id,
             date: DateTime(now.year, now.month, now.day),
-            workType: _workType ?? WorkType.fieldWork,
-            areaId: _hq?.id,
-            areaName: _hq?.name,
-            clusterName: _cluster?.name,
+            workType: workType,
+            // Cleared rather than carried: switching to Leave after picking an
+            // HQ must not file a leave day that claims a headquarters.
+            areaId: workType.needsHeadquarters ? _hq?.id : null,
+            areaName: workType.needsHeadquarters ? _hq?.name : null,
+            clusterName: workType.needsCluster ? _cluster?.name : null,
             status: ApprovalStatus.submitted,
             remarks: _remarks.text.trim().isEmpty ? null : _remarks.text.trim(),
             capturedAddress: _address,
@@ -193,6 +196,7 @@ class _MyDayPlanScreenState extends ConsumerState<MyDayPlanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final workType = _workType ?? WorkType.fieldWork;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('My Day Plan')),
@@ -232,43 +236,52 @@ class _MyDayPlanScreenState extends ConsumerState<MyDayPlanScreen> {
                   ),
                   const SizedBox(height: AppSpacing.lg),
 
-                  DropdownField<Area>(
-                    label: 'HQ',
-                    required: true,
-                    hint: 'Select HQ',
-                    items: _areas,
-                    value: _hq,
-                    itemLabel: (a) => a.name,
-                    onChanged: (v) {
-                      setState(() {
-                        _hq = v;
-                        _cluster = null;
-                        _clusters = [];
-                      });
-                      // The clusters below belong to the HQ above, so they are
-                      // reloaded rather than filtered — the same call the API
-                      // will make.
-                      _loadClusters();
-                    },
-                    validator: (_) => _hq == null ? 'Select an HQ' : null,
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
+                  // A leave or holiday day has no headquarters and covers no
+                  // cluster, so the fields are not shown rather than shown and
+                  // excused. A form that asks a question with no answer is how
+                  // somebody filing sick leave ends up unable to submit at all.
+                  if (workType.needsHeadquarters) ...[
+                    DropdownField<Area>(
+                      label: 'HQ',
+                      required: true,
+                      hint: _areas.isEmpty ? 'No HQ in your territory' : 'Select HQ',
+                      items: _areas,
+                      value: _hq,
+                      itemLabel: (a) => a.name,
+                      enabled: _areas.isNotEmpty,
+                      onChanged: (v) {
+                        setState(() {
+                          _hq = v;
+                          _cluster = null;
+                          _clusters = [];
+                        });
+                        // The clusters below belong to the HQ above, so they
+                        // are reloaded rather than filtered — the same call the
+                        // API will make.
+                        _loadClusters();
+                      },
+                      validator: (_) => _hq == null ? 'Select an HQ' : null,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                  ],
 
-                  DropdownField<Cluster>(
-                    label: 'Cluster',
-                    required: true,
-                    hint: _clusters.isEmpty
-                        ? 'No clusters in this HQ'
-                        : 'Select cluster',
-                    items: _clusters,
-                    value: _cluster,
-                    itemLabel: (c) => c.name,
-                    enabled: _clusters.isNotEmpty,
-                    onChanged: (v) => setState(() => _cluster = v),
-                    validator: (_) =>
-                        _cluster == null ? 'Select a cluster' : null,
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
+                  if (workType.needsCluster) ...[
+                    DropdownField<Cluster>(
+                      label: 'Cluster',
+                      required: true,
+                      hint: _clusters.isEmpty
+                          ? 'No clusters in this HQ'
+                          : 'Select cluster',
+                      items: _clusters,
+                      value: _cluster,
+                      itemLabel: (c) => c.name,
+                      enabled: _clusters.isNotEmpty,
+                      onChanged: (v) => setState(() => _cluster = v),
+                      validator: (_) =>
+                          _cluster == null ? 'Select a cluster' : null,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                  ],
 
                   AppTextField(
                     label: 'Remarks',

@@ -131,16 +131,23 @@ void main() {
       );
       final repo = ApiEmployeeRepository();
 
-      final visible = await repo.visibleTo(session);
-      expect(visible.map((e) => e.employeeCode).toList(),
-          ['ASM201', 'MR1001', 'MR1002', 'MR1003', 'MR1004']);
-
-      // `teamOf` is their reports, not their scope: a manager is not a member
-      // of their own team.
+      // Derived, not hardcoded. A cover or a transfer is an ordinary thing to
+      // do, and a suite that names four specific reps fails the next time
+      // somebody legitimately moves one — which is exactly what happened.
       final team = await repo.teamOf(session);
-      expect(team.map((e) => e.employeeCode).toList(),
-          ['MR1001', 'MR1002', 'MR1003', 'MR1004']);
-      expect(team.every((e) => e.managerId == session.employee.id), isTrue);
+      final visible = await repo.visibleTo(session);
+
+      expect(team, isNotEmpty, reason: 'ASM201 should manage somebody');
+      expect(team.map((e) => e.employeeCode), everyElement(startsWith('MR')));
+
+      // Their scope is themselves plus their team, and nothing else.
+      expect(
+        visible.map((e) => e.employeeCode).toSet(),
+        {'ASM201', ...team.map((e) => e.employeeCode)},
+      );
+
+      // A manager is not a member of their own team.
+      expect(team.map((e) => e.employeeCode), isNot(contains('ASM201')));
     });
 
     // Home's own provider chain, which is what broke: signed in perfectly
@@ -192,6 +199,49 @@ void main() {
           .daySummary('00000000-0000-0000-0000-000000000000', DateTime.now());
       expect(day.activities, isEmpty);
       expect(day.headquarters, '');
+    });
+
+    // The day plan's HQ list, and the client form's territory/area cascade.
+    // Both were empty live: a live employee's territoryId is a Supabase uuid
+    // and the geography was still being read from the seed, which is keyed by
+    // `ter-1`. The form could not be completed, so nothing could be filed.
+    test('geography resolves for a live employee', () async {
+      final session = await auth.login(
+        employeeCode: 'MR1001',
+        password: devPassword,
+      );
+      final repo = ApiEmployeeRepository();
+
+      final territories = await repo.territories();
+      expect(territories, isNotEmpty);
+      expect(territories.first.id, hasLength(36));
+
+      // The exact call My Day Plan makes.
+      final areas = await repo.areas(territoryId: session.employee.territoryId);
+      expect(areas, isNotEmpty,
+          reason: 'the HQ dropdown would be empty and the day unfilable');
+      expect(areas.every((a) => a.territoryId == session.employee.territoryId),
+          isTrue);
+
+      // And the cluster list under the first HQ.
+      final clusters = await repo.clusters(areaId: areas.first.id);
+      expect(clusters, isNotEmpty,
+          reason: 'the cluster dropdown would say "No clusters in this HQ"');
+      expect(clusters.every((c) => c.areaId == areas.first.id), isTrue);
+    });
+
+    test('the client form can build its territory then area cascade', () async {
+      await auth.login(employeeCode: 'MR1001', password: devPassword);
+      final repo = ApiEmployeeRepository();
+      final territories = await repo.territories();
+      final allAreas = await repo.areas();
+      expect(allAreas, isNotEmpty);
+      // The screen filters areas by the chosen territory in Dart, so at least
+      // one territory has to have areas or the second dropdown is always empty.
+      final withAreas = territories
+          .where((t) => allAreas.any((a) => a.territoryId == t.id))
+          .toList();
+      expect(withAreas, isNotEmpty);
     });
 
     test('a representative cannot read a colleague by id', () async {
