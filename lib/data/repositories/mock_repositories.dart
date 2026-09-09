@@ -110,10 +110,24 @@ class MockStore {
   /// guards below would refuse the owner their own records.
   Set<String> visibleEmployeeIds(Session session) {
     final me = _seeded(session.employee.id);
-    return switch (session.scope) {
+    final seeded = switch (session.scope) {
       DataScope.self => {me},
       DataScope.subtree => _data.subtreeOf(me).map((e) => e.id).toSet(),
     };
+
+    // Both spellings of the same person.
+    //
+    // The seeded records are keyed by `emp-1`; a record the app created this
+    // session was built from `session.employee.id`, which live is a Supabase
+    // uuid. Answering for only one of them is how a rep added a client, was
+    // told it saved, and never saw it again — their own record failed the
+    // visibility check on their own list.
+    final both = {...seeded};
+    for (final id in seeded) {
+      final live = identity.uuidForFixtureId(id);
+      if (live != null) both.add(live);
+    }
+    return both;
   }
 
   /// Applies scope plus an optional explicit employee filter. Passing an
@@ -445,7 +459,7 @@ class MockActivityRepository implements ActivityRepository {
         .firstOrNull;
 
     final items = _store.activities
-        .where((a) => a.employeeId == employeeId && _sameDay(a.scheduledStart, date))
+        .where((a) => _seeded(a.employeeId) == employeeId && _sameDay(a.scheduledStart, date))
         .toList()
       ..sort((a, b) => a.scheduledStart.compareTo(b.scheduledStart));
 
@@ -454,7 +468,7 @@ class MockActivityRepository implements ActivityRepository {
     // training — both facts the rep already typed into My Day Plan and which,
     // until now, reached no screen.
     final plan = _store.dayPlans
-        .where((p) => p.employeeId == employeeId && _sameDay(p.date, date))
+        .where((p) => _seeded(p.employeeId) == employeeId && _sameDay(p.date, date))
         .firstOrNull;
 
     return DaySummary(
@@ -536,7 +550,7 @@ class MockDayPlanRepository implements DayPlanRepository {
     await _latency();
     return _store.dayPlans
         .where((p) =>
-            p.employeeId == employeeId &&
+            _seeded(p.employeeId) == employeeId &&
             p.date.year == date.year &&
             p.date.month == date.month &&
             p.date.day == date.day)
@@ -1066,7 +1080,7 @@ class MockHrRepository implements HrRepository {
     final days = DateTime(month.year, month.month + 1, 0).day;
     final holidays = _store.seed.holidays;
     final approvedLeave = _store.leaves.where(
-      (l) => l.employeeId == employeeId && l.status == ApprovalStatus.approved,
+      (l) => _seeded(l.employeeId) == employeeId && l.status == ApprovalStatus.approved,
     );
     final today = _store.seed.today;
 
@@ -1082,7 +1096,7 @@ class MockHrRepository implements HrRepository {
       );
       final hasWork = _store.activities.any(
         (a) =>
-            a.employeeId == employeeId &&
+            _seeded(a.employeeId) == employeeId &&
             _sameDay(a.scheduledStart, date) &&
             a.status == ActivityStatus.completed,
       );
@@ -1128,7 +1142,7 @@ class MockHrRepository implements HrRepository {
     return _store.leaves
         .where((l) =>
             visible.contains(l.employeeId) &&
-            (employeeId == null || l.employeeId == employeeId))
+            (employeeId == null || _seeded(l.employeeId) == employeeId))
         .toList()
       ..sort((a, b) => b.fromDate.compareTo(a.fromDate));
   }
@@ -1156,7 +1170,7 @@ class MockHrRepository implements HrRepository {
     // so every employee was served one shared list at one salary — the most
     // sensitive figure in the app, and the same for everybody.
     _store.requireOwner(session, employeeId, 'This payslip');
-    return _store.seed.payslips.where((p) => p.employeeId == employeeId).toList();
+    return _store.seed.payslips.where((p) => _seeded(p.employeeId) == employeeId).toList();
   }
 
   @override
@@ -1180,7 +1194,7 @@ class MockBusinessRepository implements BusinessRepository {
     return _store.seed.salesRecords
         .where((s) =>
             visible.contains(s.employeeId) &&
-            (employeeId == null || s.employeeId == employeeId) &&
+            (employeeId == null || _seeded(s.employeeId) == employeeId) &&
             (year == null || s.month.year == year))
         .toList()
       ..sort((a, b) => a.month.compareTo(b.month));
@@ -1194,7 +1208,7 @@ class MockBusinessRepository implements BusinessRepository {
     return _store.targets
         .where((t) =>
             visible.contains(t.employeeId) &&
-            (employeeId == null || t.employeeId == employeeId) &&
+            (employeeId == null || _seeded(t.employeeId) == employeeId) &&
             (month == null ||
                 (t.month.year == month.year && t.month.month == month.month)))
         .toList()
@@ -1221,7 +1235,7 @@ class MockBusinessRepository implements BusinessRepository {
     return _store.orders
         .where((o) =>
             visible.contains(o.employeeId) &&
-            (employeeId == null || o.employeeId == employeeId) &&
+            (employeeId == null || _seeded(o.employeeId) == employeeId) &&
             (status == null || o.status == status))
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
@@ -1455,7 +1469,7 @@ class MockTaskRepository implements TaskRepository {
     return _store.tasks
         .where((t) =>
             visible.contains(t.assignedToId) &&
-            (employeeId == null || t.assignedToId == employeeId) &&
+            (employeeId == null || _seeded(t.assignedToId) == employeeId) &&
             (assignedById == null || t.assignedById == assignedById) &&
             (status == null || t.effectiveStatus() == status))
         .toList()

@@ -25,6 +25,7 @@ import 'package:pharmaconnect/data/remote/backend.dart';
 import 'package:pharmaconnect/data/repositories/api_repositories.dart';
 import 'package:pharmaconnect/data/repositories/identity_map.dart';
 import 'package:pharmaconnect/data/repositories/mock_repositories.dart';
+import 'package:pharmaconnect/shared/models/client.dart';
 import 'package:pharmaconnect/shared/enums/app_enums.dart';
 
 const devPassword = String.fromEnvironment('DEV_PASSWORD');
@@ -242,6 +243,46 @@ void main() {
           .where((t) => allAreas.any((a) => a.territoryId == t.id))
           .toList();
       expect(withAreas, isNotEmpty);
+    });
+
+    // What a rep actually does: add a client, then look for it. It saved and
+    // then vanished — the record went into the store carrying the session's
+    // Supabase uuid as its owner, while the visibility set held seeded ids, so
+    // their own client failed the check on their own list.
+    test('a client added in the app appears in the app', () async {
+      final session = await auth.login(
+        employeeCode: 'MR1001',
+        password: devPassword,
+      );
+      final clients = MockClientRepository();
+      final areas = await ApiEmployeeRepository()
+          .areas(territoryId: session.employee.territoryId);
+
+      final before = (await clients.list(session)).length;
+
+      final added = await clients.create(Client(
+        id: 'test-${DateTime.now().microsecondsSinceEpoch}',
+        name: 'Pardhu',
+        type: ClientType.doctor,
+        category: ClientCategory.regular,
+        areaId: areas.first.id,
+        areaName: areas.first.name,
+        territoryId: session.employee.territoryId,
+        contactPerson: 'Pardhu',
+        mobile: '9000000000',
+        addressLine: 'Test',
+        ownerEmployeeId: session.employee.id,
+      ));
+
+      final after = await clients.list(session);
+      expect(after.length, before + 1);
+      expect(after.map((c) => c.name), contains('Pardhu'),
+          reason: 'the rep should see the client they just added');
+      expect(after.map((c) => c.id), contains(added.id));
+
+      // And searching for it finds it, which is how they would look.
+      final found = await clients.list(session, query: 'pardhu');
+      expect(found.map((c) => c.name), contains('Pardhu'));
     });
 
     test('a representative cannot read a colleague by id', () async {
