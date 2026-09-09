@@ -101,7 +101,16 @@ class ActivityCard extends StatelessWidget {
           ),
           if (needsFlag || activity.syncStatus == SyncStatus.failed) ...[
             const SizedBox(height: AppSpacing.md),
-            Row(
+            // A Wrap, not a Row.
+            //
+            // Two badges side by side overflowed by 70 pixels on a 320pt
+            // phone at maximum text size — a pill cannot ellipsise, because
+            // the word in it *is* the state, so the row had nothing to give.
+            // Stacking them is the honest degradation and the remedy this
+            // codebase already uses for a metadata row that will not fit.
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.xs,
               children: [
                 if (needsFlag)
                   StatusBadge.geo(
@@ -109,8 +118,6 @@ class ActivityCard extends StatelessWidget {
                         GeoVerification.unavailable,
                     dense: true,
                   ),
-                if (needsFlag && activity.syncStatus == SyncStatus.failed)
-                  const SizedBox(width: AppSpacing.sm),
                 if (activity.syncStatus == SyncStatus.failed)
                   StatusBadge.sync(activity.syncStatus, dense: true),
               ],
@@ -135,7 +142,22 @@ class _Meta extends StatelessWidget {
       children: [
         Icon(icon, size: 13, color: AppColors.textSecondary),
         const SizedBox(width: AppSpacing.xs),
-        Text(text, style: AppTypography.caption),
+        // The give-way element.
+        //
+        // A bare `Text` here takes its natural width and overflows the row —
+        // by 2.8 pixels on a 320pt phone at maximum text size, with a client
+        // called "Continental Hospitals" in it. The old seed's names were
+        // short enough to hide that for the whole build; longer real ones
+        // found it immediately. This is the rule the app already holds
+        // everywhere else: a metadata row degrades, it does not overflow.
+        Flexible(
+          child: Text(
+            text,
+            style: AppTypography.caption,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }

@@ -179,13 +179,23 @@ void main() {
       // rep was standing at the clinic. The reason is the rep's own account of
       // that position, and improving a hurried one is what a correction is
       // for; freezing that half left the step with nothing to act on.
+      // Derived from the roster rather than naming an id.
+      //
+      // This asked for the client owned by `emp-1`, which was a rep when it
+      // was written and is an area manager now — and managers own no clients,
+      // so `firstWhere` threw `Bad state: No element` from a test about
+      // freezing a GPS position. An id written into a test is a fact about
+      // one seed; "a rep who owns a client" is a fact about the product.
+      final rep = MockStore.instance.seed.employees.firstWhere(
+        (e) => MockStore.instance.clients.any((c) => c.ownerEmployeeId == e.id),
+      );
       final client = MockStore.instance.clients
-          .firstWhere((c) => c.ownerEmployeeId == 'emp-1');
+          .firstWhere((c) => c.ownerEmployeeId == rep.id);
 
       final outOfRange = Activity(
         id: 'act-correction-probe',
-        employeeId: 'emp-1',
-        employeeName: 'Rahul Sharma',
+        employeeId: rep.id,
+        employeeName: rep.name,
         clientId: client.id,
         clientName: client.name,
         scheduledStart: DateTime.now(),

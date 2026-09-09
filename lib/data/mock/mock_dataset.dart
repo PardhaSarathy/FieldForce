@@ -1,6 +1,6 @@
-import 'dart:math' as math;
 import 'dart:math' show Random;
 
+import 'fixture_world.dart';
 import '../../core/location/geo_math.dart';
 import '../../shared/enums/app_enums.dart';
 import '../../shared/models/activity.dart';
@@ -34,38 +34,23 @@ class MockDataset {
 
   // ======================================================== organization ==
 
-  late final List<Territory> territories = const [
-    Territory(id: 'ter-1', name: 'Mumbai South', headquarters: 'Mumbai'),
-    Territory(id: 'ter-2', name: 'Mumbai West', headquarters: 'Mumbai'),
-    Territory(id: 'ter-3', name: 'Pune', headquarters: 'Pune'),
-  ];
+  // ── the shared world ──────────────────────────────────────────────
+  //
+  // Geography, people, products and clients come from
+  // `fixture_world.dart`, generated from the console's
+  // `fixture/mrsales-world.json`. The app and the console kept two
+  // independently written seeds until now, and they had drifted into
+  // conflict: `emp-5` was a different person on each side and every product
+  // id named a different medicine. Nothing broke, because the two worlds
+  // never met — and a backend is where they meet.
+  //
+  // Everything below these six derives from them, so the whole demo moved to
+  // Hyderabad without a line of the generation logic changing.
+  late final List<Territory> territories = fixtureTerritories;
 
-  late final List<Area> areas = const [
-    Area(id: 'ar-1', name: 'Andheri East', territoryId: 'ter-1'),
-    Area(id: 'ar-2', name: 'Bandra', territoryId: 'ter-1'),
-    Area(id: 'ar-3', name: 'Dadar', territoryId: 'ter-1'),
-    Area(id: 'ar-4', name: 'Goregaon', territoryId: 'ter-2'),
-    Area(id: 'ar-5', name: 'Borivali', territoryId: 'ter-2'),
-    Area(id: 'ar-6', name: 'Kothrud', territoryId: 'ter-3'),
-  ];
+  late final List<Area> areas = fixtureAreas;
 
-  // Every area carries at least two clusters. The day-plan form asks for one
-  // after the HQ, so an area with none would open a dropdown with nothing in
-  // it — which reads as a broken screen rather than an empty territory.
-  late final List<Cluster> clusters = const [
-    Cluster(id: 'cl-1', name: 'Chakala', areaId: 'ar-1'),
-    Cluster(id: 'cl-2', name: 'MIDC', areaId: 'ar-1'),
-    Cluster(id: 'cl-3', name: 'Linking Road', areaId: 'ar-2'),
-    Cluster(id: 'cl-4', name: 'Pali Hill', areaId: 'ar-2'),
-    Cluster(id: 'cl-5', name: 'Shivaji Park', areaId: 'ar-3'),
-    Cluster(id: 'cl-6', name: 'Prabhadevi', areaId: 'ar-3'),
-    Cluster(id: 'cl-7', name: 'Aarey Road', areaId: 'ar-4'),
-    Cluster(id: 'cl-8', name: 'Film City', areaId: 'ar-4'),
-    Cluster(id: 'cl-9', name: 'IC Colony', areaId: 'ar-5'),
-    Cluster(id: 'cl-10', name: 'Eksar', areaId: 'ar-5'),
-    Cluster(id: 'cl-11', name: 'Karve Road', areaId: 'ar-6'),
-    Cluster(id: 'cl-12', name: 'Paud Road', areaId: 'ar-6'),
-  ];
+  late final List<Cluster> clusters = fixtureClusters;
 
   /// Street addresses a captured position resolves to, per area. A geocoder
   /// replaces this behind `DayPlanRepository.addressFor`; until then the day
@@ -124,7 +109,12 @@ class MockDataset {
             workType: n % 9 == 0 ? WorkType.meeting : WorkType.fieldWork,
             areaId: area.id,
             areaName: area.name,
-            clusterName: areaClusters[n % areaClusters.length].name,
+            // An area need not have a cluster, and one that does not used to
+            // divide by zero here — a crash reached through the expense
+            // screen, three call frames from anything about day plans.
+            clusterName: areaClusters.isEmpty
+                ? null
+                : areaClusters[n % areaClusters.length].name,
             status: ApprovalStatus.submitted,
             capturedAddress: addressFor(areaId: area.id),
             submittedAt: DateTime(date.year, date.month, date.day, 9, 12),
@@ -136,131 +126,15 @@ class MockDataset {
   }
 
   /// The signed-in field user for the default demo session.
-  late final Employee currentUser = employees.first;
+  /// Who a message is from when the sender is not otherwise known.
+  ///
+  /// A representative, named rather than taken as `employees.first`. The
+  /// roster used to begin with a rep and now begins with an area manager, so
+  /// `first` quietly changed who this was — and it signs chat messages.
+  late final Employee currentUser =
+      employees.firstWhere((e) => e.role == UserRole.mr);
 
-  late final List<Employee> employees = [
-    Employee(
-      id: 'emp-1',
-      employeeCode: 'MR1001',
-      name: 'Rahul Kumar',
-      role: UserRole.mr,
-      designation: 'Medical Representative',
-      mobile: '9876543210',
-      email: 'rahul.kumar@pharmaconnect.in',
-      territoryId: 'ter-1',
-      territoryName: 'Mumbai South',
-      headquarters: 'Mumbai South',
-      managerId: 'emp-10',
-      managerName: 'Ramesh Iyer',
-      areaId: 'ar-1',
-      areaName: 'Andheri East',
-      clusterId: 'cl-1',
-      clusterName: 'Chakala',
-      joiningDate: DateTime(2022, 4, 11),
-      bloodGroup: 'O+',
-      lastKnownLatitude: 19.1136,
-      lastKnownLongitude: 72.8697,
-      lastSeenAt: today.add(const Duration(hours: 10, minutes: 32)),
-    ),
-    Employee(
-      id: 'emp-2',
-      employeeCode: 'MR1002',
-      name: 'Sneha Patil',
-      role: UserRole.mr,
-      designation: 'Medical Representative',
-      mobile: '9822011223',
-      email: 'sneha.patil@pharmaconnect.in',
-      territoryId: 'ter-1',
-      territoryName: 'Mumbai South',
-      headquarters: 'Mumbai South',
-      managerId: 'emp-10',
-      managerName: 'Ramesh Iyer',
-      areaId: 'ar-2',
-      areaName: 'Bandra',
-      joiningDate: DateTime(2023, 1, 9),
-      bloodGroup: 'B+',
-      lastKnownLatitude: 19.0596,
-      lastKnownLongitude: 72.8295,
-      lastSeenAt: today.add(const Duration(hours: 11, minutes: 5)),
-    ),
-    Employee(
-      id: 'emp-3',
-      employeeCode: 'MR1003',
-      name: 'Imran Shaikh',
-      role: UserRole.mr,
-      designation: 'Medical Representative',
-      mobile: '9700112233',
-      email: 'imran.shaikh@pharmaconnect.in',
-      territoryId: 'ter-1',
-      territoryName: 'Mumbai South',
-      headquarters: 'Mumbai South',
-      managerId: 'emp-10',
-      managerName: 'Ramesh Iyer',
-      areaId: 'ar-3',
-      areaName: 'Dadar',
-      joiningDate: DateTime(2021, 8, 2),
-      bloodGroup: 'A+',
-      lastKnownLatitude: 19.0176,
-      lastKnownLongitude: 72.8438,
-      lastSeenAt: today.add(const Duration(hours: 9, minutes: 48)),
-    ),
-    Employee(
-      id: 'emp-4',
-      employeeCode: 'MR1004',
-      name: 'Priya Nair',
-      role: UserRole.mr,
-      designation: 'Senior Medical Representative',
-      mobile: '9611223344',
-      email: 'priya.nair@pharmaconnect.in',
-      territoryId: 'ter-2',
-      territoryName: 'Mumbai West',
-      headquarters: 'Mumbai West',
-      managerId: 'emp-10',
-      managerName: 'Ramesh Iyer',
-      areaId: 'ar-4',
-      areaName: 'Goregaon',
-      joiningDate: DateTime(2020, 6, 15),
-      bloodGroup: 'AB+',
-      lastKnownLatitude: 19.1663,
-      lastKnownLongitude: 72.8526,
-      lastSeenAt: today.add(const Duration(hours: 10, minutes: 12)),
-    ),
-    Employee(
-      id: 'emp-5',
-      employeeCode: 'MR1005',
-      name: 'Vikram Desai',
-      role: UserRole.mr,
-      designation: 'Medical Representative',
-      mobile: '9533445566',
-      email: 'vikram.desai@pharmaconnect.in',
-      territoryId: 'ter-2',
-      territoryName: 'Mumbai West',
-      headquarters: 'Mumbai West',
-      managerId: 'emp-10',
-      managerName: 'Ramesh Iyer',
-      areaId: 'ar-5',
-      areaName: 'Borivali',
-      joiningDate: DateTime(2023, 11, 20),
-      bloodGroup: 'O-',
-      lastKnownLatitude: 19.2307,
-      lastKnownLongitude: 72.8567,
-      lastSeenAt: today.add(const Duration(hours: 8, minutes: 55)),
-    ),
-    Employee(
-      id: 'emp-10',
-      employeeCode: 'ASM201',
-      name: 'Ramesh Iyer',
-      role: UserRole.asm,
-      designation: 'Area Sales Manager',
-      mobile: '9820011000',
-      email: 'ramesh.iyer@pharmaconnect.in',
-      territoryId: 'ter-1',
-      territoryName: 'Mumbai South',
-      headquarters: 'Mumbai',
-      joiningDate: DateTime(2017, 2, 6),
-      bloodGroup: 'B-',
-    ),
-  ];
+  late final List<Employee> employees = fixtureEmployees;
 
   /// Every employee reachable from [rootId], inclusive. Walks the reporting
   /// tree so a manager's queries automatically cover indirect reports.
@@ -282,351 +156,13 @@ class MockDataset {
 
   // ============================================================= catalogue ==
 
-  late final List<Product> products = const [
-    Product(
-      id: 'p-1',
-      name: 'Cardiovex 40',
-      code: 'CVX40',
-      mrp: 650,
-      division: 'Cardiology',
-      composition: 'Atorvastatin 40mg',
-      packSize: '10 tablets',
-      gstPercent: 12,
-    ),
-    Product(
-      id: 'p-2',
-      name: 'Neurokind Plus',
-      code: 'NKP',
-      mrp: 160,
-      division: 'Neurology',
-      composition: 'Methylcobalamin + ALA',
-      packSize: '10 capsules',
-      gstPercent: 12,
-    ),
-    Product(
-      id: 'p-3',
-      name: 'Vitapro D3',
-      code: 'VPD3',
-      mrp: 400,
-      division: 'Nutrition',
-      composition: 'Cholecalciferol 60000 IU',
-      packSize: '4 sachets',
-      gstPercent: 5,
-    ),
-    Product(
-      id: 'p-4',
-      name: 'Respiclear 200',
-      code: 'RSC200',
-      mrp: 285,
-      division: 'Respiratory',
-      composition: 'Acebrophylline 200mg',
-      packSize: '10 tablets',
-      gstPercent: 12,
-    ),
-    Product(
-      id: 'p-5',
-      name: 'Gastrolyte DSR',
-      code: 'GLDSR',
-      mrp: 195,
-      division: 'Gastroenterology',
-      composition: 'Pantoprazole + Domperidone',
-      packSize: '10 capsules',
-      gstPercent: 12,
-    ),
-    Product(
-      id: 'p-6',
-      name: 'Cardiovex 20',
-      code: 'CVX20',
-      mrp: 420,
-      division: 'Cardiology',
-      composition: 'Atorvastatin 20mg',
-      packSize: '10 tablets',
-      gstPercent: 12,
-    ),
-    Product(
-      id: 'p-7',
-      name: 'Glucomet XR 1000',
-      code: 'GMX1000',
-      mrp: 240,
-      division: 'Diabetology',
-      composition: 'Metformin SR 1000mg',
-      packSize: '15 tablets',
-      gstPercent: 12,
-    ),
-    Product(
-      id: 'p-8',
-      name: 'Ostecal K2',
-      code: 'OSTK2',
-      mrp: 355,
-      division: 'Orthopaedics',
-      composition: 'Calcium Citrate + Vitamin K2-7',
-      packSize: '15 tablets',
-      gstPercent: 12,
-    ),
-    Product(
-      id: 'p-9',
-      name: 'Femiron XT',
-      code: 'FMXT',
-      mrp: 285,
-      division: 'Gynaecology',
-      composition: 'Ferrous Ascorbate + Folic Acid',
-      packSize: '10 tablets',
-      gstPercent: 5,
-    ),
-    Product(
-      id: 'p-10',
-      name: 'Pediacef 50 DS',
-      code: 'PDC50',
-      mrp: 130,
-      division: 'Paediatrics',
-      composition: 'Cefixime Dry Syrup 50mg',
-      packSize: '30 ml bottle',
-      gstPercent: 5,
-    ),
-    Product(
-      id: 'p-11',
-      name: 'Neurokind Gold',
-      code: 'NKG',
-      mrp: 310,
-      division: 'Neurology',
-      composition: 'Methylcobalamin + Pregabalin',
-      packSize: '10 capsules',
-      gstPercent: 12,
-    ),
-    Product(
-      id: 'p-12',
-      name: 'Respiclear LM Kid',
-      code: 'RSCLM',
-      mrp: 165,
-      division: 'Respiratory',
-      composition: 'Montelukast + Levocetirizine',
-      packSize: '10 tablets',
-      gstPercent: 12,
-    ),
-  ];
+  late final List<Product> products = fixtureProducts;
 
-  static const _specialties = [
-    'Cardiologist',
-    'Physician',
-    'Gynecologist',
-    'Neurologist',
-    'Pediatrician',
-    'Orthopedic',
-    'Diabetologist',
-    'Pulmonologist',
-  ];
 
   // =============================================================== clients ==
 
-  late final List<Client> clients = _buildClients();
+  late final List<Client> clients = fixtureClients;
 
-  List<Client> _buildClients() {
-    const names = [
-      'Dr. Anjali Sharma',
-      'Dr. Mohan Singh',
-      'Dr. Priya Nair',
-      'Dr. Rahul Mehta',
-      'Dr. Sanjay Gupta',
-      'Dr. Meera Joshi',
-      'Dr. Kiran Bedi',
-      'Dr. Arvind Rao',
-      'Dr. Nisha Verma',
-      'Dr. Farhan Ali',
-      'Dr. Sunita Kulkarni',
-      'Dr. Rajesh Pillai',
-      'Dr. Vandana Iyer',
-      'Dr. Ashok Deshpande',
-      'Dr. Leela Menon',
-      'Dr. Suresh Bhatt',
-      'Dr. Ritu Chawla',
-      'Dr. Naveen Kamath',
-      'Dr. Shalini Prabhu',
-      'Dr. Zoya Khan',
-    ];
-    const facilities = [
-      'Apollo Clinic',
-      'Lilavati Hospital',
-      'Fortis Healthcare',
-      'Nanavati Max',
-      'Holy Family Hospital',
-      'Kokilaben Hospital',
-      'Hinduja Hospital',
-      'Bombay Hospital',
-      'Jaslok Hospital',
-      'Breach Candy Hospital',
-    ];
-    const chemists = [
-      'Wellness Forever',
-      'Apollo Pharmacy',
-      'MedPlus Andheri',
-      'Noble Chemists',
-      'Sanjivani Medical',
-      'Shree Krishna Chemist',
-      'LifeCare Pharmacy',
-      'Guardian Pharmacy',
-      'Trust Chemist',
-      'Om Sai Medical',
-    ];
-
-    const stockists = [
-      'Mahavir Pharma Distributors',
-      'Sai Medical Agencies',
-      'Western Drug House',
-      'Deepak Pharma Distributors',
-      'Konark Healthcare Supplies',
-    ];
-
-    final result = <Client>[];
-    // Mumbai city centre, spread across a realistic few kilometres.
-    const baseLat = 19.1136;
-    const baseLng = 72.8697;
-
-    // Scatter clients in two dimensions. An earlier version offset lat and lng
-    // by the same index, which put every client on a perfect diagonal — fine in
-    // a list, instantly fake the moment they are plotted on a map. The offsets
-    // are derived from the index rather than an RNG so positions stay stable
-    // across runs.
-    (double, double) scatter(int i, double spread) {
-      final a = math.sin(i * 2.399963) * spread; // golden-angle walk
-      final b = math.cos(i * 1.618034) * spread;
-      final radius = 0.35 + ((i * 37) % 100) / 100 * 0.65;
-      return (a * radius, b * radius);
-    }
-
-    for (var i = 0; i < names.length; i++) {
-      final area = areas[i % 3];
-      result.add(
-        Client(
-          id: 'cli-${i + 1}',
-          name: names[i],
-          type: ClientType.doctor,
-          category: ClientCategory.values[i % 3],
-          areaId: area.id,
-          areaName: area.name,
-          territoryId: area.territoryId,
-          specialty: _specialties[i % _specialties.length],
-          designation: 'Consultant',
-          contactPerson: names[i],
-          mobile: '98${(76543210 + i * 137).toString().padLeft(8, '0')}',
-          email: 'contact${i + 1}@clinic.in',
-          addressLine: '${facilities[i % facilities.length]}, Wing A',
-          city: 'Mumbai',
-          pincode: '4000${(53 + i % 9).toString().padLeft(2, '0')}',
-          latitude: baseLat + scatter(i, 0.020).$1,
-          longitude: baseLng + scatter(i, 0.020).$2,
-          clusterId: clusters[i % clusters.length].id,
-          clusterName: clusters[i % clusters.length].name,
-          lastVisitAt: today.subtract(Duration(days: 2 + i * 3)),
-          totalVisits: 4 + (i * 3) % 17,
-          ownerEmployeeId: employees[i % 5].id,
-          createdAt: today.subtract(Duration(days: 120 + i * 11)),
-          // Most of the master is verified; a couple are still unlisted so
-          // both states are visible in a demo.
-          listing: i % 9 == 0 ? ClientListing.unlisted : ClientListing.listed,
-          // A date is useless without knowing what it marks. Every third
-          // doctor keeps an anniversary instead of a birthday, and one in
-          // seven something of their own, so all three cases are on screen in
-          // a demo. Two doctors' dates are pulled onto this week so the
-          // countdown is not always "in 200 days".
-          specialDate: i < 2
-              ? DateTime(1980 + i, today.month, today.day + i)
-              : DateTime(1975 + i % 20, 1 + i % 12, 1 + i % 27),
-          specialOccasion: i % 7 == 3
-              ? SpecialOccasion.other
-              : i % 3 == 0
-                  ? SpecialOccasion.anniversary
-                  : SpecialOccasion.birthday,
-          specialOccasionNote: i % 7 == 3 ? 'Clinic founding day' : null,
-        ),
-      );
-    }
-
-    for (var i = 0; i < facilities.length; i++) {
-      final area = areas[i % areas.length];
-      result.add(
-        Client(
-          id: 'cli-h${i + 1}',
-          name: facilities[i],
-          type: ClientType.hospital,
-          category: i.isEven ? ClientCategory.coreTarget : ClientCategory.regular,
-          areaId: area.id,
-          areaName: area.name,
-          territoryId: area.territoryId,
-          specialty: 'Multi-speciality',
-          contactPerson: 'Purchase Desk',
-          mobile: '022${(24451100 + i * 7).toString()}',
-          addressLine: '${facilities[i]} Main Building',
-          city: 'Mumbai',
-          pincode: '4000${(58 + i).toString().padLeft(2, '0')}',
-          latitude: baseLat + scatter(i + 40, 0.024).$1,
-          longitude: baseLng + scatter(i + 40, 0.024).$2,
-          lastVisitAt: today.subtract(Duration(days: 5 + i * 4)),
-          totalVisits: 9 + i * 2,
-          ownerEmployeeId: employees[i % 5].id,
-          createdAt: today.subtract(Duration(days: 300 + i * 20)),
-        ),
-      );
-    }
-
-    for (var i = 0; i < chemists.length; i++) {
-      final area = areas[i % areas.length];
-      result.add(
-        Client(
-          id: 'cli-c${i + 1}',
-          name: chemists[i],
-          type: ClientType.chemist,
-          category: ClientCategory.regular,
-          areaId: area.id,
-          areaName: area.name,
-          territoryId: area.territoryId,
-          contactPerson: 'Store Manager',
-          mobile: '99${(30011220 + i * 91).toString()}',
-          addressLine: '${chemists[i]}, Ground Floor',
-          city: 'Mumbai',
-          pincode: '400062',
-          latitude: baseLat + scatter(i + 80, 0.016).$1,
-          longitude: baseLng + scatter(i + 80, 0.016).$2,
-          lastVisitAt: today.subtract(Duration(days: 1 + i * 2)),
-          totalVisits: 12 + i * 3,
-          ownerEmployeeId: employees[i % 5].id,
-          createdAt: today.subtract(Duration(days: 200 + i * 15)),
-        ),
-      );
-    }
-
-    // Stockists complete the trade channel: orders in this business flow
-    // through distributors, so a demo without them is missing a link.
-    for (var i = 0; i < stockists.length; i++) {
-      final area = areas[i % areas.length];
-      result.add(
-        Client(
-          id: 'cli-s${i + 1}',
-          name: stockists[i],
-          type: ClientType.stockist,
-          category:
-              i.isEven ? ClientCategory.coreTarget : ClientCategory.regular,
-          areaId: area.id,
-          areaName: area.name,
-          territoryId: area.territoryId,
-          contactPerson: 'Distribution Head',
-          mobile: '98${(20033440 + i * 73).toString()}',
-          email: 'orders${i + 1}@distributor.in',
-          addressLine: '${stockists[i]}, Warehouse Block',
-          city: 'Mumbai',
-          pincode: '4000${(70 + i).toString().padLeft(2, '0')}',
-          latitude: baseLat + scatter(i + 120, 0.026).$1,
-          longitude: baseLng + scatter(i + 120, 0.026).$2,
-          lastVisitAt: today.subtract(Duration(days: 3 + i * 5)),
-          totalVisits: 18 + i * 4,
-          // One stockist per rep, so every rep can raise a distributor order.
-          ownerEmployeeId: employees[i % 5].id,
-          createdAt: today.subtract(Duration(days: 400 + i * 30)),
-        ),
-      );
-    }
-
-    return result;
-  }
 
   // ============================================================ activities ==
 
