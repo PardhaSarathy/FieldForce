@@ -23,6 +23,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pharmaconnect/data/remote/backend.dart';
 import 'package:pharmaconnect/data/repositories/api_repositories.dart';
+import 'package:pharmaconnect/data/repositories/identity_map.dart';
+import 'package:pharmaconnect/data/repositories/mock_repositories.dart';
 import 'package:pharmaconnect/shared/enums/app_enums.dart';
 
 const devPassword = String.fromEnvironment('DEV_PASSWORD');
@@ -139,6 +141,57 @@ void main() {
       expect(team.map((e) => e.employeeCode).toList(),
           ['MR1001', 'MR1002', 'MR1003', 'MR1004']);
       expect(team.every((e) => e.managerId == session.employee.id), isTrue);
+    });
+
+    // Home's own provider chain, which is what broke: signed in perfectly
+    // well as ASM201 and then "Something went wrong", because a session
+    // carrying a Supabase uuid reached a mock repository keyed by `emp-1` and
+    // an unguarded `firstWhere` threw.
+    test('Home loads for a manager', () async {
+      final session = await auth.login(
+        employeeCode: 'ASM201',
+        password: devPassword,
+      );
+      final day = await MockActivityRepository()
+          .daySummary(session.employee.id, DateTime.now());
+      expect(day, isNotNull);
+      expect(day.date, isNotNull);
+    });
+
+    test('Home loads for a representative', () async {
+      final session = await auth.login(
+        employeeCode: 'MR1001',
+        password: devPassword,
+      );
+      final day = await MockActivityRepository()
+          .daySummary(session.employee.id, DateTime.now());
+      expect(day, isNotNull);
+    });
+
+    test('the seeded modules find a live person', () async {
+      final session = await auth.login(
+        employeeCode: 'MR1001',
+        password: devPassword,
+      );
+      // The map is filled at sign-in, so a uuid resolves to the seeded record.
+      expect(identity.isEmpty, isFalse);
+      expect(identity.fixtureIdForUuid(session.employee.id), isNotNull);
+      expect(identity.seeded(session.employee.id), startsWith('emp-'));
+
+      // And the seeded content is actually reachable for them.
+      final plans = await MockDayPlanRepository()
+          .list(session, employeeId: session.employee.id);
+      expect(plans, isNotEmpty,
+          reason: 'a live rep should reach their seeded day plans');
+    });
+
+    test('somebody the seed has never heard of does not crash it', () async {
+      // A live employee with no seeded counterpart is an ordinary state, not
+      // an exception.
+      final day = await MockActivityRepository()
+          .daySummary('00000000-0000-0000-0000-000000000000', DateTime.now());
+      expect(day.activities, isEmpty);
+      expect(day.headquarters, '');
     });
 
     test('a representative cannot read a colleague by id', () async {

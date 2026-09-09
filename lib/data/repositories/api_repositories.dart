@@ -20,6 +20,7 @@ import '../../shared/models/field_ops.dart';
 import '../../shared/models/organization.dart';
 import '../mock/mock_dataset.dart';
 import '../remote/backend.dart';
+import 'identity_map.dart';
 import 'mock_repositories.dart';
 import 'repositories.dart';
 
@@ -99,7 +100,21 @@ class ApiAuthRepository implements AuthRepository {
     // and is not required: somebody who exists in Supabase and not in this
     // build's seed signs in and is real.
     final me = employeeFromRow(row);
-    identity.remember(me.employeeCode, me.id);
+
+    // The whole roster this account may read, not just themselves. A manager's
+    // team screen, their approval queue and every seeded record belonging to
+    // one of their reps are keyed by somebody else's id, and the mock modules
+    // translate through this map — so it has to be filled before the first
+    // screen asks. Row-level security has already decided which people these
+    // are.
+    final roster = await db.from('employees').select('id, code');
+    identity
+      ..clear()
+      ..rememberAll({
+        for (final r in roster) r['code'] as String: r['id'] as String,
+      })
+      ..remember(me.employeeCode, me.id);
+
     return Session(employee: me, loginAt: DateTime.now());
   }
 
@@ -178,57 +193,6 @@ class ApiAuthRepository implements AuthRepository {
   }
 }
 
-/// What still remembers the fixture's ids, and the only thing that does.
-///
-/// Live, an employee's **uuid is the identity**. The fixture does not vanish,
-/// because most modules here still run on it and thousands of activities,
-/// clients and day plans point at `emp-1`. It becomes a translation table
-/// rather than an authority.
-///
-/// Only the *mock* repositories consult it — to find the seeded demo content
-/// belonging to a live person. The live repositories never touch it. That puts
-/// the compatibility layer exactly where the incompleteness is, and it shrinks
-/// on its own: a module that gets a real table stops consulting the map, and
-/// when the last one does this class is deleted.
-///
-/// A live employee with no seeded counterpart resolves to null here and simply
-/// has no demo history — which is the truth, not a failure.
-class IdentityMap {
-  final Map<String, String> _uuidByCode = {};
-
-  void remember(String code, String uuid) => _uuidByCode[code] = uuid;
-  void rememberAll(Map<String, String> byCode) => _uuidByCode.addAll(byCode);
-  void clear() => _uuidByCode.clear();
-
-  String? uuidForCode(String code) => _uuidByCode[code];
-
-  String? codeForUuid(String uuid) {
-    for (final e in _uuidByCode.entries) {
-      if (e.value == uuid) return e.key;
-    }
-    return null;
-  }
-
-  /// The seeded record id for a live employee, when the seed knows them.
-  String? fixtureIdForUuid(String uuid) {
-    final code = codeForUuid(uuid);
-    if (code == null) return null;
-    return MockDataset.instance.employees
-        .where((e) => e.employeeCode == code)
-        .firstOrNull
-        ?.id;
-  }
-
-  /// The live uuid behind a seeded record id.
-  String? uuidForFixtureId(String fixtureId) {
-    final e = MockDataset.instance.employees
-        .where((x) => x.id == fixtureId)
-        .firstOrNull;
-    return e == null ? null : _uuidByCode[e.employeeCode];
-  }
-}
-
-final identity = IdentityMap();
 
 /// The database's employee row, as the app's model.
 Employee employeeFromRow(Map<String, dynamic> r) {

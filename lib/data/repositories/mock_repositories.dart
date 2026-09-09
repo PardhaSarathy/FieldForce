@@ -10,6 +10,7 @@ import '../../shared/models/export.dart';
 import '../../shared/models/field_ops.dart';
 import '../../shared/models/organization.dart';
 import '../mock/mock_dataset.dart';
+import 'identity_map.dart';
 import 'repositories.dart';
 
 const _uuid = Uuid();
@@ -101,11 +102,17 @@ class MockStore {
   MockDataset get seed => _data;
 
   /// Employee ids visible to [session]. The single place scope is resolved.
+  ///
+  /// Resolved entirely in *seed* ids. Live, a session carries the employee's
+  /// Supabase uuid and every record here is keyed by `emp-1`, so both sides of
+  /// every comparison have to move together — translating only the id being
+  /// checked would compare `emp-1` against a set built from a uuid, and the
+  /// guards below would refuse the owner their own records.
   Set<String> visibleEmployeeIds(Session session) {
+    final me = _seeded(session.employee.id);
     return switch (session.scope) {
-      DataScope.self => {session.employee.id},
-      DataScope.subtree =>
-        _data.subtreeOf(session.employee.id).map((e) => e.id).toSet(),
+      DataScope.self => {me},
+      DataScope.subtree => _data.subtreeOf(me).map((e) => e.id).toSet(),
     };
   }
 
@@ -113,6 +120,7 @@ class MockStore {
   /// [employeeId] outside the caller's scope yields nothing rather than
   /// leaking — defence in depth against a UI bug.
   bool canSee(Session session, String employeeId, {String? filterId}) {
+    employeeId = _seeded(employeeId);
     if (filterId != null && filterId != employeeId) return false;
     return visibleEmployeeIds(session).contains(employeeId);
   }
@@ -125,6 +133,7 @@ class MockStore {
   /// it. Every `byId` goes through this: a list that scopes correctly is no
   /// protection at all when the record next door is one route parameter away.
   void requireVisible(Session session, String employeeId, String what) {
+    employeeId = _seeded(employeeId);
     if (!visibleEmployeeIds(session).contains(employeeId)) {
       throw StateError('$what belongs to $employeeId, outside this scope');
     }
@@ -138,13 +147,27 @@ class MockStore {
   /// two things they may do to it, and both are recorded in an append-only
   /// history. Correcting a record is the owner's job.
   void requireOwner(Session session, String employeeId, String what) {
-    if (employeeId != session.employee.id) {
+    employeeId = _seeded(employeeId);
+    if (employeeId != _seeded(session.employee.id)) {
       throw StateError('$what belongs to $employeeId, not the caller');
     }
   }
 }
 
 // ================================================================== auth ==
+
+/// Whatever id the *seed* knows this person by.
+///
+/// These repositories are the modules that have no table yet. Live, a session
+/// carries the employee's Supabase uuid and the seed is keyed by `emp-1`, so
+/// without this every one of them looks up nobody — and `daySummary`'s
+/// unguarded `firstWhere` turned that into "Something went wrong" on Home for
+/// a manager who had signed in perfectly well.
+///
+/// In fixture mode the map is empty and the id passes straight through. This
+/// is the compatibility layer, and it is deliberately only here: it shrinks as
+/// each module gets a real table and disappears with the last one.
+String _seeded(String employeeId) => identity.seeded(employeeId);
 
 class MockAuthRepository implements AuthRepository {
   MockAuthRepository();
@@ -384,6 +407,7 @@ class MockActivityRepository implements ActivityRepository {
     String? employeeId,
     String? clientId,
   }) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     await _latency();
     final visible = _store.visibleEmployeeIds(session);
 
@@ -410,9 +434,15 @@ class MockActivityRepository implements ActivityRepository {
 
   @override
   Future<DaySummary> daySummary(String employeeId, DateTime date) async {
+    employeeId = _seeded(employeeId);
     await _latency(200);
-    final employee =
-        _store.seed.employees.firstWhere((e) => e.id == employeeId);
+    // Not `firstWhere` without a fallback. Live, somebody can exist in
+    // Supabase and not in this build's seed — a perfectly ordinary state — and
+    // an unguarded lookup turned that into "Something went wrong" on Home for
+    // a manager who had signed in correctly. They simply have no seeded day.
+    final employee = _store.seed.employees
+        .where((e) => e.id == employeeId)
+        .firstOrNull;
 
     final items = _store.activities
         .where((a) => a.employeeId == employeeId && _sameDay(a.scheduledStart, date))
@@ -430,7 +460,7 @@ class MockActivityRepository implements ActivityRepository {
     return DaySummary(
       date: date,
       activities: items,
-      headquarters: employee.headquarters,
+      headquarters: employee?.headquarters ?? '',
       workType: plan?.workType ?? WorkType.fieldWork,
       declaredAt: plan?.submittedAt,
     );
@@ -502,6 +532,7 @@ class MockDayPlanRepository implements DayPlanRepository {
 
   @override
   Future<DayPlan?> forDate(String employeeId, DateTime date) async {
+    employeeId = _seeded(employeeId);
     await _latency();
     return _store.dayPlans
         .where((p) =>
@@ -528,6 +559,7 @@ class MockDayPlanRepository implements DayPlanRepository {
 
   @override
   Future<List<DayPlan>> list(Session session, {String? employeeId}) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     await _latency();
     return _store.dayPlans
         .where((p) => _store.canSee(session, p.employeeId, filterId: employeeId))
@@ -553,6 +585,7 @@ class MockTravelRepository implements TravelRepository {
     ApprovalStatus? status,
     String? employeeId,
   }) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     await _latency();
     final visible = _store.visibleEmployeeIds(session);
 
@@ -615,6 +648,7 @@ class MockTravelRepository implements TravelRepository {
     DateTime month, {
     String? employeeId,
   }) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     await _latency(240);
     final id = employeeId ?? session.employee.id;
 
@@ -725,6 +759,7 @@ class MockExpenseRepository implements ExpenseRepository {
     ApprovalStatus? status,
     String? employeeId,
   }) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     await _latency();
     final visible = _store.visibleEmployeeIds(session);
 
@@ -796,6 +831,7 @@ class MockExpenseRepository implements ExpenseRepository {
     DateTime month, {
     String? employeeId,
   }) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     await _latency(260);
 
     final id = employeeId ?? session.employee.id;
@@ -1020,6 +1056,7 @@ class MockHrRepository implements HrRepository {
   /// approved leave. Deriving purely from visits painted their whole month red.
   @override
   Future<List<AttendanceRecord>> attendance(String employeeId, DateTime month) async {
+    employeeId = _seeded(employeeId);
     await _latency();
 
     final employee = _store.seed.employees
@@ -1085,6 +1122,7 @@ class MockHrRepository implements HrRepository {
 
   @override
   Future<List<LeaveRequest>> leaves(Session session, {String? employeeId}) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     await _latency();
     final visible = _store.visibleEmployeeIds(session);
     return _store.leaves
@@ -1111,6 +1149,7 @@ class MockHrRepository implements HrRepository {
 
   @override
   Future<List<Payslip>> payslips(Session session, String employeeId) async {
+    employeeId = _seeded(employeeId);
     await _latency();
     // Owner-only, not merely scoped: a manager can see a rep's claim and must
     // not see their pay. The parameter used to be accepted and thrown away,
@@ -1122,6 +1161,7 @@ class MockHrRepository implements HrRepository {
 
   @override
   Future<List<AppDocument>> documents(String employeeId) async {
+    employeeId = _seeded(employeeId);
     await _latency();
     return _store.seed.documents;
   }
@@ -1134,6 +1174,7 @@ class MockBusinessRepository implements BusinessRepository {
 
   @override
   Future<List<SalesRecord>> sales(Session session, {String? employeeId, int? year}) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     await _latency();
     final visible = _store.visibleEmployeeIds(session);
     return _store.seed.salesRecords
@@ -1147,6 +1188,7 @@ class MockBusinessRepository implements BusinessRepository {
 
   @override
   Future<List<Target>> targets(Session session, {String? employeeId, DateTime? month}) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     await _latency();
     final visible = _store.visibleEmployeeIds(session);
     return _store.targets
@@ -1173,6 +1215,7 @@ class MockBusinessRepository implements BusinessRepository {
 
   @override
   Future<List<Order>> orders(Session session, {ApprovalStatus? status, String? employeeId}) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     await _latency();
     final visible = _store.visibleEmployeeIds(session);
     return _store.orders
@@ -1406,6 +1449,7 @@ class MockTaskRepository implements TaskRepository {
     String? assignedById,
     TaskStatus? status,
   }) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     await _latency();
     final visible = _store.visibleEmployeeIds(session);
     return _store.tasks
@@ -1635,6 +1679,7 @@ class MockExportRepository implements ExportRepository {
     DateTime month, {
     String? employeeId,
   }) async {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
     final target = _target(session, employeeId);
 
     final rows = switch (kind) {
@@ -1667,13 +1712,17 @@ class MockExportRepository implements ExportRepository {
   /// reads as "that rep did nothing this month", which is a different and far
   /// worse answer than "not yours to ask".
   Employee _target(Session session, String? employeeId) {
-    if (employeeId == null || employeeId == session.employee.id) {
+    employeeId = employeeId == null ? null : _seeded(employeeId);
+    if (employeeId == null || employeeId == _seeded(session.employee.id)) {
       return session.employee;
     }
     if (!_store.visibleEmployeeIds(session).contains(employeeId)) {
       throw StateError('$employeeId is outside this session\'s scope');
     }
-    return _store.seed.employees.firstWhere((e) => e.id == employeeId);
+    // Same reasoning as `daySummary`: a live employee the seed does not know
+    // has nothing to export rather than an exception to throw.
+    return _store.seed.employees.where((e) => e.id == employeeId).firstOrNull
+        ?? session.employee;
   }
 
   static String _two(int n) => n.toString().padLeft(2, '0');
