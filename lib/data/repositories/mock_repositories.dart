@@ -180,6 +180,40 @@ class MockAuthRepository implements AuthRepository {
     return _current = Session(employee: match, loginAt: DateTime.now());
   }
 
+  /// The demo answers to an employee's own seeded address, and to their code,
+  /// because typing `sai.kiran@mrsales.in` on a phone to look at a demo is a
+  /// tax nobody should pay.
+  @override
+  Future<void> requestSignInCode(String email) async {
+    await _latency(500);
+    if (_findByEmailOrCode(email) == null) {
+      throw const AuthException('Nobody on the roster has that address.');
+    }
+  }
+
+  @override
+  Future<Session> signInWithCode({
+    required String email,
+    required String code,
+  }) async {
+    await _latency(600);
+    final match = _findByEmailOrCode(email);
+    if (match == null) {
+      throw const AuthException('Nobody on the roster has that address.');
+    }
+    if (code.trim() != '123456') {
+      throw const AuthException('That code is not right. It is 123456 here.');
+    }
+    return _current = Session(employee: match, loginAt: DateTime.now());
+  }
+
+  Employee? _findByEmailOrCode(String s) {
+    final q = s.toLowerCase().trim();
+    return _data.employees
+        .where((e) => e.email.toLowerCase() == q || e.employeeCode.toLowerCase() == q)
+        .firstOrNull;
+  }
+
   @override
   Future<void> logout() async {
     await _latency(200);

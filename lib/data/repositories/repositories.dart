@@ -21,6 +21,19 @@ import '../../shared/models/organization.dart';
 
 abstract interface class AuthRepository {
   Future<Session> login({required String employeeCode, required String password});
+
+  /// Ask for a sign-in code by email.
+  ///
+  /// The second way in, and the only one that works against a real backend:
+  /// nobody in the field has a password, and issuing twenty of them is a
+  /// decision no company has made. A code in an inbox needs no password to
+  /// lose, and — unlike a link — no deep link registered with the operating
+  /// system, which is the difference between this working on a device today
+  /// and after a signing profile.
+  Future<void> requestSignInCode(String email);
+
+  /// Exchange the code for a session.
+  Future<Session> signInWithCode({required String email, required String code});
   Future<void> logout();
   Future<Session?> restoreSession();
   Future<void> requestPasswordReset(String employeeCode);

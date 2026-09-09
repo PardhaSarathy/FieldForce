@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/mock_report_repository.dart';
 import '../../data/repositories/mock_repositories.dart';
+import '../../data/repositories/api_repositories.dart';
+import '../../data/remote/backend.dart';
 import '../../data/repositories/repositories.dart';
 import '../../shared/enums/app_enums.dart';
 import '../../shared/models/activity.dart';
@@ -16,8 +18,12 @@ import '../../shared/models/organization.dart';
 /// Swapping to the real API is a one-line change per provider — no screen or
 /// controller is aware of which implementation it is talking to (§7).
 
-final authRepositoryProvider =
-    Provider<AuthRepository>((ref) => MockAuthRepository());
+// The whole cost of adding a backend, as promised: two lines choose an
+// implementation and no screen knows the difference. Only these two have a
+// live version — employees, reporting lines and leave are what the database
+// holds — and the rest stay on the seed until their tables land.
+final authRepositoryProvider = Provider<AuthRepository>(
+    (ref) => isLive ? ApiAuthRepository() : MockAuthRepository());
 final employeeRepositoryProvider =
     Provider<EmployeeRepository>((ref) => MockEmployeeRepository());
 final clientRepositoryProvider =
@@ -30,7 +36,8 @@ final travelRepositoryProvider =
     Provider<TravelRepository>((ref) => MockTravelRepository());
 final expenseRepositoryProvider =
     Provider<ExpenseRepository>((ref) => MockExpenseRepository());
-final hrRepositoryProvider = Provider<HrRepository>((ref) => MockHrRepository());
+final hrRepositoryProvider = Provider<HrRepository>(
+    (ref) => isLive ? ApiHrRepository() : MockHrRepository());
 final exportRepositoryProvider =
     Provider<ExportRepository>((ref) => MockExportRepository());
 final businessRepositoryProvider =
@@ -105,6 +112,26 @@ class AuthController extends Notifier<AuthState> {
       state = const AuthFailure(
         'We could not sign you in. Please try again.',
       );
+    }
+  }
+
+  /// Ask for a code. Stays unauthenticated — the screen moves to its second
+  /// step on its own, because a failure here is about the address and belongs
+  /// beside the field the address was typed into.
+  Future<void> requestSignInCode(String email) async {
+    await _repo.requestSignInCode(email);
+  }
+
+  Future<void> signInWithCode(String email, String code) async {
+    state = const AuthAuthenticating();
+    try {
+      state = AuthAuthenticated(
+        await _repo.signInWithCode(email: email, code: code),
+      );
+    } on AuthException catch (e) {
+      state = AuthFailure(e.message);
+    } catch (_) {
+      state = const AuthFailure('We could not sign you in. Please try again.');
     }
   }
 

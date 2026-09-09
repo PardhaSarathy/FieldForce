@@ -3,11 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/routing/app_router.dart';
+import 'data/remote/backend.dart';
 import 'core/theme/app_background.dart';
 import 'core/theme/app_theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Does nothing without `--dart-define=SUPABASE_URL/KEY`, which is what keeps
+  // a demo build free of any network setup at all.
+  await initBackend();
 
   SystemChrome.setSystemUIOverlayStyle(AppTheme.systemOverlay);
   SystemChrome.setPreferredOrientations([
