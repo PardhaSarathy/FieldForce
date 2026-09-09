@@ -75,6 +75,16 @@ class ApiAuthRepository implements AuthRepository {
   /// the account and receives its own row or nothing. "Nothing" is the shape a
   /// half-finished invitation takes — signed in, linked to nobody — and it
   /// must not read as "your data is missing".
+  ///
+  /// **The session carries the fixture's employee, not the database's.** The
+  /// database's uuids are its own; every other repository in this app still
+  /// keys on `emp-1`, and thousands of activities, clients and day plans point
+  /// there. Handing the session a uuid would empty most of the app in exchange
+  /// for connecting one screen. So the person is matched by employee code —
+  /// the fixture keeps supplying identity, the database supplies the current
+  /// values — and [uuidFor] remembers the other half for the calls that need
+  /// it. When the remaining tables land this inverts; today it would be a
+  /// trade that loses.
   Future<Session> _sessionForCurrentUser() async {
     final user = db.auth.currentUser;
     if (user == null) throw const AuthException('You are not signed in.');
@@ -103,7 +113,30 @@ class ApiAuthRepository implements AuthRepository {
       );
     }
 
-    return Session(employee: employeeFromRow(row), loginAt: DateTime.now());
+    final live = employeeFromRow(row);
+
+    // The whole roster this account may read, not just themselves: a manager's
+    // team list, their approval queue and every leave row they can act on are
+    // all keyed by somebody else's uuid. Row-level security has already
+    // decided which people that is.
+    final roster = await db.from('employees').select('id, code');
+    _uuidByCode
+      ..clear()
+      ..addEntries(roster.map((r) =>
+          MapEntry(r['code'] as String, r['id'] as String)));
+    _uuidByCode[live.employeeCode] = live.id;
+
+    final seeded = MockDataset.instance.employees
+        .where((e) => e.employeeCode == live.employeeCode)
+        .firstOrNull;
+    if (seeded == null) {
+      throw AuthException(
+        '${live.name} (${live.employeeCode}) is in the database but not in '
+        'this build. It was seeded from a different world.',
+      );
+    }
+
+    return Session(employee: seeded, loginAt: DateTime.now());
   }
 
   @override
@@ -150,6 +183,30 @@ class ApiAuthRepository implements AuthRepository {
     final m = RegExp(r'message: ([^,)]+)').firstMatch(s);
     return m?.group(1) ?? s.replaceFirst(RegExp(r'^\w+Exception: '), '');
   }
+}
+
+/// The database's uuid for an employee code, learned at sign-in.
+final Map<String, String> _uuidByCode = {};
+String? uuidForCode(String code) => _uuidByCode[code];
+
+/// The fixture id for a database uuid, and the other way round.
+String? uuidForFixtureId(String fixtureId) {
+  final e = MockDataset.instance.employees
+      .where((x) => x.id == fixtureId)
+      .firstOrNull;
+  return e == null ? null : _uuidByCode[e.employeeCode];
+}
+
+String? fixtureIdForUuid(String uuid) {
+  final code = _uuidByCode.entries
+      .where((e) => e.value == uuid)
+      .map((e) => e.key)
+      .firstOrNull;
+  if (code == null) return null;
+  return MockDataset.instance.employees
+      .where((e) => e.employeeCode == code)
+      .firstOrNull
+      ?.id;
 }
 
 /// The database's employee row, as the app's model.
@@ -211,7 +268,13 @@ class ApiHrRepository implements HrRepository {
   Future<List<LeaveRequest>> leaves(Session session, {String? employeeId}) async {
     var q = db.from('leave_requests').select(
         'id, employee_id, type, from_date, to_date, days, reason, status, applied_at');
-    if (employeeId != null) q = q.eq('employee_id', employeeId);
+    // The screen asks in fixture ids, because that is what every other screen
+    // in this app speaks. The wire wants uuids.
+    if (employeeId != null) {
+      final uuid = uuidForFixtureId(employeeId);
+      if (uuid == null) return const [];
+      q = q.eq('employee_id', uuid);
+    }
     final rows = await q.order('from_date', ascending: false);
 
     // Names come from the roster the caller may read, which is the same set
@@ -228,9 +291,13 @@ class ApiHrRepository implements HrRepository {
 
     return rows
         .where((r) => _statusOf.containsKey(r['status']))
+        // A row whose owner is not in this build cannot be shown against a
+        // name, and an approver reading a record with no name is how a
+        // decision lands on the wrong person.
+        .where((r) => fixtureIdForUuid(r['employee_id'] as String) != null)
         .map((r) => LeaveRequest(
               id: r['id'] as String,
-              employeeId: r['employee_id'] as String,
+              employeeId: fixtureIdForUuid(r['employee_id'] as String)!,
               employeeName: names[r['employee_id']] ?? 'Somebody',
               fromDate: DateTime.parse(r['from_date'] as String),
               toDate: DateTime.parse(r['to_date'] as String),
