@@ -417,10 +417,25 @@ class ApiEmployeeRepository implements EmployeeRepository {
   Future<List<Employee>> teamOf(Session session) async {
     // Their reports, not their scope: a manager's scope includes themselves,
     // and a manager is not a member of their own team.
+    //
+    // Read through `current_reporting`, which is the dated assignment covering
+    // today, rather than through `employees.manager_id`. That column is a
+    // cache written when a decision is taken; it goes stale on its own when a
+    // future-dated transfer matures or a cover lapses. Authorization stopped
+    // trusting it in 0014, and a team list that disagreed with the caller's
+    // own scope would be a worse kind of wrong than a stale one.
+    final reporting = await db
+        .from('current_reporting')
+        .select('employee_id')
+        .eq('manager_id', session.employee.id);
+
+    final ids = reporting.map((r) => r['employee_id'] as String).toList();
+    if (ids.isEmpty) return const [];
+
     final rows = await db
         .from('employees')
         .select(_columns)
-        .eq('manager_id', session.employee.id)
+        .inFilter('id', ids)
         .order('code', ascending: true);
     return rows.map(employeeFromRow).toList();
   }
