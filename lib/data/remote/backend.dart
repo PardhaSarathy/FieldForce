@@ -24,6 +24,30 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const String supabaseKey = String.fromEnvironment('SUPABASE_KEY');
 
+/// The organisation this build belongs to.
+///
+/// It is here because the sign-in address is *derived* from the employee code
+/// and the organisation rather than looked up:
+///
+///     MR1001  +  'mrsales-demo'  ->  mr1001@mrsales-demo.mrsales.local
+///
+/// A lookup would need a public endpoint answering "does MR1001 exist here",
+/// which is an enumeration oracle on the staff list. Deriving asks the server
+/// nothing, so a wrong code fails authentication exactly like a wrong
+/// password. The cost is that the app is built per company — the same shape
+/// the Supabase URL already has. One build serving several organisations
+/// would put the choice on the login screen, and this function is where that
+/// would go.
+const String orgSlug = String.fromEnvironment('ORG_SLUG', defaultValue: 'mrsales-demo');
+
+/// The address behind an employee code. Never shown to anybody: the person
+/// types `MR1001`, and this is what Supabase Auth is asked about.
+///
+/// Must produce byte-for-byte what `public.login_email()` produces in the
+/// database, because the account was created there.
+String loginEmailFor(String employeeCode) =>
+    '${employeeCode.trim().toLowerCase()}@${orgSlug.trim().toLowerCase()}.mrsales.local';
+
 /// Whether a backend is *configured*. Not whether it is reachable, and not
 /// whether anybody is signed in — a wrong URL is still "live", and it fails
 /// where it is used with the reason attached, rather than silently falling

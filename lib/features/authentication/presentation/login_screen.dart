@@ -8,7 +8,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../data/remote/backend.dart';
-import '../../../data/repositories/mock_repositories.dart' show AuthException;
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import 'widgets/brand_mark.dart';
@@ -22,50 +21,18 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _codeController = TextEditingController(text: 'MR1001');
-  final _passwordController = TextEditingController(text: 'demo1234');
+  // Pre-filled only in the demo. A real sign-in screen that arrives holding
+  // somebody's employee ID is telling the next person who picks up the phone
+  // who was using it.
+  final _codeController = TextEditingController(text: isLive ? '' : 'MR1001');
+  final _passwordController = TextEditingController(text: isLive ? '' : 'demo1234');
   bool _obscure = true;
-
-  // The live path. Two steps rather than one screen with both fields on it:
-  // asking for a code you have not received yet is a field you cannot fill,
-  // and an empty box with no way to fill it reads as a broken form.
-  final _emailController = TextEditingController();
-  final _otpController = TextEditingController();
-  bool _codeSent = false;
-  bool _sending = false;
-  String? _sendProblem;
 
   @override
   void dispose() {
     _codeController.dispose();
     _passwordController.dispose();
-    _emailController.dispose();
-    _otpController.dispose();
     super.dispose();
-  }
-
-  Future<void> _sendCode() async {
-    final email = _emailController.text.trim();
-    if (email.isEmpty) return;
-    setState(() { _sending = true; _sendProblem = null; });
-    try {
-      await ref.read(authControllerProvider.notifier).requestSignInCode(email);
-      if (mounted) setState(() => _codeSent = true);
-    } on AuthException catch (e) {
-      if (mounted) setState(() => _sendProblem = e.message);
-    } catch (e) {
-      if (mounted) setState(() => _sendProblem = 'That did not send. $e');
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
-  }
-
-  Future<void> _submitCode() async {
-    FocusScope.of(context).unfocus();
-    await ref.read(authControllerProvider.notifier).signInWithCode(
-          _emailController.text.trim(),
-          _otpController.text.trim(),
-        );
   }
 
   /// Tapping a demo account signs straight in as that role.
@@ -83,7 +50,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       selection: TextSelection.collapsed(offset: code.length),
     );
 
-    if (_passwordController.text.trim().isEmpty) {
+    if (!isLive && _passwordController.text.trim().isEmpty) {
       _passwordController.text = 'demo1234';
     }
 
@@ -134,7 +101,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: AppSpacing.xs),
                     Text(
                       isLive
-                          ? 'Sign in to continue to Mr Sales.'
+                          ? 'Sign in with your employee ID.'
                           : 'Demo build — sign in with any account below.',
                       style: AppTypography.bodySm,
                       textAlign: TextAlign.center,
@@ -146,127 +113,60 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: AppSpacing.lg),
                     ],
 
-                    if (isLive) ...[
-                      AppTextField(
-                        label: 'Work email',
-                        hint: 'you@company.com',
-                        controller: _emailController,
-                        required: true,
-                        enabled: !isBusy && !_sending && !_codeSent,
-                        prefixIcon: Icons.mail_outline,
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _sendCode(),
-                        validator: (v) => Validate.required(v, 'Work email'),
+                    AppTextField(
+                      label: 'Employee ID',
+                      hint: 'e.g. MR1001',
+                      controller: _codeController,
+                      required: true,
+                      enabled: !isBusy,
+                      prefixIcon: Icons.badge_outlined,
+                      textCapitalization: TextCapitalization.characters,
+                      textInputAction: TextInputAction.next,
+                      validator: (v) => Validate.required(v, 'Employee ID'),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+
+                    AppTextField(
+                      label: 'Password',
+                      hint: 'Enter your password',
+                      controller: _passwordController,
+                      required: true,
+                      enabled: !isBusy,
+                      obscureText: _obscure,
+                      prefixIcon: Icons.lock_outline,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submit(),
+                      validator: (v) => Validate.required(v, 'Password'),
+                      suffix: IconButton(
+                        icon: Icon(
+                          _obscure
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          size: AppSizes.iconMd,
+                        ),
+                        color: AppColors.textSecondary,
+                        onPressed: () => setState(() => _obscure = !_obscure),
                       ),
+                    ),
 
-                      if (_codeSent) ...[
-                        const SizedBox(height: AppSpacing.lg),
-                        AppTextField(
-                          label: 'Code from your email',
-                          hint: '6 digits',
-                          controller: _otpController,
-                          required: true,
-                          enabled: !isBusy,
-                          prefixIcon: Icons.password_outlined,
-                          keyboardType: TextInputType.number,
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: (_) => _submitCode(),
-                          validator: (v) => Validate.required(v, 'Code'),
-                        ),
-                      ],
-
-                      if (_sendProblem != null) ...[
-                        const SizedBox(height: AppSpacing.lg),
-                        _Notice(message: _sendProblem!, tone: AppColors.error),
-                      ],
-                      if (failure != null) ...[
-                        const SizedBox(height: AppSpacing.lg),
-                        _Notice(message: failure, tone: AppColors.error),
-                      ],
-
-                      const SizedBox(height: AppSpacing.xl),
-                      if (!_codeSent)
-                        PrimaryButton(
-                          label: 'Email me a code',
-                          isLoading: _sending,
-                          onPressed: _sendCode,
-                        )
-                      else ...[
-                        PrimaryButton(
-                          label: 'Sign in',
-                          isLoading: isBusy,
-                          onPressed: _submitCode,
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        TextButton(
-                          onPressed: isBusy
-                              ? null
-                              : () => setState(() {
-                                    _codeSent = false;
-                                    _otpController.clear();
-                                    _sendProblem = null;
-                                  }),
-                          child: const Text('Use a different address'),
-                        ),
-                      ],
-                    ] else ...[
-                      AppTextField(
-                        label: 'Employee ID',
-                        hint: 'e.g. MR1001',
-                        controller: _codeController,
-                        required: true,
-                        enabled: !isBusy,
-                        prefixIcon: Icons.badge_outlined,
-                        textCapitalization: TextCapitalization.characters,
-                        textInputAction: TextInputAction.next,
-                        validator: (v) => Validate.required(v, 'Employee ID'),
-                      ),
+                    if (failure != null) ...[
                       const SizedBox(height: AppSpacing.lg),
-
-                      AppTextField(
-                        label: 'Password',
-                        hint: 'Enter your password',
-                        controller: _passwordController,
-                        required: true,
-                        enabled: !isBusy,
-                        obscureText: _obscure,
-                        prefixIcon: Icons.lock_outline,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _submit(),
-                        validator: (v) => Validate.required(v, 'Password'),
-                        suffix: IconButton(
-                          icon: Icon(
-                            _obscure
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            size: AppSizes.iconMd,
-                          ),
-                          color: AppColors.textSecondary,
-                          onPressed: () => setState(() => _obscure = !_obscure),
-                        ),
-                      ),
-
-                      if (failure != null) ...[
-                        const SizedBox(height: AppSpacing.lg),
-                        _Notice(message: failure, tone: AppColors.error),
-                      ],
-
-                      const SizedBox(height: AppSpacing.xl),
-                      PrimaryButton(
-                        label: 'Sign in',
-                        isLoading: isBusy,
-                        onPressed: _submit,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      TextButton(
-                        onPressed: isBusy
-                            ? null
-                            : () => context.push(Routes.forgotPassword),
-                        child: const Text('Forgot password?'),
-                      ),
-
+                      _Notice(message: failure, tone: AppColors.error),
                     ],
+
+                    const SizedBox(height: AppSpacing.xl),
+                    PrimaryButton(
+                      label: 'Sign in',
+                      isLoading: isBusy,
+                      onPressed: _submit,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    TextButton(
+                      onPressed: isBusy
+                          ? null
+                          : () => context.push(Routes.forgotPassword),
+                      child: const Text('Forgot password?'),
+                    ),
 
                     if (!isLive) ...[
                       const SizedBox(height: AppSpacing.xxl),

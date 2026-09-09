@@ -24,8 +24,8 @@ import '../../shared/models/organization.dart';
 // holds — and the rest stay on the seed until their tables land.
 final authRepositoryProvider = Provider<AuthRepository>(
     (ref) => isLive ? ApiAuthRepository() : MockAuthRepository());
-final employeeRepositoryProvider =
-    Provider<EmployeeRepository>((ref) => MockEmployeeRepository());
+final employeeRepositoryProvider = Provider<EmployeeRepository>(
+    (ref) => isLive ? ApiEmployeeRepository() : MockEmployeeRepository());
 final clientRepositoryProvider =
     Provider<ClientRepository>((ref) => MockClientRepository());
 final activityRepositoryProvider =
@@ -93,10 +93,36 @@ class AuthFailure extends AuthState {
 }
 
 class AuthController extends Notifier<AuthState> {
+  /// Starts *unknown*, not unauthenticated.
+  ///
+  /// Those are different claims and the difference is a whole screen: the app
+  /// opened with "nobody is signed in" and sent everybody to the login form,
+  /// including the person who signed in yesterday and whose session Supabase
+  /// had refreshed and was holding all along. The router shows the splash
+  /// while this is unknown, so nobody is asked to sign in twice.
   @override
-  AuthState build() => const AuthUnauthenticated();
+  AuthState build() {
+    Future.microtask(_restore);
+    return const AuthUnknown();
+  }
 
   AuthRepository get _repo => ref.read(authRepositoryProvider);
+
+  /// Ask the client what it already has, rather than keeping a second copy.
+  ///
+  /// Supabase persists and refreshes the token itself. Mirroring that into
+  /// shared preferences would be a second source of truth that goes stale the
+  /// moment a token is revoked — and the app would trust the stale one.
+  Future<void> _restore() async {
+    try {
+      final session = await _repo.restoreSession();
+      state = session == null
+          ? const AuthUnauthenticated()
+          : AuthAuthenticated(session);
+    } catch (_) {
+      state = const AuthUnauthenticated();
+    }
+  }
 
   Future<void> login(String employeeCode, String password) async {
     state = const AuthAuthenticating();

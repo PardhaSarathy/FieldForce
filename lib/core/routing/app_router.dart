@@ -54,8 +54,15 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: Routes.login,
     debugLogDiagnostics: false,
     redirect: (context, state) {
-      final isAuthed = auth is AuthAuthenticated;
       final path = state.matchedLocation;
+
+      // Still asking. Not "signed out" — sending somebody to the login form
+      // while their session is being restored asks them to sign in twice.
+      if (auth is AuthUnknown) {
+        return path == Routes.splash ? null : Routes.splash;
+      }
+
+      final isAuthed = auth is AuthAuthenticated;
 
       const authRoutes = {
         Routes.login,
