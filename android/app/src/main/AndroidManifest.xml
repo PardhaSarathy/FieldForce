@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for the app to reach Supabase. Flutter puts this in the
+         *debug* manifest for its own tooling, so a release build silently
+         ships without it: the APK installs, opens, and then every sign-in
+         fails with a network error that looks like a backend problem. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <!-- enableOnBackInvokedCallback opts in to Android 13+ predictive back, so
          the back swipe previews where it is going instead of ending abruptly.
          Flutter honours each route's PopScope either way; this is the
