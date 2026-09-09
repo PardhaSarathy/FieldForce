@@ -404,7 +404,10 @@ class ApiEmployeeRepository implements EmployeeRepository {
 
   @override
   Future<List<Employee>> visibleTo(Session session) async {
-    final rows = await db.from('employees').select(_columns).order('code');
+    // `ascending: true` is not the default in supabase-dart the way it is in
+    // supabase-js: `.order('code')` alone returns the roster backwards.
+    final rows =
+        await db.from('employees').select(_columns).order('code', ascending: true);
     final people = rows.map(employeeFromRow).toList();
     identity.rememberAll({for (final e in people) e.employeeCode: e.id});
     return people;
@@ -418,7 +421,7 @@ class ApiEmployeeRepository implements EmployeeRepository {
         .from('employees')
         .select(_columns)
         .eq('manager_id', session.employee.id)
-        .order('code');
+        .order('code', ascending: true);
     return rows.map(employeeFromRow).toList();
   }
 
