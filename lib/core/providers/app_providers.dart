@@ -19,45 +19,46 @@ import '../../shared/models/organization.dart';
 /// controller is aware of which implementation it is talking to (§7).
 
 // The whole cost of adding a backend, as promised: two lines choose an
-// implementation and no screen knows the difference. Only these two have a
-// live version — employees, reporting lines and leave are what the database
-// holds — and the rest stay on the seed until their tables land.
+// implementation and no screen knows the difference. Live mode flips every
+// product repository once its tables and RPCs exist; fixture mode stays on
+// mocks without env / dart-defines.
 final authRepositoryProvider = Provider<AuthRepository>(
     (ref) => isLive ? ApiAuthRepository() : MockAuthRepository());
 final employeeRepositoryProvider = Provider<EmployeeRepository>(
     (ref) => isLive ? ApiEmployeeRepository() : MockEmployeeRepository());
-final clientRepositoryProvider =
-    Provider<ClientRepository>((ref) => MockClientRepository());
-final activityRepositoryProvider =
-    Provider<ActivityRepository>((ref) => MockActivityRepository());
-final dayPlanRepositoryProvider =
-    Provider<DayPlanRepository>((ref) => MockDayPlanRepository());
-final travelRepositoryProvider =
-    Provider<TravelRepository>((ref) => MockTravelRepository());
-final expenseRepositoryProvider =
-    Provider<ExpenseRepository>((ref) => MockExpenseRepository());
+final clientRepositoryProvider = Provider<ClientRepository>(
+    (ref) => isLive ? ApiClientRepository() : MockClientRepository());
+final activityRepositoryProvider = Provider<ActivityRepository>(
+    (ref) => isLive ? ApiActivityRepository() : MockActivityRepository());
+final dayPlanRepositoryProvider = Provider<DayPlanRepository>(
+    (ref) => isLive ? ApiDayPlanRepository() : MockDayPlanRepository());
+final travelRepositoryProvider = Provider<TravelRepository>(
+    (ref) => isLive ? ApiTravelRepository() : MockTravelRepository());
+final expenseRepositoryProvider = Provider<ExpenseRepository>(
+    (ref) => isLive ? ApiExpenseRepository() : MockExpenseRepository());
 final hrRepositoryProvider = Provider<HrRepository>(
     (ref) => isLive ? ApiHrRepository() : MockHrRepository());
 final exportRepositoryProvider =
-    Provider<ExportRepository>((ref) => MockExportRepository());
-final businessRepositoryProvider =
-    Provider<BusinessRepository>((ref) => MockBusinessRepository());
-final approvalRepositoryProvider =
-    Provider<ApprovalRepository>((ref) => MockApprovalRepository());
-final taskRepositoryProvider =
-    Provider<TaskRepository>((ref) => MockTaskRepository());
-final notificationRepositoryProvider =
-    Provider<NotificationRepository>((ref) => MockNotificationRepository());
-final chatRepositoryProvider =
-    Provider<ChatRepository>((ref) => MockChatRepository());
-final resourceRepositoryProvider =
-    Provider<ResourceRepository>((ref) => MockResourceRepository());
-final surveyRepositoryProvider =
-    Provider<SurveyRepository>((ref) => MockSurveyRepository());
-final complaintRepositoryProvider =
-    Provider<ComplaintRepository>((ref) => MockComplaintRepository());
-final reportRepositoryProvider =
-    Provider<ReportRepository>((ref) => MockReportRepository());
+    Provider<ExportRepository>(
+        (ref) => isLive ? ApiExportRepository() : MockExportRepository());
+final businessRepositoryProvider = Provider<BusinessRepository>(
+    (ref) => isLive ? ApiBusinessRepository() : MockBusinessRepository());
+final approvalRepositoryProvider = Provider<ApprovalRepository>(
+    (ref) => isLive ? ApiApprovalRepository() : MockApprovalRepository());
+final taskRepositoryProvider = Provider<TaskRepository>(
+    (ref) => isLive ? ApiTaskRepository() : MockTaskRepository());
+final notificationRepositoryProvider = Provider<NotificationRepository>(
+    (ref) => isLive ? ApiNotificationRepository() : MockNotificationRepository());
+final chatRepositoryProvider = Provider<ChatRepository>(
+    (ref) => isLive ? ApiChatRepository() : MockChatRepository());
+final resourceRepositoryProvider = Provider<ResourceRepository>(
+    (ref) => isLive ? ApiResourceRepository() : MockResourceRepository());
+final surveyRepositoryProvider = Provider<SurveyRepository>(
+    (ref) => isLive ? ApiSurveyRepository() : MockSurveyRepository());
+final complaintRepositoryProvider = Provider<ComplaintRepository>(
+    (ref) => isLive ? ApiComplaintRepository() : MockComplaintRepository());
+final reportRepositoryProvider = Provider<ReportRepository>(
+    (ref) => isLive ? ApiReportRepository() : MockReportRepository());
 
 // ================================================================ session ==
 
