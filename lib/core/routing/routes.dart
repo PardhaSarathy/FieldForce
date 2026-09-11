@@ -110,7 +110,9 @@ abstract final class Routes {
 
   // chat
   static const chat = '/chat';
+  static const chatNewGroup = '/chat/new-group';
   static String chatDetail(String id) => '/chat/$id';
+  static String chatInfo(String id) => '/chat/$id/info';
 
   // resources
   static const resources = '/resources';

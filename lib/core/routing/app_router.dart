@@ -306,6 +306,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Chat and Resources themselves are shell branches; their detail screens
       // are pushed above the shell so they own the whole viewport.
       GoRoute(
+        path: Routes.chatNewGroup,
+        builder: (_, _) => const ChatNewGroupScreen(),
+      ),
+      GoRoute(
+        path: '/chat/:id/info',
+        builder: (_, state) =>
+            ChatInfoScreen(threadId: state.pathParameters['id']!),
+      ),
+      GoRoute(
         path: '/chat/:id',
         builder: (_, state) =>
             ChatDetailScreen(threadId: state.pathParameters['id']!),

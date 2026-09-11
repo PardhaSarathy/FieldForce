@@ -5,6 +5,7 @@ import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/engagement.dart';
@@ -65,22 +66,40 @@ class _ApprovalCenterScreenState extends ConsumerState<ApprovalCenterScreen> {
     if (!confirmed || !mounted) return;
 
     setState(() => _busy = true);
-    await ref
-        .read(approvalRepositoryProvider)
-        .approveAll(ref.read(sessionProvider), items);
 
-    if (!mounted) return;
-    ref.bumpRevision();
-    ref.invalidate(pendingApprovalsProvider);
-    ref.invalidate(managerDashboardProvider);
-    setState(() {
-      _busy = false;
-      _selected.clear();
-    });
+    try {
+      await ref
+          .read(approvalRepositoryProvider)
+          .approveAll(ref.read(sessionProvider), items);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${items.length} requests approved.')),
-    );
+      if (!mounted) return;
+      ref.bumpRevision();
+      ref.invalidate(pendingApprovalsProvider);
+      ref.invalidate(managerDashboardProvider);
+      ref.invalidate(notificationsProvider);
+      ref.invalidate(unreadNotificationsProvider);
+      setState(() {
+        _busy = false;
+        _selected.clear();
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${items.length} requests approved.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not approve the requests. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _decide(ApprovalItem item, {required bool approve}) async {
@@ -96,24 +115,42 @@ class _ApprovalCenterScreenState extends ConsumerState<ApprovalCenterScreen> {
     final session = ref.read(sessionProvider);
     final repo = ref.read(approvalRepositoryProvider);
 
-    if (approve) {
-      await repo.approve(session, item);
-    } else {
-      await repo.reject(session, item, reason: reason!);
-    }
+    try {
+      if (approve) {
+        await repo.approve(session, item);
+      } else {
+        await repo.reject(session, item, reason: reason!);
+      }
 
-    if (!mounted) return;
-    ref.bumpRevision();
-    ref.invalidate(pendingApprovalsProvider);
-    ref.invalidate(managerDashboardProvider);
+      if (!mounted) return;
+      ref.bumpRevision();
+      ref.invalidate(pendingApprovalsProvider);
+      ref.invalidate(managerDashboardProvider);
+      ref.invalidate(notificationsProvider);
+      ref.invalidate(unreadNotificationsProvider);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          approve ? '${item.title} approved.' : '${item.title} rejected.',
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            approve ? '${item.title} approved.' : '${item.title} rejected.',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: approve
+                  ? 'Could not approve the request. Try again.'
+                  : 'Could not reject the request. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override

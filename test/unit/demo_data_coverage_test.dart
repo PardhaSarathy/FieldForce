@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pharmaconnect/data/mock/mock_dataset.dart';
 import 'package:pharmaconnect/data/repositories/mock_repositories.dart';
 import 'package:pharmaconnect/shared/enums/app_enums.dart';
+import 'package:pharmaconnect/shared/models/engagement.dart';
 import 'package:pharmaconnect/shared/models/organization.dart';
 
 /// Demo data coverage.
@@ -255,6 +256,44 @@ void main() {
         expect(messages, isNotEmpty,
             reason: 'thread "${thread.title}" opens empty');
       }
+    });
+
+    test('typed messages, live location, and groups work in fixture chat',
+        () async {
+      final repo = MockChatRepository();
+      final id = (await repo.threads()).first.id;
+      final photo = await repo.sendImage(
+        id,
+        bytes: const [1, 2, 3, 4],
+        mimeType: 'image/jpeg',
+      );
+      expect(photo.kind, ChatMessageKind.image);
+
+      final pin = await repo.sendLocation(
+        id,
+        latitude: 17.385,
+        longitude: 78.486,
+        accuracy: 9,
+      );
+      expect(pin.kind, ChatMessageKind.location);
+
+      final live = await repo.startLiveLocation(
+        id,
+        latitude: 17.385,
+        longitude: 78.486,
+        minutes: 15,
+      );
+      expect(live.liveIsActive, isTrue);
+      await repo.stopLiveLocation(live.liveLocationId!);
+
+      final groupId = await repo.createGroup(
+        subject: 'Hyderabad huddle',
+        participantIds: const ['emp-1', 'emp-2'],
+        kind: ChatThreadKind.community,
+      );
+      expect(groupId, isNotEmpty);
+      final members = await repo.members(groupId);
+      expect(members, isNotEmpty);
     });
 
     test('complaints span every status', () async {

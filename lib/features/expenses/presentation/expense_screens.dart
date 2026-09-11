@@ -8,6 +8,7 @@ import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/field_ops.dart';
@@ -414,25 +415,41 @@ class _EditClaimFormState extends ConsumerState<_EditClaimForm> {
 
     // `copyWith`, never a rebuilt constructor: the id, the created date, the
     // day plan and the approval trail all have to survive a correction.
-    await ref.read(expenseRepositoryProvider).update(
-          ref.read(sessionProvider),
-          e.copyWith(
-            categories: _categories.toList(),
-            amount: entered,
-            description: _remarks.text.trim().isEmpty
-                ? null
-                : _remarks.text.trim(),
-          ),
-        );
+    try {
+      await ref.read(expenseRepositoryProvider).update(
+            ref.read(sessionProvider),
+            e.copyWith(
+              categories: _categories.toList(),
+              amount: entered,
+              description: _remarks.text.trim().isEmpty
+                  ? null
+                  : _remarks.text.trim(),
+            ),
+          );
 
-    if (!mounted) return;
-    AppHaptics.success();
-    ref.bumpRevision();
-    setState(() => _saving = false);
-    context.pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Claim updated.')),
-    );
+      if (!mounted) return;
+      AppHaptics.success();
+      ref.bumpRevision();
+      setState(() => _saving = false);
+      context.pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Claim updated.')),
+      );
+    } catch (err) {
+      if (!mounted) return;
+      AppHaptics.failure();
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              err,
+              fallback: 'Could not update the claim. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/providers/app_providers.dart';
 import '../../../core/routing/navigate.dart';
@@ -9,6 +10,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../data/remote/backend.dart';
+import '../../../data/sync/outbox.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/engagement.dart';
 import '../../../shared/models/organization.dart';
@@ -293,11 +296,26 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           SecondaryButton(label: 'Cancel', onPressed: () => context.pop()),
           PrimaryButton(
             label: 'Save',
-            onPressed: () {
-              context.pop();
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('Profile updated.')));
+            onPressed: () async {
+              try {
+                await ref.read(employeeRepositoryProvider).updateMyProfile(
+                      mobile: _mobile.text.trim(),
+                      email: _email.text.trim(),
+                      bloodGroup: _blood.text.trim().isEmpty
+                          ? null
+                          : _blood.text.trim(),
+                    );
+                if (!context.mounted) return;
+                context.pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Profile updated.')),
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Could not save: $e')),
+                );
+              }
             },
           ),
         ],
@@ -485,7 +503,27 @@ class _NotificationCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 2),
-                Text(notification.body, style: AppTypography.bodySm),
+                // A grouped row stands for several messages, so it says so
+                // and keeps the latest underneath. Showing only the last line
+                // read as though that were the whole of it — the rep opened a
+                // conversation expecting one message and found four.
+                if (notification.isGrouped) ...[
+                  Text(
+                    Fmt.count(notification.groupCount, 'new message'),
+                    style: AppTypography.bodySm.copyWith(
+                      color: AppColors.brand,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (notification.body.isNotEmpty) const SizedBox(height: 2),
+                ],
+                if (notification.body.isNotEmpty)
+                  Text(
+                    notification.body,
+                    style: AppTypography.bodySm,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
               ],
             ),
           ),
@@ -502,11 +540,49 @@ class _NotificationCard extends StatelessWidget {
 
 // =============================================================== settings ==
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  var _push = true;
+  var _visitReminders = true;
+  var _dailyReminder = false;
+  var _prefsReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _push = prefs.getBool('pref_push') ?? true;
+      _visitReminders = prefs.getBool('pref_visit_reminders') ?? true;
+      _dailyReminder = prefs.getBool('pref_daily_reminder') ?? false;
+      _prefsReady = true;
+    });
+  }
+
+  Future<void> _setPref(
+    String key,
+    bool value,
+    void Function(bool) apply,
+  ) async {
+    apply(value);
+    setState(() {});
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isOnline = ref.watch(isOnlineProvider);
 
     return Scaffold(
@@ -522,26 +598,32 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 _ToggleRow(
                   title: 'Push notifications',
-                  subtitle: 'Approvals, tasks and reminders',
-                  value: true,
-                  onChanged: (_) =>
-                      showComingWithBackend(context, 'Notification settings'),
+                  subtitle:
+                      'Approvals, tasks and reminders (OS push via FCM later)',
+                  value: _prefsReady ? _push : true,
+                  onChanged: (v) => _setPref('pref_push', v, (x) => _push = x),
                 ),
                 const Divider(height: 1, indent: AppSpacing.cardPadding),
                 _ToggleRow(
                   title: 'Visit reminders',
                   subtitle: 'Alert 15 minutes before each planned visit',
-                  value: true,
-                  onChanged: (_) =>
-                      showComingWithBackend(context, 'Notification settings'),
+                  value: _prefsReady ? _visitReminders : true,
+                  onChanged: (v) => _setPref(
+                    'pref_visit_reminders',
+                    v,
+                    (x) => _visitReminders = x,
+                  ),
                 ),
                 const Divider(height: 1, indent: AppSpacing.cardPadding),
                 _ToggleRow(
                   title: 'Daily report reminder',
                   subtitle: 'Prompt at 7 PM if the day is not submitted',
-                  value: false,
-                  onChanged: (_) =>
-                      showComingWithBackend(context, 'Notification settings'),
+                  value: _prefsReady ? _dailyReminder : false,
+                  onChanged: (v) => _setPref(
+                    'pref_daily_reminder',
+                    v,
+                    (x) => _dailyReminder = x,
+                  ),
                 ),
               ],
             ),
@@ -553,11 +635,11 @@ class SettingsScreen extends ConsumerWidget {
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                // Present because there is no backend yet: it is the only way
-                // to exercise the offline treatments in a demo build.
                 _ToggleRow(
                   title: 'Simulate offline',
-                  subtitle: 'Test how the app behaves without a connection',
+                  subtitle: isLive
+                      ? 'Override real connectivity to test the outbox'
+                      : 'Test how the app behaves without a connection',
                   value: !isOnline,
                   onChanged: (v) =>
                       ref.read(isOnlineProvider.notifier).setOnline(!v),
@@ -571,8 +653,14 @@ class SettingsScreen extends ConsumerWidget {
           AppCard(
             child: Column(
               children: [
-                const KeyValueRow(label: 'Version', value: '1.0.0 (mock data)'),
-                const KeyValueRow(label: 'Backend', value: 'Not connected'),
+                KeyValueRow(
+                  label: 'Version',
+                  value: isLive ? '1.0.0 (live)' : '1.0.0 (mock data)',
+                ),
+                KeyValueRow(
+                  label: 'Backend',
+                  value: isLive ? 'Connected' : 'Not connected (fixture)',
+                ),
                 KeyValueRow(
                   label: 'Geo-fence',
                   value:
@@ -707,13 +795,98 @@ class HelpScreen extends StatelessWidget {
 
 /// Sync Centre (§137). Shows what is waiting, what failed, and lets the user
 /// retry. A field worker must always be able to answer "is my work safe?".
-class SyncCenterScreen extends ConsumerWidget {
+class SyncCenterScreen extends ConsumerStatefulWidget {
   const SyncCenterScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SyncCenterScreen> createState() => _SyncCenterScreenState();
+}
+
+class _SyncCenterScreenState extends ConsumerState<SyncCenterScreen> {
+  var _syncing = false;
+
+  /// Throws away one refused item after asking.
+  ///
+  /// This is the rep's own work and there is no copy of it anywhere — the
+  /// server never accepted it — so it asks first and says what it is losing.
+  Future<void> _discard(OutboxItem item) async {
+    final ok = await showConfirmDialog(
+      context,
+      title: 'Discard this?',
+      message: '"${item.displayTitle}" was refused by the server and has not '
+          'been saved anywhere else. Discarding it loses it for good.',
+      confirmLabel: 'Discard',
+      isDestructive: true,
+    );
+    if (!ok) return;
+    await ref.read(outboxStoreProvider).remove(item.id);
+    if (!mounted) return;
+    ref.read(outboxRevisionProvider.notifier).state++;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Discarded "${item.displayTitle}".')),
+    );
+  }
+
+  /// What actually happened, rather than a hopeful default.
+  ///
+  /// "Try again shortly" used to be the message for every outcome that was not
+  /// a success — including the one case where trying again shortly does
+  /// nothing at all, because the server has refused the work outright.
+  static String _syncSentence(FlushResult r) {
+    final parts = <String>[];
+    if (r.sent > 0) parts.add('Synced ${r.sent} item${r.sent == 1 ? '' : 's'}.');
+    if (r.refused > 0) {
+      parts.add('${r.refused} ${r.refused == 1 ? 'was' : 'were'} refused by '
+          'the server and need${r.refused == 1 ? 's' : ''} your attention '
+          'below.');
+    }
+    if (r.stalled) parts.add('Could not reach the server for the rest.');
+    if (parts.isEmpty) return 'Nothing could be synced yet. Try again shortly.';
+    return parts.join(' ');
+  }
+
+  Future<void> _syncNow() async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    try {
+      final pending = await ref.read(outboxStoreProvider).count();
+      if (pending == 0) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Everything is already synced.')),
+        );
+        return;
+      }
+      if (!ref.read(isOnlineProvider)) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Connect to the network to sync pending work.'),
+          ),
+        );
+        return;
+      }
+      final r = await ref.read(outboxFlusherProvider).flush();
+      if (r.handled > 0) {
+        ref.read(outboxRevisionProvider.notifier).state++;
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_syncSentence(r))),
+      );
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isOnline = ref.watch(isOnlineProvider);
-    final pending = ref.watch(pendingSyncCountProvider);
+    final itemsAsync = ref.watch(outboxItemsProvider);
+    final items = itemsAsync.valueOrNull ?? const <OutboxItem>[];
+    final waiting = [for (final i in items) if (!i.isRefused) i];
+    final refused = [for (final i in items) if (i.isRefused) i];
+    final pending = waiting.length;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -748,10 +921,12 @@ class SyncCenterScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        isOnline
-                            ? 'Everything is up to date.'
+                        pending == 0
+                            ? (isOnline
+                                ? 'Everything is up to date.'
+                                : 'No work waiting on this device.')
                             : '$pending item${pending == 1 ? '' : 's'} saved '
-                                  'on this device, waiting to sync.',
+                                'on this device, waiting to sync.',
                         style: AppTypography.bodySm.copyWith(
                           color: isOnline
                               ? AppColors.success
@@ -780,7 +955,7 @@ class SyncCenterScreen extends ConsumerWidget {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  for (var i = 0; i < pending; i++) ...[
+                  for (var i = 0; i < waiting.length; i++) ...[
                     if (i > 0) const Divider(height: 1),
                     ListTile(
                       leading: const IconTile(
@@ -788,13 +963,11 @@ class SyncCenterScreen extends ConsumerWidget {
                         color: AppColors.warning,
                       ),
                       title: Text(
-                        i == 0
-                            ? 'Visit — Dr. Anjali Sharma'
-                            : 'Expense — Travel',
+                        waiting[i].displayTitle,
                         style: AppTypography.titleMd,
                       ),
                       subtitle: Text(
-                        'Saved locally · waiting for a connection',
+                        'Saved locally · waiting to sync',
                         style: AppTypography.caption,
                       ),
                       trailing: const StatusBadge(
@@ -807,17 +980,54 @@ class SyncCenterScreen extends ConsumerWidget {
                 ],
               ),
             ),
+          // Work the server has turned down. Kept apart from the queue above
+          // because it is a different problem: the queue is waiting on a
+          // signal, this is waiting on a person. Folding the two together is
+          // what let a refused visit sit for a week looking "pending".
+          if (refused.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.section),
+            const SectionHeader(title: 'Refused by the server'),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  for (var i = 0; i < refused.length; i++) ...[
+                    if (i > 0) const Divider(height: 1),
+                    ListTile(
+                      leading: const IconTile(
+                        icon: Icons.error_outline,
+                        color: AppColors.error,
+                      ),
+                      title: Text(
+                        refused[i].displayTitle,
+                        style: AppTypography.titleMd,
+                      ),
+                      subtitle: Text(
+                        refused[i].refusedReason ?? 'The server refused this.',
+                        style: AppTypography.caption
+                            .copyWith(color: AppColors.error),
+                      ),
+                      trailing: TextButton(
+                        onPressed: () => _discard(refused[i]),
+                        child: const Text('Discard'),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'These will not be retried. Re-enter the work in the app, then '
+              'discard the failed copy.',
+              style: AppTypography.caption,
+            ),
+          ],
           const SizedBox(height: AppSpacing.lg),
           PrimaryButton(
-            label: 'Sync now',
+            label: _syncing ? 'Syncing…' : 'Sync now',
             icon: Icons.sync,
-            onPressed: isOnline
-                ? () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Everything is already synced.'),
-                    ),
-                  )
-                : null,
+            onPressed: _syncing ? null : _syncNow,
           ),
           const SizedBox(height: AppSpacing.xxxl),
         ],

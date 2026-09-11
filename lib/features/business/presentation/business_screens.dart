@@ -316,19 +316,21 @@ class SalesScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Sales')),
-      body: async.when(
-        loading: () => const LoadingState(),
-        error: (_, _) =>
-            ErrorState(onRetry: () => ref.invalidate(_salesReportProvider)),
-        data: (report) => ListView(
-          padding: const EdgeInsets.all(AppSpacing.screenH),
-          children: [
-            _MonthPicker(
-              month: month,
-              onChanged: (m) => ref.read(_monthProvider.notifier).state = m,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-
+      body: ListView(
+        padding: const EdgeInsets.all(AppSpacing.screenH),
+        children: [
+          _MonthPicker(
+            month: month,
+            onChanged: (m) => ref.read(_monthProvider.notifier).state = m,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          async.when(
+            loading: () => const LoadingState(),
+            error: (_, _) =>
+                ErrorState(onRetry: () => ref.invalidate(_salesReportProvider)),
+            data: (report) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
             Row(
               children: [
                 Expanded(
@@ -386,8 +388,10 @@ class SalesScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.xxxl),
-          ],
-        ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -433,58 +437,68 @@ class TargetsScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Targets')),
-      body: async.when(
-        loading: () => const LoadingState(),
-        error: (_, _) => const ErrorState(),
-        data: (report) => ListView(
-          padding: const EdgeInsets.all(AppSpacing.screenH),
-          children: [
-            _MonthPicker(
-              month: month,
-              onChanged: (m) => ref.read(_monthProvider.notifier).state = m,
+      body: ListView(
+        padding: const EdgeInsets.all(AppSpacing.screenH),
+        children: [
+          _MonthPicker(
+            month: month,
+            onChanged: (m) => ref.read(_monthProvider.notifier).state = m,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          async.when(
+            loading: () => const LoadingState(),
+            error: (_, _) => ErrorState(
+              onRetry: () => ref.invalidate(_targetReportProvider),
             ),
-            const SizedBox(height: AppSpacing.lg),
-            AppCard(
-              child: Column(
-                children: [
-                  AchievementRing(percent: report.achievement),
-                  const SizedBox(height: AppSpacing.lg),
-                  KeyValueRow(label: 'Target', value: Fmt.money(report.target)),
-                  KeyValueRow(
-                    label: 'Achieved',
-                    value: Fmt.money(report.achieved),
-                  ),
-                  KeyValueRow(label: 'Gap', value: Fmt.money(report.gap)),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.section),
-            const SectionHeader(title: 'Six-month trend'),
-            AppCard(
-              child: TrendChart(
-                points: report.trend,
-                showComparison: true,
-                valueLabel: 'Achieved',
-              ),
-            ),
-            if (report.rows.length > 1) ...[
-              const SizedBox(height: AppSpacing.section),
-              const SectionHeader(title: 'By employee'),
-              AppCard(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    for (var i = 0; i < report.rows.length; i++) ...[
-                      if (i > 0) const Divider(height: 1),
-                      _TargetRow(target: report.rows[i]),
+            data: (report) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                AppCard(
+                  child: Column(
+                    children: [
+                      AchievementRing(percent: report.achievement),
+                      const SizedBox(height: AppSpacing.lg),
+                      KeyValueRow(
+                        label: 'Target',
+                        value: Fmt.money(report.target),
+                      ),
+                      KeyValueRow(
+                        label: 'Achieved',
+                        value: Fmt.money(report.achieved),
+                      ),
+                      KeyValueRow(label: 'Gap', value: Fmt.money(report.gap)),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-            ],
-            const SizedBox(height: AppSpacing.xxxl),
-          ],
-        ),
+                const SizedBox(height: AppSpacing.section),
+                const SectionHeader(title: 'Six-month trend'),
+                AppCard(
+                  child: TrendChart(
+                    points: report.trend,
+                    showComparison: true,
+                    valueLabel: 'Achieved',
+                  ),
+                ),
+                if (report.rows.length > 1) ...[
+                  const SizedBox(height: AppSpacing.section),
+                  const SectionHeader(title: 'By employee'),
+                  AppCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < report.rows.length; i++) ...[
+                          if (i > 0) const Divider(height: 1),
+                          _TargetRow(target: report.rows[i]),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.xxxl),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

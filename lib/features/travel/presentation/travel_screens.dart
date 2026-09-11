@@ -9,6 +9,7 @@ import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/client.dart';
@@ -139,29 +140,46 @@ class TourPlanScreen extends ConsumerWidget {
     );
     if (!go || !context.mounted) return;
 
-    final sent = await ref
-        .read(travelRepositoryProvider)
-        .submitMonth(ref.read(sessionProvider), month);
+    try {
+      final sent = await ref
+          .read(travelRepositoryProvider)
+          .submitMonth(ref.read(sessionProvider), month);
 
-    if (!context.mounted) return;
-    ref.bumpRevision();
+      if (!context.mounted) return;
+      ref.bumpRevision();
+      ref.invalidate(notificationsProvider);
+      ref.invalidate(unreadNotificationsProvider);
 
-    if (sent == 0) {
-      AppHaptics.failure();
+      if (sent == 0) {
+        AppHaptics.failure();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Every day needs a plan before the month can go.'),
+          ),
+        );
+        return;
+      }
+
+      AppHaptics.success();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Every day needs a plan before the month can go.'),
+        SnackBar(
+          content: Text('${Fmt.count(sent, 'day')} sent for approval.'),
         ),
       );
-      return;
+    } catch (e) {
+      if (!context.mounted) return;
+      AppHaptics.failure();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not submit the travel plan. Try again.',
+            ),
+          ),
+        ),
+      );
     }
-
-    AppHaptics.success();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${Fmt.count(sent, 'day')} sent for approval.'),
-      ),
-    );
   }
 }
 
@@ -759,7 +777,7 @@ class _TourPlanDayScreenState extends ConsumerState<TourPlanDayScreen> {
             const SizedBox(height: AppSpacing.lg),
             clientsAsync.when(
               loading: () => const Skeleton(height: 48),
-              error: (_, _) => const SizedBox.shrink(),
+              error: (_, _) => const ErrorState(compact: true),
               data: (clients) {
                 final scoped = _area == null
                     ? <Client>[]
@@ -817,39 +835,55 @@ class _TourPlanDayScreenState extends ConsumerState<TourPlanDayScreen> {
     final session = ref.read(sessionProvider);
     final detail = _needsDetail;
 
-    await ref.read(travelRepositoryProvider).saveDay(
-          TravelPlan(
-            // Client-generated, and kept across an edit so the approval trail
-            // already attached to this day survives it.
-            id: existing?.id ?? const Uuid().v4(),
-            employeeId: session.employee.id,
-            employeeName: session.employee.name,
-            date: widget.date,
-            workType: _workType,
-            status: ApprovalStatus.draft,
-            // Cleared on a leave or holiday rather than carried over: a day
-            // switched from field work to leave must not keep the area and
-            // the client list it had a moment ago.
-            areaId: detail ? _area?.id : null,
-            areaName: detail ? _area?.name : null,
-            territoryName: detail
-                ? (_territory?.name ?? session.employee.territoryName)
-                : null,
-            destination: detail ? _area?.name : null,
-            plannedVisits: detail ? _clientNames.length : 0,
-            clientNames: detail ? _clientNames : const [],
-            remarks:
-                _remarks.text.trim().isEmpty ? null : _remarks.text.trim(),
-            createdAt: existing?.createdAt ?? DateTime.now(),
-            approvalHistory: existing?.approvalHistory ?? const [],
-          ),
-        );
+    try {
+      await ref.read(travelRepositoryProvider).saveDay(
+            TravelPlan(
+              // Client-generated, and kept across an edit so the approval trail
+              // already attached to this day survives it.
+              id: existing?.id ?? const Uuid().v4(),
+              employeeId: session.employee.id,
+              employeeName: session.employee.name,
+              date: widget.date,
+              workType: _workType,
+              status: ApprovalStatus.draft,
+              // Cleared on a leave or holiday rather than carried over: a day
+              // switched from field work to leave must not keep the area and
+              // the client list it had a moment ago.
+              areaId: detail ? _area?.id : null,
+              areaName: detail ? _area?.name : null,
+              territoryName: detail
+                  ? (_territory?.name ?? session.employee.territoryName)
+                  : null,
+              destination: detail ? _area?.name : null,
+              plannedVisits: detail ? _clientNames.length : 0,
+              clientNames: detail ? _clientNames : const [],
+              remarks:
+                  _remarks.text.trim().isEmpty ? null : _remarks.text.trim(),
+              createdAt: existing?.createdAt ?? DateTime.now(),
+              approvalHistory: existing?.approvalHistory ?? const [],
+            ),
+          );
 
-    if (!mounted) return;
-    AppHaptics.success();
-    ref.bumpRevision();
-    setState(() => _saving = false);
-    context.pop();
+      if (!mounted) return;
+      AppHaptics.success();
+      ref.bumpRevision();
+      setState(() => _saving = false);
+      context.pop();
+    } catch (e) {
+      if (!mounted) return;
+      AppHaptics.failure();
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not save the travel plan. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 }
 

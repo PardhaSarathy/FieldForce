@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_motion.dart';
@@ -52,21 +54,26 @@ class _ArriveState extends State<Arrive> with SingleTickerProviderStateMixin {
     curve: AppMotion.curve,
   );
 
+  Timer? _start;
+
   @override
   void initState() {
     super.initState();
     if (widget.delay == Duration.zero) {
       _controller.forward();
     } else {
-      Future<void>.delayed(widget.delay, () {
-        // The row can be scrolled away and disposed before its turn comes.
-        if (mounted) _controller.forward();
-      });
+      // A `Timer` rather than `Future.delayed`, because the row can be
+      // scrolled away and disposed before its turn comes and a delay that
+      // cannot be cancelled outlives the widget that wanted it. A `mounted`
+      // check makes that harmless but not absent: the pending timer is still
+      // there, which is what a widget test reports as a leak.
+      _start = Timer(widget.delay, _controller.forward);
     }
   }
 
   @override
   void dispose() {
+    _start?.cancel();
     _controller.dispose();
     super.dispose();
   }

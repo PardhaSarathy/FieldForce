@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/location/geo_math.dart';
 import '../../../core/location/location_service.dart';
@@ -10,7 +12,9 @@ import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../data/remote/backend.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/activity.dart';
 import '../../../shared/models/client.dart';
@@ -55,10 +59,10 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
   bool _capturing = false;
   final _reasonController = TextEditingController();
 
-  /// Photos taken at the client. Named rather than stored — the camera comes
-  /// with the device integration; the record and the flow around it are what
-  /// is being built here.
+  /// Photos taken at the client. Live mode uploads to `visit-photos`; fixture
+  /// mode keeps stub names so demos still work offline.
   final List<String> _photos = [];
+  bool _uploadingPhoto = false;
 
   // Feedback step
   int _rcpaScore = 0;
@@ -88,6 +92,50 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
     _pobController.dispose();
     _remarksController.dispose();
     super.dispose();
+  }
+
+  Future<void> _addVisitPhoto() async {
+    if (_uploadingPhoto) return;
+    setState(() => _uploadingPhoto = true);
+    try {
+      if (!isLive) {
+        setState(() => _photos.add('visit-${_photos.length + 1}.jpg'));
+        return;
+      }
+      final picker = ImagePicker();
+      final file = await picker.pickImage(
+        source: kIsWeb ? ImageSource.gallery : ImageSource.camera,
+        imageQuality: 72,
+        maxWidth: 1600,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 8 * 1024 * 1024) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Photos must be under 8 MB.')),
+        );
+        return;
+      }
+      final path = await ref.read(activityRepositoryProvider).uploadVisitPhoto(
+            bytes: bytes,
+            mimeType: file.mimeType ?? 'image/jpeg',
+            fileName: file.name,
+          );
+      if (!mounted) return;
+      setState(() => _photos.add(path));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(e, fallback: 'Could not attach that photo.'),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+    }
   }
 
   Future<void> _load() async {
@@ -252,17 +300,35 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
           : SyncStatus.savedLocally,
     );
 
-    await ref.read(activityRepositoryProvider).completeVisit(completed);
+    try {
+      final saved =
+          await ref.read(activityRepositoryProvider).completeVisit(completed);
 
-    if (!mounted) return;
-    AppHaptics.success();
-    ref.bumpRevision();
-    ref.invalidate(todaySummaryProvider);
-    setState(() {
-      _submitting = false;
-      _activity = completed;
-      _step = 3;
-    });
+      if (!mounted) return;
+      AppHaptics.success();
+      ref.bumpRevision();
+      ref.invalidate(todaySummaryProvider);
+      ref.read(outboxRevisionProvider.notifier).state++;
+      setState(() {
+        _submitting = false;
+        _activity = saved;
+        _step = 3;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      AppHaptics.failure();
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not complete the visit. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -363,10 +429,9 @@ class _VisitFlowScreenState extends ConsumerState<VisitFlowScreen> {
         const SizedBox(height: AppSpacing.lg),
         VisitPhotoField(
           photos: _photos,
-          onAdd: () => setState(
-            () => _photos.add('visit-${_photos.length + 1}.jpg'),
-          ),
+          onAdd: _addVisitPhoto,
           onRemove: (p) => setState(() => _photos.remove(p)),
+          enabled: !_uploadingPhoto,
         ),
 
         if (result != null && result.requiresReason) ...[

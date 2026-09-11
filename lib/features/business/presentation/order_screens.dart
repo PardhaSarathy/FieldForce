@@ -8,6 +8,7 @@ import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/business.dart';
@@ -337,14 +338,31 @@ class _NewOrderScreenState extends ConsumerState<NewOrderScreen> {
           : SyncStatus.savedLocally,
     );
 
-    await ref.read(businessRepositoryProvider).createOrder(order);
-    if (!mounted) return;
+    try {
+      await ref.read(businessRepositoryProvider).createOrder(order);
+      if (!mounted) return;
 
-    ref.bumpRevision();
-    setState(() {
-      _submitting = false;
-      _created = order;
-    });
+      ref.bumpRevision();
+      ref.invalidate(notificationsProvider);
+      ref.invalidate(unreadNotificationsProvider);
+      setState(() {
+        _submitting = false;
+        _created = order;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not submit the order. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -403,7 +421,7 @@ class _NewOrderScreenState extends ConsumerState<NewOrderScreen> {
         children: [
           clientsAsync.when(
             loading: () => const Skeleton(height: 48),
-            error: (_, _) => const SizedBox.shrink(),
+            error: (_, _) => const ErrorState(compact: true),
             data: (clients) => DropdownField<Client>(
               label: 'Customer',
               required: true,
@@ -411,6 +429,7 @@ class _NewOrderScreenState extends ConsumerState<NewOrderScreen> {
               items: clients,
               value: _client,
               itemLabel: (c) => '${c.name} · ${c.areaName}',
+              searchable: true,
               onChanged: (v) => setState(() => _client = v),
             ),
           ),

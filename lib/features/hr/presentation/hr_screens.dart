@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/providers/app_providers.dart';
@@ -8,7 +9,9 @@ import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../data/remote/backend.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/field_ops.dart';
 import '../../../shared/widgets/motion.dart';
@@ -454,30 +457,47 @@ class _NewLeaveScreenState extends ConsumerState<NewLeaveScreen> {
     setState(() => _submitting = true);
 
     final session = ref.read(sessionProvider);
-    await ref
-        .read(hrRepositoryProvider)
-        .applyLeave(
-          LeaveRequest(
-            id: const Uuid().v4(),
-            employeeId: session.employee.id,
-            employeeName: session.employee.name,
-            fromDate: _from,
-            toDate: _to,
-            type: _type,
-            reason: _reason.text.trim(),
-            status: ApprovalStatus.submitted,
-            approvalHistory: [],
-            createdAt: DateTime.now(),
-          ),
-        );
+    try {
+      await ref
+          .read(hrRepositoryProvider)
+          .applyLeave(
+            LeaveRequest(
+              id: const Uuid().v4(),
+              employeeId: session.employee.id,
+              employeeName: session.employee.name,
+              fromDate: _from,
+              toDate: _to,
+              type: _type,
+              reason: _reason.text.trim(),
+              status: ApprovalStatus.submitted,
+              approvalHistory: [],
+              createdAt: DateTime.now(),
+            ),
+          );
 
-    if (!mounted) return;
-    ref.bumpRevision();
-    setState(() => _submitting = false);
-    context.pop();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Leave request submitted.')));
+      if (!mounted) return;
+      ref.bumpRevision();
+      ref.invalidate(notificationsProvider);
+      ref.invalidate(unreadNotificationsProvider);
+      setState(() => _submitting = false);
+      context.pop();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Leave request submitted.')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not submit the leave request. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -809,6 +829,46 @@ class _PayslipCardState extends State<_PayslipCard> {
 class DocumentsScreen extends ConsumerWidget {
   const DocumentsScreen({super.key});
 
+  Future<void> _openDocument(
+    BuildContext context,
+    WidgetRef ref,
+    AppDocument doc,
+  ) async {
+    final path = doc.url;
+    if (path == null || path.isEmpty || !isLive) {
+      showComingWithBackend(context, 'Downloads');
+      return;
+    }
+    try {
+      final signed = await ref
+          .read(hrRepositoryProvider)
+          .signedDocumentUrl(path);
+      if (signed == null || signed.isEmpty) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open that document.')),
+        );
+        return;
+      }
+      final uri = Uri.parse(signed);
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open that document.')),
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(e, fallback: 'Could not open that document.'),
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
@@ -859,8 +919,7 @@ class DocumentsScreen extends ConsumerWidget {
                         IconButton(
                           icon: const Icon(Icons.download_outlined),
                           color: AppColors.brand,
-                          onPressed: () =>
-                              showComingWithBackend(context, 'Downloads'),
+                          onPressed: () => _openDocument(context, ref, doc),
                         ),
                       ],
                     ),

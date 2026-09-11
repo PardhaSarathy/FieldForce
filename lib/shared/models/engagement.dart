@@ -77,6 +77,7 @@ class AppNotification {
     this.isRead = false,
     this.deepLink,
     this.relatedId,
+    this.groupCount = 1,
   });
 
   final String id;
@@ -92,6 +93,16 @@ class AppNotification {
 
   final String? relatedId;
 
+  /// How many events this one row stands for.
+  ///
+  /// A conversation produces one notification, not one per message — so this
+  /// says how many messages have arrived since it was last read. Anything
+  /// that is genuinely a single event leaves it at one.
+  final int groupCount;
+
+  /// More than one message waiting behind this row.
+  bool get isGrouped => groupCount > 1;
+
   AppNotification copyWith({bool? isRead}) => AppNotification(
     id: id,
     kind: kind,
@@ -101,7 +112,44 @@ class AppNotification {
     isRead: isRead ?? this.isRead,
     deepLink: deepLink,
     relatedId: relatedId,
+    groupCount: groupCount,
   );
+}
+
+enum ChatThreadKind { direct, group, community, announcement }
+
+enum ChatMessageKind { text, image, location, liveLocation, system }
+
+enum ChatDeliveryStatus { sending, sent, delivered, read, failed }
+
+class ChatAttachment {
+  const ChatAttachment({
+    required this.id,
+    required this.storagePath,
+    this.mimeType = 'image/jpeg',
+    this.byteSize,
+    this.width,
+    this.height,
+    this.signedUrl,
+  });
+
+  final String id;
+  final String storagePath;
+  final String mimeType;
+  final int? byteSize;
+  final int? width;
+  final int? height;
+  final String? signedUrl;
+
+  ChatAttachment copyWith({String? signedUrl}) => ChatAttachment(
+        id: id,
+        storagePath: storagePath,
+        mimeType: mimeType,
+        byteSize: byteSize,
+        width: width,
+        height: height,
+        signedUrl: signedUrl ?? this.signedUrl,
+      );
 }
 
 class ChatThread {
@@ -116,6 +164,10 @@ class ChatThread {
     this.participantIds = const [],
     this.subtitle,
     this.isOnline = false,
+    this.kind = ChatThreadKind.direct,
+    this.peerId,
+    this.isMuted = false,
+    this.lastMessageKind = ChatMessageKind.text,
   });
 
   final String id;
@@ -128,6 +180,35 @@ class ChatThread {
   final List<String> participantIds;
   final String? subtitle;
   final bool isOnline;
+  final ChatThreadKind kind;
+  final String? peerId;
+  final bool isMuted;
+  final ChatMessageKind lastMessageKind;
+
+  ChatThread copyWith({
+    String? title,
+    String? lastMessage,
+    DateTime? lastMessageAt,
+    int? unreadCount,
+    bool? isPinned,
+    ChatMessageKind? lastMessageKind,
+  }) =>
+      ChatThread(
+        id: id,
+        title: title ?? this.title,
+        lastMessage: lastMessage ?? this.lastMessage,
+        lastMessageAt: lastMessageAt ?? this.lastMessageAt,
+        isGroup: isGroup,
+        isPinned: isPinned ?? this.isPinned,
+        unreadCount: unreadCount ?? this.unreadCount,
+        participantIds: participantIds,
+        subtitle: subtitle,
+        isOnline: isOnline,
+        kind: kind,
+        peerId: peerId,
+        isMuted: isMuted,
+        lastMessageKind: lastMessageKind ?? this.lastMessageKind,
+      );
 }
 
 class ChatMessage {
@@ -140,6 +221,15 @@ class ChatMessage {
     required this.sentAt,
     this.isMine = false,
     this.attachmentPath,
+    this.kind = ChatMessageKind.text,
+    this.status = ChatDeliveryStatus.sent,
+    this.latitude,
+    this.longitude,
+    this.accuracyMeters,
+    this.liveLocationId,
+    this.liveExpiresAt,
+    this.liveIsActive = false,
+    this.attachments = const [],
   });
 
   final String id;
@@ -150,6 +240,42 @@ class ChatMessage {
   final DateTime sentAt;
   final bool isMine;
   final String? attachmentPath;
+  final ChatMessageKind kind;
+  final ChatDeliveryStatus status;
+  final double? latitude;
+  final double? longitude;
+  final double? accuracyMeters;
+  final String? liveLocationId;
+  final DateTime? liveExpiresAt;
+  final bool liveIsActive;
+  final List<ChatAttachment> attachments;
+
+  ChatMessage copyWith({
+    ChatDeliveryStatus? status,
+    bool? liveIsActive,
+    List<ChatAttachment>? attachments,
+    double? latitude,
+    double? longitude,
+  }) =>
+      ChatMessage(
+        id: id,
+        threadId: threadId,
+        senderId: senderId,
+        senderName: senderName,
+        text: text,
+        sentAt: sentAt,
+        isMine: isMine,
+        attachmentPath: attachmentPath,
+        kind: kind,
+        status: status ?? this.status,
+        latitude: latitude ?? this.latitude,
+        longitude: longitude ?? this.longitude,
+        accuracyMeters: accuracyMeters,
+        liveLocationId: liveLocationId,
+        liveExpiresAt: liveExpiresAt,
+        liveIsActive: liveIsActive ?? this.liveIsActive,
+        attachments: attachments ?? this.attachments,
+      );
 }
 
 class SurveyResponse {

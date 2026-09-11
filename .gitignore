@@ -58,3 +58,7 @@ android/build/
 # Machine-local tool state. `.claude/launch.json` and `serve.py` are shared
 # because they drive the browser preview; the settings file is per-machine.
 .claude/settings.local.json
+
+# Local live-build defines (never commit)
+dart_defines.json
+

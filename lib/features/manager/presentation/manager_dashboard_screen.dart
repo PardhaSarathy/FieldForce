@@ -30,6 +30,7 @@ class ManagerDashboardScreen extends ConsumerWidget {
     final session = ref.watch(sessionProvider);
     final dashboardAsync = ref.watch(managerDashboardProvider);
     final unread = ref.watch(unreadNotificationsProvider).valueOrNull ?? 0;
+    final unreadChats = ref.watch(unreadChatsProvider).valueOrNull ?? 0;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -40,29 +41,39 @@ class ManagerDashboardScreen extends ConsumerWidget {
             ref.invalidate(managerDashboardProvider);
             ref.invalidate(pendingApprovalsProvider);
           },
-          child: dashboardAsync.when(
-            loading: () => const LoadingState(message: 'Loading your team'),
-            error: (_, _) => ErrorState(
-              onRetry: () => ref.invalidate(managerDashboardProvider),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenH,
+              AppSpacing.md,
+              AppSpacing.screenH,
+              AppSpacing.xxxl * 3,
             ),
-            data: (data) => ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenH,
-                AppSpacing.md,
-                AppSpacing.screenH,
-                AppSpacing.xxxl * 3,
+            children: [
+              _ManagerHeader(
+                name: session.employee.name.split(' ').first,
+                role: session.role.label,
+                territory: session.employee.territoryName,
+                unreadCount: unread,
+                unreadChats: unreadChats,
               ),
-              children: [
-                _ManagerHeader(
-                  name: session.employee.name.split(' ').first,
-                  role: session.role.label,
-                  territory: session.employee.territoryName,
-                  unreadCount: unread,
+              const SizedBox(height: AppSpacing.xl),
+              // Manage stays outside the figures load — same rule as Home.
+              dashboardAsync.when(
+                loading: () => const LoadingState(message: 'Loading your team'),
+                error: (_, _) => ErrorState(
+                  title: 'Could not load your team',
+                  message: 'Manage below still works. Pull to refresh.',
+                  onRetry: () => ref.invalidate(managerDashboardProvider),
                 ),
-                const SizedBox(height: AppSpacing.xl),
-                ManagerTeamSections(data: data),
-              ],
-            ),
+                data: (data) => ManagerTeamSections(
+                  data: data,
+                  showManage: false,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.section),
+              const SectionHeader(title: 'Manage'),
+              const ManagerActionsGrid(),
+            ],
           ),
         ),
       ),
@@ -81,9 +92,17 @@ class ManagerDashboardScreen extends ConsumerWidget {
 /// are here now, in the order the day runs, and nothing was dropped from
 /// either.
 class ManagerTeamSections extends StatelessWidget {
-  const ManagerTeamSections({super.key, required this.data});
+  const ManagerTeamSections({
+    super.key,
+    required this.data,
+    this.showManage = true,
+  });
 
   final ManagerDashboard data;
+
+  /// When false, the caller renders [ManagerActionsGrid] itself so Manage
+  /// survives a figures load failure.
+  final bool showManage;
 
   /// Exceptions lead, because a manager opening the app needs to know what is
   /// wrong, not what is normal.
@@ -114,10 +133,11 @@ class ManagerTeamSections extends StatelessWidget {
           onAction: () => navigateTo(context, Routes.reports),
         ),
         _MonthPerformance(data: data),
-        const SizedBox(height: AppSpacing.section),
-
-        const SectionHeader(title: 'Manage'),
-        const _ManagerActions(),
+        if (showManage) ...[
+          const SizedBox(height: AppSpacing.section),
+          const SectionHeader(title: 'Manage'),
+          const ManagerActionsGrid(),
+        ],
       ],
     );
   }
@@ -129,18 +149,20 @@ class _ManagerHeader extends ConsumerWidget {
     required this.role,
     required this.territory,
     required this.unreadCount,
+    this.unreadChats = 0,
   });
 
   final String name;
   final String role;
   final String territory;
   final int unreadCount;
+  final int unreadChats;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Column(
       children: [
-        // Same top bar as the field Home: menu, brand, notifications.
+        // Same top bar as the field Home: menu, brand, chat, notifications.
         Row(
           children: [
             IconButton(
@@ -169,6 +191,16 @@ class _ManagerHeader extends ConsumerWidget {
                     ),
                   ),
                 ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Chat',
+              onPressed: () => navigateTo(context, Routes.chat),
+              icon: Badge(
+                isLabelVisible: unreadChats > 0,
+                label: Text('$unreadChats'),
+                backgroundColor: AppColors.error,
+                child: const Icon(Icons.textsms_outlined),
               ),
             ),
             IconButton(
@@ -556,8 +588,9 @@ class _VDivider extends StatelessWidget {
       Container(width: 1, height: 34, color: AppColors.border);
 }
 
-class _ManagerActions extends StatelessWidget {
-  const _ManagerActions();
+/// Static Manage tiles — safe to show even when team figures fail to load.
+class ManagerActionsGrid extends StatelessWidget {
+  const ManagerActionsGrid({super.key});
 
   @override
   Widget build(BuildContext context) {

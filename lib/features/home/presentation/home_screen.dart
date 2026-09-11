@@ -47,6 +47,7 @@ class HomeScreen extends ConsumerWidget {
     final isManager = session.isManager;
     final summaryAsync = ref.watch(todaySummaryProvider);
     final unread = ref.watch(unreadNotificationsProvider).valueOrNull ?? 0;
+    final unreadChats = ref.watch(unreadChatsProvider).valueOrNull ?? 0;
     final employee = session.employee;
 
     return Scaffold(
@@ -60,11 +61,12 @@ class HomeScreen extends ConsumerWidget {
             // the scroll view rather than inside it. A Column, not a floating
             // overlay: content scrolls *below* the bar, never under it, so the
             // bar needs no opaque fill and the ground's wash stays unbroken.
-            _HomeTopBar(unreadCount: unread),
+            _HomeTopBar(unreadCount: unread, unreadChats: unreadChats),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
                   ref.invalidate(todaySummaryProvider);
+                  ref.invalidate(unreadChatsProvider);
                   // Both halves, since both are on the screen. A pull that
                   // refreshed only the visits would leave a stale approval
                   // count sitting under a freshly-updated day.
@@ -87,16 +89,31 @@ class HomeScreen extends ConsumerWidget {
                         role: isManager ? session.role.label : null,
                       ),
                     ),
+                    // Own-day metrics/visits and Quick Actions load separately.
+                    // Nesting Quick Actions inside `todaySummary` hid Day Plan /
+                    // Activity / Clients whenever the personal day failed —
+                    // the same class of bug that hid Manage for ASMs.
                     summaryAsync.when(
                       loading: () => const SliverToBoxAdapter(
                         child: Padding(
-                          padding: EdgeInsets.only(top: AppSpacing.xxxl * 2),
+                          padding: EdgeInsets.fromLTRB(
+                            AppSpacing.screenH,
+                            AppSpacing.lg,
+                            AppSpacing.screenH,
+                            AppSpacing.md,
+                          ),
                           child: LoadingState(message: 'Loading your day'),
                         ),
                       ),
                       error: (_, _) => SliverToBoxAdapter(
-                        child: ErrorState(
-                          onRetry: () => ref.invalidate(todaySummaryProvider),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.screenH,
+                          ),
+                          child: ErrorState(
+                            onRetry: () =>
+                                ref.invalidate(todaySummaryProvider),
+                          ),
                         ),
                       ),
                       data: (summary) => SliverPadding(
@@ -104,44 +121,67 @@ class HomeScreen extends ConsumerWidget {
                           AppSpacing.screenH,
                           0,
                           AppSpacing.screenH,
-                          AppSpacing.xxxl * 3,
+                          0,
                         ),
-                        sliver: SliverList.list(
-                          children: [
-                            // The day's figures, the modules, and the day
-                            // itself — read in that order, so they arrive in
-                            // that order.
-                            //
-                            // There used to be a fourth block between the last
-                            // two: a "Next action" card repeating the first
-                            // row of the list underneath it, with its own
-                            // avatar, badge, two metadata rows and a button
-                            // bar. One appointment, a quarter of the screen,
-                            // and the same appointment again immediately
-                            // below. The list absorbed it — the next call is
-                            // the row with the accent and the button on it.
-                            Arrive(child: _TodayMetrics(summary: summary)),
-                            const SizedBox(height: AppSpacing.lg),
-                            Arrive(
-                              delay: AppMotion.staggerFor(1),
-                              child: const _QuickActionsGrid(),
-                            ),
-                            const SizedBox(height: AppSpacing.section),
-                            Arrive(
-                              delay: AppMotion.staggerFor(2),
-                              child: _TodaysVisits(summary: summary),
-                            ),
-                            if (isManager) ...[
-                              const SizedBox(height: AppSpacing.section),
-                              Arrive(
-                                delay: AppMotion.staggerFor(3),
-                                child: const _TeamHalf(),
-                              ),
-                            ],
-                          ],
+                        sliver: SliverToBoxAdapter(
+                          child: Arrive(child: _TodayMetrics(summary: summary)),
                         ),
                       ),
                     ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.screenH,
+                        AppSpacing.lg,
+                        AppSpacing.screenH,
+                        0,
+                      ),
+                      sliver: SliverToBoxAdapter(
+                        child: Arrive(
+                          delay: AppMotion.staggerFor(1),
+                          child: _QuickActionsGrid(
+                            expandedByDefault: isManager,
+                          ),
+                        ),
+                      ),
+                    ),
+                    summaryAsync.maybeWhen(
+                      data: (summary) => SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.screenH,
+                          AppSpacing.section,
+                          AppSpacing.screenH,
+                          0,
+                        ),
+                        sliver: SliverToBoxAdapter(
+                          child: Arrive(
+                            delay: AppMotion.staggerFor(2),
+                            child: _TodaysVisits(summary: summary),
+                          ),
+                        ),
+                      ),
+                      orElse: () => const SliverToBoxAdapter(
+                        child: SizedBox.shrink(),
+                      ),
+                    ),
+                    if (isManager)
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.screenH,
+                          AppSpacing.section,
+                          AppSpacing.screenH,
+                          AppSpacing.xxxl * 3,
+                        ),
+                        sliver: SliverToBoxAdapter(
+                          child: Arrive(
+                            delay: AppMotion.staggerFor(3),
+                            child: const _TeamHalf(),
+                          ),
+                        ),
+                      )
+                    else
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: AppSpacing.xxxl * 3),
+                      ),
                   ],
                 ),
               ),
@@ -166,20 +206,36 @@ class _TeamHalf extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(managerDashboardProvider);
     return async.when(
-      // Quiet on both. The rep half above is already on screen and useful; a
-      // spinner or an error panel under it would say the page had failed when
-      // only its second half had.
-      //
-      // Blocks, not a `SkeletonList` — that is a `ListView`, and an unbounded
-      // one nested in the sliver above has no height to lay out in.
+      // Quiet loading — the rep half above is already useful. Errors are not
+      // quiet: swallowing them hid Approvals / Manage entirely.
       loading: () => const Column(
         children: [
           Skeleton(height: 92, radius: AppRadius.lg),
           SizedBox(height: AppSpacing.cardGap),
           Skeleton(height: 140, radius: AppRadius.lg),
+          SizedBox(height: AppSpacing.section),
+          SectionHeader(title: 'Manage'),
+          ManagerActionsGrid(),
         ],
       ),
-      error: (_, _) => const SizedBox.shrink(),
+      error: (error, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ErrorState(
+            title: 'Could not load your team',
+            message:
+                'Pull to refresh, or try again. Manage below still works.\n'
+                '${error.toString().split('\n').first}',
+            onRetry: () {
+              ref.invalidate(managerDashboardProvider);
+              ref.invalidate(pendingApprovalsProvider);
+            },
+          ),
+          const SizedBox(height: AppSpacing.section),
+          const SectionHeader(title: 'Manage'),
+          const ManagerActionsGrid(),
+        ],
+      ),
       data: (data) => ManagerTeamSections(data: data),
     );
   }
@@ -191,9 +247,10 @@ class _TeamHalf extends ConsumerWidget {
 /// these are the controls a rep may want at any position, and the brand mark
 /// is what tells them which app they are in.
 class _HomeTopBar extends ConsumerWidget {
-  const _HomeTopBar({required this.unreadCount});
+  const _HomeTopBar({required this.unreadCount, this.unreadChats = 0});
 
   final int unreadCount;
+  final int unreadChats;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -242,6 +299,7 @@ class _HomeTopBar extends ConsumerWidget {
             // "comment" mark; the one people read as *chat* is the one that
             // has a conversation inside it.
             icon: Icons.textsms_outlined,
+            badgeCount: unreadChats,
             onTap: () => navigateTo(context, Routes.chat),
             tooltip: 'Chat',
           ),
@@ -783,7 +841,11 @@ int _quickActionColumns(double width) =>
     width >= AppBreakpoints.expanded ? 6 : 3;
 
 class _QuickActionsGrid extends StatefulWidget {
-  const _QuickActionsGrid();
+  const _QuickActionsGrid({this.expandedByDefault = false});
+
+  /// Managers need Tour Plan / HR / Expenses without an extra tap — their
+  /// Home already carries more below the fold than a rep's.
+  final bool expandedByDefault;
 
   @override
   State<_QuickActionsGrid> createState() => _QuickActionsGridState();
@@ -839,13 +901,12 @@ class _QuickActionsGrid extends StatefulWidget {
 class _QuickActionsGridState extends State<_QuickActionsGrid> {
   /// Whether the rows below the first are showing.
   ///
-  /// Collapsed by default. Three of the six carry nearly all the traffic —
-  /// declare the day, log a call, look up a client — and the other three were
-  /// spending a whole row of Home on modules a rep opens now and then, which
-  /// pushed today's calls below the fold. The row is not deleted, it is
-  /// folded: Tour Plan, HR and Expenses are one tap away here and still in the
-  /// side menu, which is the app's full index.
-  bool _expanded = false;
+  /// Collapsed by default for reps. Three of the six carry nearly all the
+  /// traffic — declare the day, log a call, look up a client — and the other
+  /// three were spending a whole row of Home on modules a rep opens now and
+  /// then. Managers start expanded so Tour Plan / HR / Expenses are not
+  /// mistaken for missing options.
+  late bool _expanded = widget.expandedByDefault;
 
   @override
   Widget build(BuildContext context) {

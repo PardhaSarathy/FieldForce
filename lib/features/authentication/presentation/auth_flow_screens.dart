@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/app_providers.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -108,12 +109,28 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
-    await ref
-        .read(authRepositoryProvider)
-        .requestPasswordReset(_controller.text.trim());
-    if (!mounted) return;
-    setState(() => _busy = false);
-    context.push(Routes.otp, extra: _controller.text.trim());
+
+    try {
+      await ref
+          .read(authRepositoryProvider)
+          .requestPasswordReset(_controller.text.trim());
+      if (!mounted) return;
+      setState(() => _busy = false);
+      context.push(Routes.otp, extra: _controller.text.trim());
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not send the verification code. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -133,6 +150,12 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             required: true,
             prefixIcon: Icons.badge_outlined,
             textCapitalization: TextCapitalization.characters,
+            // The keyboard's own return key submits, as it does on the sign-in
+            // screen. Without it the rep types the code, presses Go, nothing
+            // happens, and they have to dismiss the keyboard to reach a button
+            // the keyboard is covering.
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _submit(),
             validator: (v) => Validate.required(v, 'Employee ID'),
           ),
         ),
@@ -173,17 +196,32 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       _error = null;
     });
 
-    final ok = await ref
-        .read(authRepositoryProvider)
-        .verifyOtp(employeeCode: widget.employeeCode, otp: _controller.text);
+    try {
+      final ok = await ref
+          .read(authRepositoryProvider)
+          .verifyOtp(employeeCode: widget.employeeCode, otp: _controller.text);
 
-    if (!mounted) return;
-    setState(() => _busy = false);
+      if (!mounted) return;
+      setState(() => _busy = false);
 
-    if (ok) {
-      context.push(Routes.resetPassword, extra: widget.employeeCode);
-    } else {
-      setState(() => _error = 'That code is not correct. Please try again.');
+      if (ok) {
+        context.push(Routes.resetPassword, extra: widget.employeeCode);
+      } else {
+        setState(() => _error = 'That code is not correct. Please try again.');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not verify the code. Try again.',
+            ),
+          ),
+        ),
+      );
     }
   }
 
@@ -202,6 +240,8 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
           keyboardType: TextInputType.number,
           maxLength: 6,
           prefixIcon: Icons.pin_outlined,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _verify(),
           helper: _error,
         ),
         if (_error != null) ...[
@@ -250,17 +290,33 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
-    await ref
-        .read(authRepositoryProvider)
-        .resetPassword(
-          employeeCode: widget.employeeCode,
-          password: _password.text,
-        );
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      _done = true;
-    });
+
+    try {
+      await ref
+          .read(authRepositoryProvider)
+          .resetPassword(
+            employeeCode: widget.employeeCode,
+            password: _password.text,
+          );
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _done = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not update the password. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -288,6 +344,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           child: Column(
             children: [
               AppTextField(
+                textInputAction: TextInputAction.next,
                 label: 'New password',
                 controller: _password,
                 obscureText: true,
@@ -303,6 +360,8 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
               ),
               const SizedBox(height: AppSpacing.lg),
               AppTextField(
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _submit(),
                 label: 'Confirm password',
                 controller: _confirm,
                 obscureText: true,

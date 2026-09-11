@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/providers/app_providers.dart';
@@ -9,7 +11,10 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_glow.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../data/remote/backend.dart';
+import '../../../data/remote/storage_upload.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/client.dart';
 import '../../../shared/models/engagement.dart';
@@ -22,422 +27,7 @@ import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
 import '../../shell/presentation/app_shell.dart';
 
-// =================================================================== chat ==
-
-final _chatQueryProvider = StateProvider.autoDispose<String>((ref) => '');
-
-final _threadsProvider = FutureProvider.autoDispose<List<ChatThread>>((ref) {
-  return ref
-      .watch(chatRepositoryProvider)
-      .threads(query: ref.watch(_chatQueryProvider));
-});
-
-class ChatListScreen extends ConsumerStatefulWidget {
-  const ChatListScreen({super.key});
-
-  @override
-  ConsumerState<ChatListScreen> createState() => _ChatListScreenState();
-}
-
-class _ChatListScreenState extends ConsumerState<ChatListScreen> {
-  final _search = TextEditingController();
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final async = ref.watch(_threadsProvider);
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      // A tab root has nothing to pop back to, so the leading slot carries
-      // the app's index instead — the same menu Home opens.
-      appBar: AppBar(
-        title: const Text('Chats'),
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          tooltip: 'Menu',
-          onPressed: () => openAppDrawer(ref),
-        ),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenH,
-              0,
-              AppSpacing.screenH,
-              AppSpacing.md,
-            ),
-            child: SearchField(
-              controller: _search,
-              onChanged: (v) => ref.read(_chatQueryProvider.notifier).state = v,
-            ),
-          ),
-          Expanded(
-            child: async.when(
-              loading: () => const SkeletonList(),
-              error: (_, _) => const ErrorState(),
-              data: (threads) {
-                if (threads.isEmpty) {
-                  return const EmptyState(
-                    icon: Icons.chat_bubble_outline,
-                    title: 'No conversations',
-                    message: 'Messages from your team appear here.',
-                  );
-                }
-
-                final pinned = threads.where((t) => t.isPinned).toList();
-                final rest = threads.where((t) => !t.isPinned).toList();
-
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenH,
-                    AppSpacing.md,
-                    AppSpacing.screenH,
-                    AppSpacing.xxxl,
-                  ),
-                  children: [
-                    if (pinned.isNotEmpty) ...[
-                      const SectionHeader(title: 'Pinned'),
-                      for (final t in pinned)
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            bottom: AppSpacing.cardGap,
-                          ),
-                          child: _ThreadCard(thread: t),
-                        ),
-                      const SizedBox(height: AppSpacing.md),
-                    ],
-                    if (rest.isNotEmpty) ...[
-                      const SectionHeader(title: 'All conversations'),
-                      for (final t in rest)
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            bottom: AppSpacing.cardGap,
-                          ),
-                          child: _ThreadCard(thread: t),
-                        ),
-                    ],
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ThreadCard extends StatelessWidget {
-  const _ThreadCard({required this.thread});
-
-  final ChatThread thread;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      onTap: () => context.push(Routes.chatDetail(thread.id)),
-      child: Row(
-        children: [
-          thread.isGroup
-              ? const IconTile(icon: Icons.groups_outlined, size: 40)
-              : AppAvatar(
-                  name: thread.title,
-                  showOnlineDot: true,
-                  isOnline: thread.isOnline,
-                ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        thread.title,
-                        style: AppTypography.titleMd,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Text(
-                      Fmt.timeAgo(thread.lastMessageAt),
-                      style: AppTypography.caption,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        thread.lastMessage,
-                        style: AppTypography.caption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (thread.unreadCount > 0) ...[
-                      const SizedBox(width: AppSpacing.sm),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: AppGlow.fill(AppColors.brand),
-                          borderRadius: BorderRadius.circular(AppRadius.pill),
-                          boxShadow: AppGlow.halo(AppColors.brand, 22),
-                        ),
-                        child: Text(
-                          '${thread.unreadCount}',
-                          style: AppTypography.badge.copyWith(
-                            color: AppColors.wellGlyph,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-final _messagesProvider = FutureProvider.autoDispose
-    .family<List<ChatMessage>, String>((ref, id) {
-      ref.watch(dataRevisionProvider);
-      return ref.watch(chatRepositoryProvider).messages(id);
-    });
-
-class ChatDetailScreen extends ConsumerStatefulWidget {
-  const ChatDetailScreen({super.key, required this.threadId});
-
-  final String threadId;
-
-  @override
-  ConsumerState<ChatDetailScreen> createState() => _ChatDetailScreenState();
-}
-
-class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
-  final _input = TextEditingController();
-
-  @override
-  void dispose() {
-    _input.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send() async {
-    final text = _input.text.trim();
-    if (text.isEmpty) return;
-    _input.clear();
-    await ref.read(chatRepositoryProvider).send(widget.threadId, text);
-    ref.invalidate(_messagesProvider(widget.threadId));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final async = ref.watch(_messagesProvider(widget.threadId));
-    final threads = ref.watch(_threadsProvider).valueOrNull ?? [];
-    final thread = threads.where((t) => t.id == widget.threadId).firstOrNull;
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            thread == null || thread.isGroup
-                ? const IconTile(icon: Icons.groups_outlined, size: 34)
-                : AppAvatar(name: thread.title, size: AppSizes.avatarSm),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(thread?.title ?? 'Chat', style: AppTypography.titleMd),
-                  if (thread?.subtitle != null)
-                    Text(
-                      thread!.isOnline ? 'Online' : thread.subtitle!,
-                      style: AppTypography.caption.copyWith(
-                        color: thread.isOnline
-                            ? AppColors.success
-                            : AppColors.textSecondary,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: async.when(
-              loading: () => const LoadingState(),
-              error: (_, _) => const ErrorState(),
-              data: (messages) => messages.isEmpty
-                  ? const EmptyState(
-                      icon: Icons.chat_bubble_outline,
-                      title: 'No messages yet',
-                      message: 'Say hello to start the conversation.',
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(AppSpacing.screenH),
-                      itemCount: messages.length,
-                      // No stagger here: a thread opens at its newest
-                      // message, and animating rows in would replay a
-                      // conversation the reader has already had.
-                      itemBuilder: (context, i) => _MessageBubble(
-                        message: messages[i],
-                        // Only a group needs to name its speakers. In a
-                        // one-to-one thread the header already says who this
-                        // is, and repeating it above every bubble is the same
-                        // fact printed five times down the screen.
-                        showSender: thread?.isGroup ?? false,
-                      ),
-                    ),
-            ),
-          ),
-          Container(
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              border: Border(top: BorderSide(color: AppColors.border)),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.attach_file),
-                      color: AppColors.textSecondary,
-                      onPressed: () =>
-                          showComingWithBackend(context, 'Attachments'),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _input,
-                        style: AppTypography.body,
-                        textCapitalization: TextCapitalization.sentences,
-                        onSubmitted: (_) => _send(),
-                        decoration: const InputDecoration(
-                          hintText: 'Message',
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: AppSpacing.md,
-                            vertical: AppSpacing.sm,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    IconButton.filled(
-                      onPressed: _send,
-                      icon: const Icon(Icons.send, size: 18),
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppColors.brand,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message, this.showSender = true});
-
-  final ChatMessage message;
-
-  /// Whether to caption an incoming bubble with who sent it.
-  final bool showSender;
-
-  @override
-  Widget build(BuildContext context) {
-    final isMine = message.isMine;
-
-    return Align(
-      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        margin: const EdgeInsets.only(bottom: AppSpacing.md),
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
-        ),
-        // Your own bubble was already the deep brand fill, so by the app's own
-        // rule it lights up. At half strength: a thread is a column of these,
-        // and a full halo on twenty bubbles stops being light and becomes a
-        // green fog down the right-hand side.
-        decoration: BoxDecoration(
-          color: isMine ? null : AppColors.surface,
-          gradient: isMine ? AppGlow.fill(AppColors.brand) : null,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(AppRadius.lg),
-            topRight: const Radius.circular(AppRadius.lg),
-            bottomLeft: Radius.circular(isMine ? AppRadius.lg : AppRadius.sm),
-            bottomRight: Radius.circular(isMine ? AppRadius.sm : AppRadius.lg),
-          ),
-          border: isMine ? null : Border.all(color: AppColors.border),
-          boxShadow: isMine
-              ? AppGlow.halo(AppColors.brand, 44, strength: 0.5)
-              : null,
-        ),
-        child: Column(
-          crossAxisAlignment: isMine
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
-          children: [
-            if (!isMine && showSender)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Text(
-                  message.senderName,
-                  style: AppTypography.badge.copyWith(color: AppColors.brand),
-                ),
-              ),
-            Text(
-              message.text,
-              style: AppTypography.body.copyWith(
-                color: isMine ? Colors.white : AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              Fmt.time(message.sentAt),
-              style: AppTypography.caption.copyWith(
-                fontSize: 10,
-                color: isMine ? Colors.white70 : AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+export 'chat_screens.dart';
 
 // ============================================================== resources ==
 
@@ -801,30 +391,46 @@ class _NewSurveyScreenState extends ConsumerState<NewSurveyScreen> {
     setState(() => _submitting = true);
 
     final session = ref.read(sessionProvider);
-    await ref
-        .read(surveyRepositoryProvider)
-        .create(
-          SurveyResponse(
-            id: const Uuid().v4(),
-            employeeId: session.employee.id,
-            clientId: _client!.id,
-            clientName: _client!.name,
-            clientType: _client!.type,
-            submittedAt: DateTime.now(),
-            feedback: _feedback.text.trim(),
-            remarks: _remarks.text.trim().isEmpty ? null : _remarks.text.trim(),
-            locationName: _client!.areaName,
-            rating: _rating > 0 ? _rating : null,
-          ),
-        );
+    try {
+      await ref
+          .read(surveyRepositoryProvider)
+          .create(
+            SurveyResponse(
+              id: const Uuid().v4(),
+              employeeId: session.employee.id,
+              clientId: _client!.id,
+              clientName: _client!.name,
+              clientType: _client!.type,
+              submittedAt: DateTime.now(),
+              feedback: _feedback.text.trim(),
+              remarks:
+                  _remarks.text.trim().isEmpty ? null : _remarks.text.trim(),
+              locationName: _client!.areaName,
+              rating: _rating > 0 ? _rating : null,
+            ),
+          );
 
-    if (!mounted) return;
-    ref.bumpRevision();
-    setState(() => _submitting = false);
-    context.pop();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Survey submitted.')));
+      if (!mounted) return;
+      ref.bumpRevision();
+      setState(() => _submitting = false);
+      context.pop();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Survey submitted.')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not submit the survey. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -859,6 +465,7 @@ class _NewSurveyScreenState extends ConsumerState<NewSurveyScreen> {
                 items: clients,
                 value: _client,
                 itemLabel: (c) => '${c.name} · ${c.type.label}',
+                searchable: true,
                 onChanged: (v) => setState(() => _client = v),
               ),
             ),
@@ -1105,6 +712,8 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
   Client? _client;
   Product? _product;
   bool _submitting = false;
+  final List<String> _attachments = [];
+  bool _attaching = false;
 
   @override
   void dispose() {
@@ -1114,36 +723,105 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
     super.dispose();
   }
 
+  Future<void> _attachPhoto() async {
+    if (_attaching) return;
+    setState(() => _attaching = true);
+    try {
+      if (!isLive) {
+        setState(
+          () => _attachments.add('complaint-${_attachments.length + 1}.jpg'),
+        );
+        return;
+      }
+      final picker = ImagePicker();
+      final file = await picker.pickImage(
+        source: kIsWeb ? ImageSource.gallery : ImageSource.camera,
+        imageQuality: 72,
+        maxWidth: 1600,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 8 * 1024 * 1024) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Photos must be under 8 MB.')),
+        );
+        return;
+      }
+      final path = await ref.read(complaintRepositoryProvider).uploadAttachment(
+            bytes: bytes,
+            mimeType: file.mimeType ?? 'image/jpeg',
+            fileName: file.name,
+          );
+      if (!mounted) return;
+      setState(() => _attachments.add(path));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not attach that photo.',
+            ),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _attaching = false);
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || _client == null) return;
     setState(() => _submitting = true);
 
-    await ref
-        .read(complaintRepositoryProvider)
-        .create(
-          Complaint(
-            id: const Uuid().v4(),
-            reference: 'CMP-${DateTime.now().millisecondsSinceEpoch % 10000}',
-            clientId: _client!.id,
-            clientName: _client!.name,
-            subject: _subject.text.trim(),
-            description: _description.text.trim(),
-            status: ComplaintStatus.open,
-            createdAt: DateTime.now(),
-            productId: _product?.id,
-            productName: _product?.name,
-            mobile: _mobile.text.trim().isEmpty ? null : _mobile.text.trim(),
-            email: _email.text.trim().isEmpty ? null : _email.text.trim(),
-          ),
-        );
+    try {
+      await ref
+          .read(complaintRepositoryProvider)
+          .create(
+            Complaint(
+              id: const Uuid().v4(),
+              reference:
+                  'CMP-${DateTime.now().millisecondsSinceEpoch % 10000}',
+              clientId: _client!.id,
+              clientName: _client!.name,
+              subject: _subject.text.trim(),
+              description: _description.text.trim(),
+              status: ComplaintStatus.open,
+              createdAt: DateTime.now(),
+              productId: _product?.id,
+              productName: _product?.name,
+              mobile:
+                  _mobile.text.trim().isEmpty ? null : _mobile.text.trim(),
+              email: _email.text.trim().isEmpty ? null : _email.text.trim(),
+              attachmentPaths: List.of(_attachments),
+            ),
+          );
 
-    if (!mounted) return;
-    ref.bumpRevision();
-    setState(() => _submitting = false);
-    context.pop();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Complaint raised.')));
+      if (!mounted) return;
+      ref.bumpRevision();
+      ref.invalidate(notificationsProvider);
+      ref.invalidate(unreadNotificationsProvider);
+      setState(() => _submitting = false);
+      context.pop();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Complaint raised.')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not raise the complaint. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -1179,6 +857,7 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
                 items: clients,
                 value: _client,
                 itemLabel: (c) => c.name,
+                searchable: true,
                 onChanged: (v) => setState(() {
                   _client = v;
                   _mobile.text = v?.mobile ?? '';
@@ -1240,12 +919,34 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
             Text('Attachment', style: AppTypography.bodySm),
             const SizedBox(height: AppSpacing.sm),
             SecondaryButton(
-              label: 'Attach photo',
+              label: _attaching
+                  ? 'Uploading…'
+                  : _attachments.isEmpty
+                      ? 'Attach photo'
+                      : 'Attach another',
               icon: Icons.photo_camera_outlined,
               small: true,
-              onPressed: () =>
-                  showComingWithBackend(context, 'Attaching a photo'),
+              onPressed: _attaching || _submitting ? null : _attachPhoto,
             ),
+            if (_attachments.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: [
+                  for (final path in _attachments)
+                    InputChip(
+                      label: Text(
+                        storageDisplayName(path),
+                        style: AppTypography.caption,
+                      ),
+                      onDeleted: _attaching
+                          ? null
+                          : () => setState(() => _attachments.remove(path)),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: AppSpacing.xxxl),
           ],
         ),

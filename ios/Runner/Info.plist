@@ -26,6 +26,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Mr Sales uses your location to verify field visits and share live location in chat.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Mr Sales uses the camera to send photos in chat and capture visit evidence.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Mr Sales needs photo library access to send images in chat.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Microphone access is used when recording video for chat.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

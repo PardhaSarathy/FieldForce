@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:uuid/uuid.dart';
 
 import '../../core/location/geo_math.dart';
@@ -327,6 +329,24 @@ class MockEmployeeRepository implements EmployeeRepository {
         .where((c) => areaId == null || c.areaId == areaId)
         .toList();
   }
+
+  @override
+  Future<void> updateMyProfile({
+    required String mobile,
+    required String email,
+    String? bloodGroup,
+  }) async {
+    await _latency(80);
+  }
+
+  @override
+  Future<void> saveTravelRates({
+    required String employeeId,
+    required List<({String mode, double localRate, double outstationRate})>
+        rates,
+  }) async {
+    await _latency(80);
+  }
 }
 
 // =============================================================== clients ==
@@ -527,6 +547,16 @@ class MockActivityRepository implements ActivityRepository {
       );
     }
     return completed;
+  }
+
+  @override
+  Future<String> uploadVisitPhoto({
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'photo.jpg',
+  }) async {
+    await _latency(200);
+    return 'visit-${DateTime.now().millisecondsSinceEpoch}.jpg';
   }
 
   void _replace(Activity activity) {
@@ -798,6 +828,16 @@ class MockExpenseRepository implements ExpenseRepository {
     await _latency(500);
     _store.expenses.add(expense);
     return expense;
+  }
+
+  @override
+  Future<String> uploadReceipt({
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'receipt.jpg',
+  }) async {
+    await _latency(200);
+    return 'bill-${DateTime.now().millisecondsSinceEpoch}.jpg';
   }
 
   @override
@@ -1179,6 +1219,15 @@ class MockHrRepository implements HrRepository {
     await _latency();
     return _store.seed.documents;
   }
+
+  @override
+  Future<String?> signedDocumentUrl(
+    String storagePath, {
+    String bucket = 'documents',
+  }) async {
+    await _latency();
+    return null;
+  }
 }
 
 // ============================================================== business ==
@@ -1535,7 +1584,11 @@ class MockNotificationRepository implements NotificationRepository {
 
   @override
   Future<int> unreadCount() async =>
-      _store.notifications.where((n) => !n.isRead).length;
+      // Work only, matching the live repository: chat is counted by the chat
+      // badge, and counting it here too made one message show as two.
+      _store.notifications
+          .where((n) => !n.isRead && n.kind != NotificationKind.message)
+          .length;
 }
 
 // ================================================================== chat ==
@@ -1548,7 +1601,19 @@ class MockChatRepository implements ChatRepository {
     await _latency();
     final q = query?.trim().toLowerCase() ?? '';
     return _store.seed.chatThreads
-        .where((t) => q.isEmpty || t.title.toLowerCase().contains(q))
+        .where((t) {
+          if (q.isEmpty) return true;
+          final participantNames = _store.seed.employees
+              .where((e) => t.participantIds.contains(e.id))
+              .map((e) => '${e.name} ${e.employeeCode} ${e.subtitle}')
+              .join(' ');
+          return [
+            t.title,
+            t.subtitle ?? '',
+            t.lastMessage,
+            participantNames,
+          ].join(' ').toLowerCase().contains(q);
+        })
         .toList()
       ..sort((a, b) {
         if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
@@ -1574,8 +1639,313 @@ class MockChatRepository implements ChatRepository {
       isMine: true,
     );
     (_store.messages[threadId] ??= []).add(message);
+    _replaceThread(
+      threadId,
+      (thread) => thread.copyWith(
+        lastMessage: text,
+        lastMessageAt: message.sentAt,
+        lastMessageKind: ChatMessageKind.text,
+      ),
+    );
     await _latency(150);
     return message;
+  }
+
+  @override
+  Future<ChatMessage> sendImage(
+    String threadId, {
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'photo.jpg',
+  }) async {
+    final message = ChatMessage(
+      id: _uuid.v4(),
+      threadId: threadId,
+      senderId: _store.seed.currentUser.id,
+      senderName: _store.seed.currentUser.name,
+      text: 'Photo',
+      sentAt: DateTime.now(),
+      isMine: true,
+      kind: ChatMessageKind.image,
+      attachments: [
+        ChatAttachment(
+          id: _uuid.v4(),
+          storagePath: fileName,
+          mimeType: mimeType,
+          byteSize: bytes.length,
+        ),
+      ],
+    );
+    (_store.messages[threadId] ??= []).add(message);
+    _replaceThread(
+      threadId,
+      (thread) => thread.copyWith(
+        lastMessage: 'Photo',
+        lastMessageAt: message.sentAt,
+        lastMessageKind: ChatMessageKind.image,
+      ),
+    );
+    await _latency(200);
+    return message;
+  }
+
+  @override
+  Future<ChatMessage> sendLocation(
+    String threadId, {
+    required double latitude,
+    required double longitude,
+    double? accuracy,
+    String? label,
+  }) async {
+    final message = ChatMessage(
+      id: _uuid.v4(),
+      threadId: threadId,
+      senderId: _store.seed.currentUser.id,
+      senderName: _store.seed.currentUser.name,
+      text: label ?? 'Location',
+      sentAt: DateTime.now(),
+      isMine: true,
+      kind: ChatMessageKind.location,
+      latitude: latitude,
+      longitude: longitude,
+      accuracyMeters: accuracy,
+    );
+    (_store.messages[threadId] ??= []).add(message);
+    _replaceThread(
+      threadId,
+      (thread) => thread.copyWith(
+        lastMessage: 'Location',
+        lastMessageAt: message.sentAt,
+        lastMessageKind: ChatMessageKind.location,
+      ),
+    );
+    await _latency(180);
+    return message;
+  }
+
+  @override
+  Future<ChatMessage> startLiveLocation(
+    String threadId, {
+    required double latitude,
+    required double longitude,
+    double? accuracy,
+    int minutes = 15,
+  }) async {
+    final message = ChatMessage(
+      id: _uuid.v4(),
+      threadId: threadId,
+      senderId: _store.seed.currentUser.id,
+      senderName: _store.seed.currentUser.name,
+      text: 'Live location',
+      sentAt: DateTime.now(),
+      isMine: true,
+      kind: ChatMessageKind.liveLocation,
+      latitude: latitude,
+      longitude: longitude,
+      accuracyMeters: accuracy,
+      liveLocationId: _uuid.v4(),
+      liveExpiresAt: DateTime.now().add(Duration(minutes: minutes)),
+      liveIsActive: true,
+    );
+    (_store.messages[threadId] ??= []).add(message);
+    _replaceThread(
+      threadId,
+      (thread) => thread.copyWith(
+        lastMessage: 'Live location',
+        lastMessageAt: message.sentAt,
+        lastMessageKind: ChatMessageKind.liveLocation,
+      ),
+    );
+    await _latency(180);
+    return message;
+  }
+
+  @override
+  Future<void> updateLiveLocation(
+    String liveLocationId, {
+    required double latitude,
+    required double longitude,
+    double? accuracy,
+  }) async {
+    for (final entry in _store.messages.entries) {
+      final list = entry.value;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].liveLocationId == liveLocationId) {
+          list[i] = list[i].copyWith(latitude: latitude, longitude: longitude);
+        }
+      }
+    }
+  }
+
+  @override
+  Future<void> stopLiveLocation(String liveLocationId) async {
+    for (final list in _store.messages.values) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].liveLocationId == liveLocationId) {
+          list[i] = list[i].copyWith(liveIsActive: false);
+        }
+      }
+    }
+  }
+
+  @override
+  Future<String> createGroup({
+    required String subject,
+    required List<String> participantIds,
+    ChatThreadKind kind = ChatThreadKind.group,
+  }) async {
+    await _latency(200);
+    final id = 'ch-${_uuid.v4()}';
+    _store.seed.chatThreads.insert(
+      0,
+      ChatThread(
+        id: id,
+        title: subject,
+        subtitle: '${participantIds.length} members',
+        lastMessage: '',
+        lastMessageAt: DateTime.now(),
+        isGroup: true,
+        kind: kind,
+        participantIds: participantIds,
+      ),
+    );
+    _store.messages[id] = [];
+    return id;
+  }
+
+  @override
+  Future<List<Employee>> members(String threadId) async {
+    await _latency(80);
+    final thread = _store.seed.chatThreads.where((t) => t.id == threadId).firstOrNull;
+    if (thread == null) return const [];
+    final ids = {...thread.participantIds, if (!thread.isGroup) _store.seed.currentUser.id};
+    return _store.seed.employees.where((e) => ids.contains(e.id)).toList();
+  }
+
+  @override
+  Future<void> addParticipants(String threadId, List<String> employeeIds) async {
+    await _latency(80);
+    _replaceThread(threadId, (thread) {
+      final next = {...thread.participantIds, ...employeeIds}.toList();
+      return ChatThread(
+        id: thread.id,
+        title: thread.title,
+        lastMessage: thread.lastMessage,
+        lastMessageAt: thread.lastMessageAt,
+        isGroup: true,
+        isPinned: thread.isPinned,
+        unreadCount: thread.unreadCount,
+        participantIds: next,
+        subtitle: '${next.length} members',
+        kind: thread.kind,
+        peerId: thread.peerId,
+        isMuted: thread.isMuted,
+        lastMessageKind: thread.lastMessageKind,
+      );
+    });
+  }
+
+  @override
+  Future<void> leave(String threadId) async {
+    await _latency(80);
+    _store.seed.chatThreads.removeWhere((t) => t.id == threadId);
+  }
+
+  @override
+  Stream<void> watchThread(String threadId) => const Stream.empty();
+
+  @override
+  Future<String> findOrCreateDirect(String employeeId) async {
+    await _latency(180);
+    final seededId = _seeded(employeeId);
+    final existing = _store.seed.chatThreads.where((t) {
+      return !t.isGroup &&
+          t.participantIds.length == 1 &&
+          t.participantIds.contains(seededId);
+    }).firstOrNull;
+    if (existing != null) return existing.id;
+
+    final target = _store.seed.employees.firstWhere((e) => e.id == seededId);
+    final id = 'ch-${_uuid.v4()}';
+    _store.seed.chatThreads.insert(
+      0,
+      ChatThread(
+        id: id,
+        title: target.name,
+        subtitle: target.subtitle,
+        lastMessage: '',
+        lastMessageAt: DateTime.now(),
+        participantIds: [target.id],
+        isOnline: target.lastSeenAt != null,
+      ),
+    );
+    _store.messages[id] = [];
+    return id;
+  }
+
+  @override
+  Future<void> markRead(String threadId) async {
+    await _latency(80);
+    _replaceThread(threadId, (thread) => thread.copyWith(unreadCount: 0));
+
+    // And the conversation's notification, the way `mark_chat_read` does on
+    // the server. One act of reading, one result — leaving this out is what
+    // let the bell and the chat badge disagree about the same message.
+    for (var i = 0; i < _store.notifications.length; i++) {
+      final n = _store.notifications[i];
+      if (n.kind == NotificationKind.message && n.relatedId == threadId) {
+        _store.notifications[i] = n.copyWith(isRead: true);
+      }
+    }
+  }
+
+  @override
+  Future<void> markDelivered(String threadId) async {
+    final list = _store.messages[threadId];
+    if (list == null) return;
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i].isMine && list[i].status == ChatDeliveryStatus.sent) {
+        list[i] = list[i].copyWith(status: ChatDeliveryStatus.delivered);
+      }
+    }
+  }
+
+  @override
+  Future<int> unreadCount() async {
+    await _latency(80);
+    return _store.seed.chatThreads.fold<int>(
+      0,
+      (total, thread) => total + thread.unreadCount,
+    );
+  }
+
+  @override
+  Future<List<Employee>> directory({String? query}) async {
+    await _latency(120);
+    final me = _store.seed.currentUser;
+    final q = query?.trim().toLowerCase() ?? '';
+    return _store.seed.employees.where((e) {
+      if (e.id == me.id || !e.isActive) return false;
+      final canReach = e.managerId == me.id ||
+          me.managerId == e.id ||
+          (me.managerId != null && e.managerId == me.managerId);
+      if (!canReach) return false;
+      if (q.isEmpty) return true;
+      return [
+        e.name,
+        e.employeeCode,
+        e.designation,
+        e.headquarters,
+        e.subtitle,
+      ].join(' ').toLowerCase().contains(q);
+    }).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  void _replaceThread(String threadId, ChatThread Function(ChatThread) update) {
+    final index = _store.seed.chatThreads.indexWhere((t) => t.id == threadId);
+    if (index == -1) return;
+    _store.seed.chatThreads[index] = update(_store.seed.chatThreads[index]);
   }
 }
 
@@ -1640,6 +2010,16 @@ class MockComplaintRepository implements ComplaintRepository {
     await _latency(500);
     _store.complaints.insert(0, complaint);
     return complaint;
+  }
+
+  @override
+  Future<String> uploadAttachment({
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'photo.jpg',
+  }) async {
+    await _latency(200);
+    return 'complaint-${DateTime.now().millisecondsSinceEpoch}.jpg';
   }
 }
 

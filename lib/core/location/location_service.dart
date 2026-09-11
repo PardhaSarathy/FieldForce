@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../data/remote/backend.dart';
 import 'geo_math.dart';
 
 /// Why a location request failed, so the UI can offer the right recovery
@@ -144,7 +145,7 @@ class MockLocationService implements LocationService {
   Future<void> openSettings() async {}
 }
 
-/// Bound to the mock while the app runs without a backend or a real device.
-/// Swap to [GeolocatorLocationService] for on-device builds.
-final locationServiceProvider =
-    Provider<LocationService>((ref) => MockLocationService());
+/// Mock in fixture mode; real GPS when connected to the live backend.
+final locationServiceProvider = Provider<LocationService>(
+  (ref) => isLive ? GeolocatorLocationService() : MockLocationService(),
+);

@@ -578,6 +578,7 @@ class DropdownField<T> extends StatelessWidget {
     this.enabled = true,
     this.helper,
     this.validator,
+    this.searchable,
   });
 
   final List<T> items;
@@ -590,6 +591,14 @@ class DropdownField<T> extends StatelessWidget {
   final bool enabled;
   final String? helper;
   final String? Function(T?)? validator;
+
+  /// Force the search box on or off, whatever the count.
+  ///
+  /// Set it `true` for a list that grows with use — a rep's clients, an
+  /// employee roster. The count today says nothing about the count in six
+  /// months, and a picker that silently stops being searchable once it matters
+  /// is worse than one that was always searchable.
+  final bool? searchable;
 
   /// Above this many options the sheet grows a search box. Below it, searching
   /// is more work than reading the list.
@@ -604,7 +613,7 @@ class DropdownField<T> extends StatelessWidget {
         items: items,
         itemLabel: itemLabel,
         selected: value,
-        showSearch: items.length >= _searchThreshold,
+        showSearch: searchable ?? items.length >= _searchThreshold,
       ),
     );
     if (picked == null) return;

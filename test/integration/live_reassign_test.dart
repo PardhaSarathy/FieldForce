@@ -4,7 +4,13 @@
 /// obvious. It is whether a session that is *already running* picks the change
 /// up, because that is what a rep holding their phone actually has.
 ///
-/// Run it the same way as `live_identity_test.dart`.
+/// Run it the same way as `live_identity_test.dart`, plus the console account
+/// that is allowed to move a reporting line:
+///
+/// ```
+///   --dart-define=ADMIN_EMAIL=<an owner, admin or hr login>
+///   --dart-define=ADMIN_PASSWORD=<if it differs from DEV_PASSWORD>
+/// ```
 library;
 
 import 'dart:convert';
@@ -17,6 +23,17 @@ import 'package:pharmaconnect/data/remote/backend.dart';
 import 'package:pharmaconnect/data/repositories/api_repositories.dart';
 
 const devPassword = String.fromEnvironment('DEV_PASSWORD');
+
+/// The console account that performs the move.
+///
+/// Passed in rather than hardcoded. It used to be `dev.console@…`, which 0039
+/// deliberately bans — a shared backdoor password is not something to leave
+/// standing on a host, and a test is not a reason to keep one. So the account
+/// with the authority to move a reporting line is now named by whoever runs
+/// this, and the test skips rather than guesses.
+const adminEmail = String.fromEnvironment('ADMIN_EMAIL');
+const adminPassword =
+    String.fromEnvironment('ADMIN_PASSWORD', defaultValue: devPassword);
 
 /// The website's own path: an admin's token calling `reassign_manager`.
 /// Deliberately raw HTTP rather than the app's client — the point is that the
@@ -36,10 +53,15 @@ Future<void> websiteMoves(String employeeCode, String toManagerCode) async {
   }
 
   final auth = await post('/auth/v1/token?grant_type=password', {
-    'email': 'dev.console@$orgSlug.mrsales.local',
-    'password': devPassword,
+    'email': adminEmail,
+    'password': adminPassword,
   });
-  final token = auth['access_token'] as String;
+  // Say what the host said. A bare `as String` on a missing token reports
+  // `Null is not a subtype of String` at this line, which describes the cast
+  // and not the problem — that cost an afternoon once.
+  final token = auth['access_token'] as String? ??
+      (throw StateError(
+          'could not sign $adminEmail in to make the move: ${auth['msg'] ?? auth}'));
 
   Future<String> idOf(String code) async {
     final r = await http.getUrl(
@@ -63,7 +85,8 @@ Future<void> websiteMoves(String employeeCode, String toManagerCode) async {
 }
 
 void main() {
-  final configured = isLive && devPassword.isNotEmpty;
+  final configured =
+      isLive && devPassword.isNotEmpty && adminEmail.isNotEmpty;
 
   test('a move made on the website reaches a session already signed in',
       () async {
@@ -106,7 +129,10 @@ void main() {
     final ravi = await auth.login(employeeCode: 'ASM201', password: devPassword);
     expect((await employees.teamOf(ravi)).map((e) => e.employeeCode).toList(),
         ['MR1001', 'MR1002', 'MR1003', 'MR1004']);
-  }, skip: configured ? false : 'set SUPABASE_URL/KEY and DEV_PASSWORD to run');
+  }, skip: configured
+          ? false
+          : 'set SUPABASE_URL/KEY, DEV_PASSWORD and ADMIN_EMAIL '
+              '(+ ADMIN_PASSWORD if it differs) to run');
 
   test('but the rep\'s own session still names their old manager until it reloads',
       () async {
@@ -134,5 +160,8 @@ void main() {
 
     await websiteMoves('MR1004', 'ASM201');
     await auth.logout();
-  }, skip: configured ? false : 'set SUPABASE_URL/KEY and DEV_PASSWORD to run');
+  }, skip: configured
+          ? false
+          : 'set SUPABASE_URL/KEY, DEV_PASSWORD and ADMIN_EMAIL '
+              '(+ ADMIN_PASSWORD if it differs) to run');
 }

@@ -5,11 +5,11 @@ import 'package:go_router/go_router.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../features/shell/presentation/app_shell.dart';
 import '../../../core/location/geo_math.dart';
-import '../../../core/routing/navigate.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/activity.dart';
@@ -20,7 +20,7 @@ import '../../../shared/widgets/motion.dart';
 import '../../../shared/widgets/feedback.dart';
 import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
-import '../../../shared/widgets/mock_map.dart';
+import '../../../shared/widgets/tile_map.dart';
 import '../../../shared/widgets/primitives.dart';
 import '../../../shared/widgets/states.dart';
 import '../../activity/presentation/widgets/activity_card.dart';
@@ -201,6 +201,26 @@ class EmployeeDetailScreen extends ConsumerWidget {
 
   final String employeeId;
 
+  Future<void> _message(BuildContext context, WidgetRef ref) async {
+    try {
+      final threadId = await ref
+          .read(chatRepositoryProvider)
+          .findOrCreateDirect(employeeId);
+      ref.invalidate(unreadChatsProvider);
+      if (!context.mounted) return;
+      context.push(Routes.chatDetail(threadId));
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(e, fallback: 'Could not open that chat.'),
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final employeeAsync = ref.watch(_employeeProvider(employeeId));
@@ -253,7 +273,7 @@ class EmployeeDetailScreen extends ConsumerWidget {
                         child: _ContactAction(
                           icon: Icons.chat_bubble_outline,
                           label: 'Message',
-                          onTap: () => navigateTo(context, Routes.chat),
+                          onTap: () => _message(context, ref),
                         ),
                       ),
                       Expanded(
@@ -675,7 +695,7 @@ class _TeamMapScreenState extends ConsumerState<TeamMapScreen> {
                   ),
                 )
               else
-                MockMapCanvas(
+                AdaptiveMapCanvas(
                   markers: markers,
                   selectedId: _selectedId,
                   height: 340,

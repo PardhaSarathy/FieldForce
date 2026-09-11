@@ -792,28 +792,43 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
           : SyncStatus.savedLocally,
     );
 
-    final repository = ref.read(clientRepositoryProvider);
-    if (widget.isEditing) {
-      await repository.update(ref.read(sessionProvider), client);
-    } else {
-      await repository.create(client);
+    try {
+      final repository = ref.read(clientRepositoryProvider);
+      final saved = widget.isEditing
+          ? await repository.update(ref.read(sessionProvider), client)
+          : await repository.create(client);
+      if (!mounted) return;
+
+      AppHaptics.success();
+      ref.bumpRevision();
+
+      // An edit returns to the record it changed; there is nothing to announce
+      // that the updated detail screen does not already show.
+      if (widget.isEditing) {
+        context.pop();
+        return;
+      }
+
+      setState(() {
+        _submitting = false;
+        _created = saved;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      AppHaptics.failure();
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_readableClientError(e))),
+      );
     }
-    if (!mounted) return;
+  }
 
-    AppHaptics.success();
-    ref.bumpRevision();
-
-    // An edit returns to the record it changed; there is nothing to announce
-    // that the updated detail screen does not already show.
-    if (widget.isEditing) {
-      context.pop();
-      return;
-    }
-
-    setState(() {
-      _submitting = false;
-      _created = client;
-    });
+  static String _readableClientError(Object e) {
+    final raw = e.toString();
+    // PostgrestException(message: …) — surface the server's sentence.
+    final match = RegExp(r'message:\s*([^,\)]+)').firstMatch(raw);
+    if (match != null) return match.group(1)!.trim();
+    return 'Could not save the client. Try again.';
   }
 
   @override
@@ -927,7 +942,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
                   .watch(_specialtiesProvider)
                   .when(
                     loading: () => const Skeleton(height: 68),
-                    error: (_, _) => const SizedBox.shrink(),
+                    error: (_, _) => const ErrorState(compact: true),
                     data: (specialties) => DropdownField<String>(
                       label: 'Specialty',
                       hint: 'Search or select',
@@ -1010,7 +1025,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
             const SizedBox(height: AppSpacing.lg),
             territoriesAsync.when(
               loading: () => const Skeleton(height: 48),
-              error: (_, _) => const SizedBox.shrink(),
+              error: (_, _) => const ErrorState(compact: true),
               data: (territories) => DropdownField<Territory>(
                 label: 'Territory',
                 required: true,
@@ -1033,7 +1048,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
             const SizedBox(height: AppSpacing.lg),
             areasAsync.when(
               loading: () => const Skeleton(height: 48),
-              error: (_, _) => const SizedBox.shrink(),
+              error: (_, _) => const ErrorState(compact: true),
               data: (areas) {
                 final scoped = _territory == null
                     ? areas

@@ -9,6 +9,7 @@ import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/activity.dart';
@@ -162,36 +163,53 @@ class _MyDayPlanScreenState extends ConsumerState<MyDayPlanScreen> {
     final workType = _workType ?? WorkType.fieldWork;
     final now = DateTime.now();
 
-    await ref
-        .read(dayPlanRepositoryProvider)
-        .submit(
-          DayPlan(
-            // Client-generated so a retry on a dropped connection cannot file
-            // the same day twice.
-            id: _existing?.id ?? const Uuid().v4(),
-            employeeId: employee.id,
-            date: DateTime(now.year, now.month, now.day),
-            workType: workType,
-            // Cleared rather than carried: switching to Leave after picking an
-            // HQ must not file a leave day that claims a headquarters.
-            areaId: workType.needsHeadquarters ? _hq?.id : null,
-            areaName: workType.needsHeadquarters ? _hq?.name : null,
-            clusterName: workType.needsCluster ? _cluster?.name : null,
-            status: ApprovalStatus.submitted,
-            remarks: _remarks.text.trim().isEmpty ? null : _remarks.text.trim(),
-            capturedAddress: _address,
-            submittedAt: now,
-          ),
-        );
+    try {
+      await ref
+          .read(dayPlanRepositoryProvider)
+          .submit(
+            DayPlan(
+              // Client-generated so a retry on a dropped connection cannot file
+              // the same day twice.
+              id: _existing?.id ?? const Uuid().v4(),
+              employeeId: employee.id,
+              date: DateTime(now.year, now.month, now.day),
+              workType: workType,
+              // Cleared rather than carried: switching to Leave after picking an
+              // HQ must not file a leave day that claims a headquarters.
+              areaId: workType.needsHeadquarters ? _hq?.id : null,
+              areaName: workType.needsHeadquarters ? _hq?.name : null,
+              clusterName: workType.needsCluster ? _cluster?.name : null,
+              status: ApprovalStatus.submitted,
+              remarks:
+                  _remarks.text.trim().isEmpty ? null : _remarks.text.trim(),
+              capturedAddress: _address,
+              submittedAt: now,
+            ),
+          );
 
-    if (!mounted) return;
-    AppHaptics.success();
-    ref.bumpRevision();
-    setState(() => _submitting = false);
-    context.pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Day plan submitted for ${Fmt.date(now)}.')),
-    );
+      if (!mounted) return;
+      AppHaptics.success();
+      ref.bumpRevision();
+      setState(() => _submitting = false);
+      context.pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Day plan submitted for ${Fmt.date(now)}.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      AppHaptics.failure();
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not submit the day plan. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override

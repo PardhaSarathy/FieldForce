@@ -8,6 +8,7 @@ import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/business.dart';
@@ -90,30 +91,45 @@ class _TargetAssignmentScreenState
     setState(() => _saving = true);
     final repo = ref.read(businessRepositoryProvider);
 
-    for (var m = 1; m <= 12; m++) {
-      final amount = double.tryParse(_controllers[m]?.text.trim() ?? '');
-      if (amount == null || amount <= 0) continue;
+    try {
+      for (var m = 1; m <= 12; m++) {
+        final amount = double.tryParse(_controllers[m]?.text.trim() ?? '');
+        if (amount == null || amount <= 0) continue;
 
-      await repo.saveTarget(
-        Target(
-          id: 'tgt-${employee.id}-$_year-$m',
-          employeeId: employee.id,
-          employeeName: employee.name,
-          month: DateTime(_year, m),
-          targetAmount: amount,
-          areaId: employee.areaId,
-          areaName: employee.areaName,
-          visitTarget: 182,
+        await repo.saveTarget(
+          Target(
+            id: 'tgt-${employee.id}-$_year-$m',
+            employeeId: employee.id,
+            employeeName: employee.name,
+            month: DateTime(_year, m),
+            targetAmount: amount,
+            areaId: employee.areaId,
+            areaName: employee.areaName,
+            visitTarget: 182,
+          ),
+        );
+      }
+
+      if (!mounted) return;
+      ref.bumpRevision();
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Targets saved for ${employee.name}.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not save the targets. Try again.',
+            ),
+          ),
         ),
       );
     }
-
-    if (!mounted) return;
-    ref.bumpRevision();
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Targets saved for ${employee.name}.')),
-    );
   }
 
   @override
@@ -323,13 +339,37 @@ class _RateAssignmentScreenState extends ConsumerState<RateAssignmentScreen> {
             label: 'Save rates',
             onPressed: _employee == null
                 ? null
-                : () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Rates saved for ${_employee!.name}.'),
-                      ),
-                    );
-                    context.pop();
+                : () async {
+                    final rates = <({String mode, double localRate, double outstationRate})>[
+                      for (final m in TravelMode.values)
+                        (
+                          mode: m.name,
+                          localRate:
+                              double.tryParse(_local[m]!.text.trim()) ?? 0,
+                          outstationRate: double.tryParse(
+                                _outstation[m]!.text.trim(),
+                              ) ??
+                              0,
+                        ),
+                    ];
+                    try {
+                      await ref.read(employeeRepositoryProvider).saveTravelRates(
+                            employeeId: _employee!.id,
+                            rates: rates,
+                          );
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Rates saved for ${_employee!.name}.'),
+                        ),
+                      );
+                      context.pop();
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Could not save rates: $e')),
+                      );
+                    }
                   },
           ),
         ],
@@ -459,37 +499,54 @@ class _TaskAssignmentScreenState extends ConsumerState<TaskAssignmentScreen> {
     setState(() => _submitting = true);
 
     final session = ref.read(sessionProvider);
-    await ref
-        .read(taskRepositoryProvider)
-        .create(
-          session,
-          FieldTask(
-            id: const Uuid().v4(),
-            title: _title.text.trim(),
-            assignedToId: _assignee!.id,
-            assignedToName: _assignee!.name,
-            assignedById: session.employee.id,
-            assignedByName: session.employee.name,
-            dueDate: _due,
-            priority: _priority,
-            status: TaskStatus.assigned,
-            instructions: _instructions.text.trim().isEmpty
-                ? null
-                : _instructions.text.trim(),
-            locationName: _location.text.trim().isEmpty
-                ? null
-                : _location.text.trim(),
-            createdAt: DateTime.now(),
-          ),
-        );
+    try {
+      await ref
+          .read(taskRepositoryProvider)
+          .create(
+            session,
+            FieldTask(
+              id: const Uuid().v4(),
+              title: _title.text.trim(),
+              assignedToId: _assignee!.id,
+              assignedToName: _assignee!.name,
+              assignedById: session.employee.id,
+              assignedByName: session.employee.name,
+              dueDate: _due,
+              priority: _priority,
+              status: TaskStatus.assigned,
+              instructions: _instructions.text.trim().isEmpty
+                  ? null
+                  : _instructions.text.trim(),
+              locationName: _location.text.trim().isEmpty
+                  ? null
+                  : _location.text.trim(),
+              createdAt: DateTime.now(),
+            ),
+          );
 
-    if (!mounted) return;
-    ref.bumpRevision();
-    setState(() => _submitting = false);
-    context.pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Task assigned to ${_assignee!.name}.')),
-    );
+      if (!mounted) return;
+      ref.bumpRevision();
+      ref.invalidate(notificationsProvider);
+      ref.invalidate(unreadNotificationsProvider);
+      setState(() => _submitting = false);
+      context.pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Task assigned to ${_assignee!.name}.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not assign the task. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -697,6 +754,8 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
                               TaskStatus.completed,
                             );
                         ref.bumpRevision();
+                        ref.invalidate(notificationsProvider);
+                        ref.invalidate(unreadNotificationsProvider);
                       },
                     ),
                   ),
@@ -947,6 +1006,8 @@ class TaskCalendarScreen extends ConsumerWidget {
                               TaskStatus.completed,
                             );
                         ref.bumpRevision();
+                        ref.invalidate(notificationsProvider);
+                        ref.invalidate(unreadNotificationsProvider);
                       },
                     ),
                   ),
@@ -1113,36 +1174,53 @@ class _NewTaskScreenState extends ConsumerState<NewTaskScreen> {
 
     final session = ref.read(sessionProvider);
     final me = session.employee;
-    await ref
-        .read(taskRepositoryProvider)
-        .create(
-          session,
-          FieldTask(
-            // Client-generated so a retry after a dropped connection cannot
-            // create the same to-do twice.
-            id: const Uuid().v4(),
-            title: _title.text.trim(),
-            assignedToId: me.id,
-            assignedToName: me.name,
-            assignedById: me.id,
-            assignedByName: me.name,
-            dueDate: _due,
-            priority: _priority,
-            status: TaskStatus.assigned,
-            instructions: _notes.text.trim().isEmpty
-                ? null
-                : _notes.text.trim(),
-            createdAt: DateTime.now(),
-          ),
-        );
+    try {
+      await ref
+          .read(taskRepositoryProvider)
+          .create(
+            session,
+            FieldTask(
+              // Client-generated so a retry after a dropped connection cannot
+              // create the same to-do twice.
+              id: const Uuid().v4(),
+              title: _title.text.trim(),
+              assignedToId: me.id,
+              assignedToName: me.name,
+              assignedById: me.id,
+              assignedByName: me.name,
+              dueDate: _due,
+              priority: _priority,
+              status: TaskStatus.assigned,
+              instructions: _notes.text.trim().isEmpty
+                  ? null
+                  : _notes.text.trim(),
+              createdAt: DateTime.now(),
+            ),
+          );
 
-    if (!mounted) return;
-    ref.bumpRevision();
-    setState(() => _submitting = false);
-    context.pop();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('To-do added.')));
+      if (!mounted) return;
+      ref.bumpRevision();
+      ref.invalidate(notificationsProvider);
+      ref.invalidate(unreadNotificationsProvider);
+      setState(() => _submitting = false);
+      context.pop();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('To-do added.')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not add the to-do. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override

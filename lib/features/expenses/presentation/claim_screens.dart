@@ -16,9 +16,11 @@
 ///   the day.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/providers/app_providers.dart';
@@ -27,7 +29,10 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../data/remote/backend.dart';
+import '../../../data/remote/storage_upload.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/field_ops.dart';
 import '../../../shared/widgets/buttons.dart';
@@ -289,6 +294,8 @@ class _ExpenseClaimScreenState extends ConsumerState<ExpenseClaimScreen> {
     if (!context.mounted) return;
     AppHaptics.success();
     ref.bumpRevision();
+    ref.invalidate(notificationsProvider);
+    ref.invalidate(unreadNotificationsProvider);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -730,6 +737,7 @@ class _ClaimDayScreenState extends ConsumerState<ClaimDayScreen> {
   final List<String> _receipts = [];
   bool _saving = false;
   bool _seeded = false;
+  bool _attaching = false;
 
   @override
   void dispose() {
@@ -740,6 +748,51 @@ class _ClaimDayScreenState extends ConsumerState<ClaimDayScreen> {
   }
 
   double get _entered => double.tryParse(_amount.text.trim()) ?? 0;
+
+  Future<void> _attachReceipt(ImageSource source) async {
+    if (_attaching) return;
+    setState(() => _attaching = true);
+    try {
+      if (!isLive) {
+        setState(() => _receipts.add('bill-${_receipts.length + 1}.jpg'));
+        return;
+      }
+      final picker = ImagePicker();
+      final file = await picker.pickImage(
+        source: kIsWeb ? ImageSource.gallery : source,
+        imageQuality: 72,
+        maxWidth: 1600,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 8 * 1024 * 1024) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Receipts must be under 8 MB.')),
+        );
+        return;
+      }
+      final mime = file.mimeType ?? 'image/jpeg';
+      final path = await ref.read(expenseRepositoryProvider).uploadReceipt(
+            bytes: bytes,
+            mimeType: mime,
+            fileName: file.name,
+          );
+      if (!mounted) return;
+      setState(() => _receipts.add(path));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(e, fallback: 'Could not attach that receipt.'),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _attaching = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -918,9 +971,9 @@ class _ClaimDayScreenState extends ConsumerState<ClaimDayScreen> {
               allowance: remaining,
               remarks: _remarks,
               receipts: _receipts,
-              onAttach: () => setState(
-                () => _receipts.add('bill-${_receipts.length + 1}.jpg'),
-              ),
+              attaching: _attaching,
+              onPhotograph: () => _attachReceipt(ImageSource.camera),
+              onAttachFile: () => _attachReceipt(ImageSource.gallery),
               onRemove: (name) => setState(() => _receipts.remove(name)),
             ),
           ],
@@ -951,41 +1004,58 @@ class _ClaimDayScreenState extends ConsumerState<ClaimDayScreen> {
     setState(() => _saving = true);
     final session = ref.read(sessionProvider);
 
-    await ref.read(expenseRepositoryProvider).create(
-          Expense(
-            // Client-generated so a retry on a dropped connection cannot file
-            // the same claim twice.
-            id: const Uuid().v4(),
-            employeeId: session.employee.id,
-            employeeName: session.employee.name,
-            date: day.date,
-            categories: _categories.toList(),
-            amount: _entered,
-            status: ApprovalStatus.draft,
-            description: excess > 0
-                ? _remarks.text.trim()
-                : 'Daily allowance',
-            receiptPaths: List.of(_receipts),
-            dayPlanId: day.dayPlanId,
-            allowance: day.allowance,
-            scope: _scope,
-            place: _scope == ClaimScope.outOfTerritory
-                ? _place.text.trim()
-                : null,
-            createdAt: DateTime.now(),
-          ),
-        );
+    try {
+      await ref.read(expenseRepositoryProvider).create(
+            Expense(
+              // Client-generated so a retry on a dropped connection cannot file
+              // the same claim twice.
+              id: const Uuid().v4(),
+              employeeId: session.employee.id,
+              employeeName: session.employee.name,
+              date: day.date,
+              categories: _categories.toList(),
+              amount: _entered,
+              status: ApprovalStatus.draft,
+              description: excess > 0
+                  ? _remarks.text.trim()
+                  : 'Daily allowance',
+              receiptPaths: List.of(_receipts),
+              dayPlanId: day.dayPlanId,
+              allowance: day.allowance,
+              scope: _scope,
+              place: _scope == ClaimScope.outOfTerritory
+                  ? _place.text.trim()
+                  : null,
+              createdAt: DateTime.now(),
+            ),
+          );
 
-    if (!mounted) return;
-    AppHaptics.success();
-    ref.bumpRevision();
-    setState(() => _saving = false);
-    context.pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${Fmt.money(_entered)} added for ${Fmt.date(day.date)}.'),
-      ),
-    );
+      if (!mounted) return;
+      AppHaptics.success();
+      ref.bumpRevision();
+      setState(() => _saving = false);
+      context.pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('${Fmt.money(_entered)} added for ${Fmt.date(day.date)}.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      AppHaptics.failure();
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not save the claim. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 }
 
@@ -1041,7 +1111,9 @@ class _ExcessPanel extends StatelessWidget {
     required this.allowance,
     required this.remarks,
     required this.receipts,
-    required this.onAttach,
+    required this.attaching,
+    required this.onPhotograph,
+    required this.onAttachFile,
     required this.onRemove,
   });
 
@@ -1049,7 +1121,9 @@ class _ExcessPanel extends StatelessWidget {
   final double allowance;
   final TextEditingController remarks;
   final List<String> receipts;
-  final VoidCallback onAttach;
+  final bool attaching;
+  final VoidCallback onPhotograph;
+  final VoidCallback onAttachFile;
   final ValueChanged<String> onRemove;
 
   @override
@@ -1087,10 +1161,10 @@ class _ExcessPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: SecondaryButton(
-                  label: 'Photograph bill',
+                  label: attaching ? 'Uploading…' : 'Photograph bill',
                   icon: Icons.photo_camera_outlined,
                   small: true,
-                  onPressed: onAttach,
+                  onPressed: attaching ? null : onPhotograph,
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -1099,7 +1173,7 @@ class _ExcessPanel extends StatelessWidget {
                   label: 'Attach file',
                   icon: Icons.attach_file,
                   small: true,
-                  onPressed: onAttach,
+                  onPressed: attaching ? null : onAttachFile,
                 ),
               ),
             ],
@@ -1113,7 +1187,10 @@ class _ExcessPanel extends StatelessWidget {
               children: [
                 for (final name in receipts)
                   InputChip(
-                    label: Text(name, style: AppTypography.caption),
+                    label: Text(
+                      storageDisplayName(name),
+                      style: AppTypography.caption,
+                    ),
                     avatar: const Icon(
                       Icons.description_outlined,
                       size: 14,
@@ -1121,7 +1198,7 @@ class _ExcessPanel extends StatelessWidget {
                     ),
                     backgroundColor: AppColors.surfaceSecondary,
                     side: BorderSide.none,
-                    onDeleted: () => onRemove(name),
+                    onDeleted: attaching ? null : () => onRemove(name),
                   ),
               ],
             ),

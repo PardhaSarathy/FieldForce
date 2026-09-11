@@ -161,7 +161,18 @@ class ReportFilterBar extends ConsumerWidget {
               ),
             ],
           ),
-          employeesAsync.maybeWhen(
+          employeesAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.only(top: AppSpacing.md),
+              child: Skeleton(height: 48),
+            ),
+            error: (_, _) => Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.md),
+              child: ErrorState(
+                compact: true,
+                onRetry: () => ref.invalidate(reportEmployeesProvider),
+              ),
+            ),
             data: (employees) => employees.isEmpty
                 ? const SizedBox.shrink()
                 : Column(
@@ -181,7 +192,6 @@ class ReportFilterBar extends ConsumerWidget {
                       ),
                     ],
                   ),
-            orElse: () => const SizedBox.shrink(),
           ),
         ],
       ),

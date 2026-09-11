@@ -15,6 +15,7 @@ import '../../../shared/widgets/buttons.dart';
 import '../../../shared/widgets/inputs.dart';
 import '../../../shared/widgets/motion.dart';
 import '../../../shared/widgets/primitives.dart';
+import '../../../shared/widgets/states.dart';
 
 /// The month every sheet is built for.
 ///
@@ -67,7 +68,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     final month = ref.watch(_exportMonthProvider);
     final session = ref.watch(sessionProvider);
     final who = ref.watch(_exportWhoProvider);
-    final team = ref.watch(_exportTeamProvider).valueOrNull ?? const [];
+    final teamAsync = ref.watch(_exportTeamProvider);
     final now = DateTime.now();
 
     // Twelve months back, and never a month that has not finished.
@@ -108,17 +109,29 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
           // The list only *offers* the right people; the repository is what
           // enforces it. A sheet is a copy of somebody's month leaving the
           // app, and a picker is not a permission.
-          if (session.isManager && team.isNotEmpty) ...[
+          if (session.isManager) ...[
             const SizedBox(height: AppSpacing.lg),
-            DropdownField<Employee>(
-              label: 'Whose data',
-              items: [session.employee, ...team],
-              value: who ?? session.employee,
-              itemLabel: (e) => e.id == session.employee.id
-                  ? 'Me (${e.employeeCode})'
-                  : '${e.name} · ${e.employeeCode}',
-              onChanged: (e) => ref.read(_exportWhoProvider.notifier).state =
-                  (e == null || e.id == session.employee.id) ? null : e,
+            teamAsync.when(
+              loading: () => const Skeleton(height: 48),
+              error: (_, _) => ErrorState(
+                compact: true,
+                onRetry: () => ref.invalidate(_exportTeamProvider),
+              ),
+              data: (team) => team.isEmpty
+                  ? const SizedBox.shrink()
+                  : DropdownField<Employee>(
+                      label: 'Whose data',
+                      items: [session.employee, ...team],
+                      value: who ?? session.employee,
+                      itemLabel: (e) => e.id == session.employee.id
+                          ? 'Me (${e.employeeCode})'
+                          : '${e.name} · ${e.employeeCode}',
+                      onChanged: (e) =>
+                          ref.read(_exportWhoProvider.notifier).state =
+                              (e == null || e.id == session.employee.id)
+                                  ? null
+                                  : e,
+                    ),
             ),
           ],
 

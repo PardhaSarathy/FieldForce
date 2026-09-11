@@ -530,6 +530,39 @@ void main() {
 
     testWidgets('Chat list', (tester) async {
       await pumpScreen(tester, const ChatListScreen());
+      expect(find.text('Chats'), findsOneWidget);
+      expect(find.text('Ramesh Iyer'), findsWidgets);
+      expect(find.text('Team Mumbai South'), findsOneWidget);
+    });
+
+    testWidgets('Chat detail', (tester) async {
+      await pumpScreen(tester, const ChatDetailScreen(threadId: 'ch-1'));
+      expect(find.text('Message'), findsOneWidget);
+      expect(find.textContaining('Andheri coverage'), findsOneWidget);
+      expect(find.text('Open in maps'), findsOneWidget);
+    });
+
+    testWidgets('Chat attachment sheet', (tester) async {
+      await pumpScreen(tester, const ChatDetailScreen(threadId: 'ch-1'));
+      await tester.tap(find.byIcon(Icons.attach_file));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Camera'), findsOneWidget);
+      expect(find.text('Gallery'), findsOneWidget);
+      expect(find.text('Live location'), findsOneWidget);
+    });
+
+    testWidgets('New group', (tester) async {
+      await pumpScreen(tester, const ChatNewGroupScreen());
+      expect(find.text('New group'), findsOneWidget);
+      expect(find.text('Team'), findsOneWidget);
+      expect(find.text('Community'), findsOneWidget);
+    });
+
+    testWidgets('Chat info', (tester) async {
+      await pumpScreen(tester, const ChatInfoScreen(threadId: 'ch-2'));
+      expect(find.text('Team Mumbai South'), findsOneWidget);
+      expect(find.text('Leave group'), findsOneWidget);
     });
 
     testWidgets('Resources', (tester) async {
@@ -1025,6 +1058,9 @@ void main() {
       ('Export data', const ExportScreen(), 'MR1001'),
       ('To-Do calendar', const TaskCalendarScreen(), 'MR1001'),
       ('Chat list', const ChatListScreen(), 'MR1001'),
+      ('Chat detail', const ChatDetailScreen(threadId: 'ch-1'), 'MR1001'),
+      ('New group', const ChatNewGroupScreen(), 'MR1001'),
+      ('Chat info', const ChatInfoScreen(threadId: 'ch-2'), 'MR1001'),
       ('Resources', const ResourceListScreen(), 'MR1001'),
       ('Surveys', const SurveyListScreen(), 'MR1001'),
       ('New survey', const NewSurveyScreen(), 'MR1001'),

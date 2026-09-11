@@ -4,16 +4,20 @@
 /// and they implement the same interfaces — so no screen changes, which is the
 /// test of whether the abstraction was right.
 ///
-/// **They are deliberately partial, and each one says where it stops.** The
-/// database holds employees, reporting lines, leave, leave decisions, clients,
-/// day plans, activities, expenses and tour plans; everything else still
-/// delegates to the seeded data and the comment says so — a half-connected
-/// app that admits it beats one that lies in either direction.
+/// Wired only when `isLive` is true. Fixture mode uses the `Mock*` providers
+/// instead. Reports, day plans, expenses and the rest query live tables /
+/// views under RLS — no seeded fallbacks in this file.
 library;
 
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
+import 'package:uuid/uuid.dart';
 
 import '../../core/location/geo_math.dart';
+import '../../core/utils/formatters.dart';
 import '../../shared/enums/app_enums.dart';
 import '../../shared/models/activity.dart';
 import '../../shared/models/business.dart';
@@ -23,10 +27,81 @@ import '../../shared/models/export.dart';
 import '../../shared/models/field_ops.dart';
 import '../../shared/models/organization.dart';
 import '../remote/backend.dart';
+import '../remote/storage_upload.dart';
 import 'identity_map.dart';
-import 'mock_report_repository.dart';
+// AuthException + dateOnly/sameDay live with the mock helpers; fixture mode
+// still owns those symbols. No Mock* repositories are used from this file.
 import 'mock_repositories.dart';
 import 'repositories.dart';
+
+/* ═══════════════════════════════════════════════════ approval trail ══ */
+
+Future<Map<String, List<ApprovalEvent>>> _approvalEventsFor(
+  String entity,
+  List<String> entityIds,
+) async {
+  if (entityIds.isEmpty) return {};
+  // PostgREST URL length caps large `.in` lists — same class of failure as
+  // RCPA pulls. Chunk so approvals / orders never wipe a manager's home.
+  const chunkSize = 150;
+  final rows = <Map<String, dynamic>>[];
+  for (var i = 0; i < entityIds.length; i += chunkSize) {
+    final end = i + chunkSize > entityIds.length
+        ? entityIds.length
+        : i + chunkSize;
+    final chunk = await db
+        .from('approval_events')
+        .select('entity_id, action, actor_id, actor_name, reason, at')
+        .eq('entity', entity)
+        .inFilter('entity_id', entityIds.sublist(i, end))
+        .order('at');
+    rows.addAll(List<Map<String, dynamic>>.from(chunk as List));
+  }
+  final out = <String, List<ApprovalEvent>>{};
+  for (final r in rows) {
+    final id = r['entity_id'] as String;
+    out.putIfAbsent(id, () => []).add(_approvalEventFromRow(r));
+  }
+  return out;
+}
+
+ApprovalEvent _approvalEventFromRow(Map<String, dynamic> r) {
+  final action = r['action'] as String;
+  final status = switch (action) {
+    'applied' => ApprovalStatus.submitted,
+    'approved' => ApprovalStatus.approved,
+    'rejected' => ApprovalStatus.rejected,
+    'pending' => ApprovalStatus.pending,
+    _ => ApprovalStatus.pending,
+  };
+  final actorRole = action == 'approved' || action == 'rejected'
+      ? 'Manager'
+      : '';
+  return ApprovalEvent(
+    status: status,
+    actorId: r['actor_id'] as String? ?? '',
+    actorName: r['actor_name'] as String? ?? '',
+    actorRole: actorRole,
+    at: DateTime.parse(r['at'] as String),
+    reason: r['reason'] as String?,
+  );
+}
+
+Future<List<ApprovalItem>> _filterDecidablePending(
+  List<ApprovalItem> items,
+) async {
+  final cache = <String, bool>{};
+  final out = <ApprovalItem>[];
+  for (final item in items) {
+    final id = item.employeeId;
+    cache[id] ??= await db.rpc('can_decide_for', params: {
+          'p_employee_id': id,
+        }) as bool? ??
+        false;
+    if (cache[id]!) out.add(item);
+  }
+  return out;
+}
 
 /* ══════════════════════════════════════════════════════════════ auth ══ */
 
@@ -268,22 +343,31 @@ class ApiHrRepository implements HrRepository {
       }
     }
 
+    final trails = await _approvalEventsFor(
+      'leave',
+      rows.map((r) => r['id'] as String).toList(),
+    );
+
     return rows
         .where((r) => _statusOf.containsKey(r['status']))
         // A row whose owner is not in this build cannot be shown against a
         // name, and an approver reading a record with no name is how a
         // decision lands on the wrong person.
-        .map((r) => LeaveRequest(
-              id: r['id'] as String,
-              employeeId: r['employee_id'] as String,
-              employeeName: names[r['employee_id']] ?? 'Somebody',
-              fromDate: DateTime.parse(r['from_date'] as String),
-              toDate: DateTime.parse(r['to_date'] as String),
-              type: _typeOf[r['type']] ?? LeaveType.casual,
-              reason: r['reason'] as String,
-              status: _statusOf[r['status']]!,
-              createdAt: DateTime.tryParse(r['applied_at'] as String? ?? ''),
-            ))
+        .map((r) {
+          final id = r['id'] as String;
+          return LeaveRequest(
+            id: id,
+            employeeId: r['employee_id'] as String,
+            employeeName: names[r['employee_id']] ?? 'Somebody',
+            fromDate: DateTime.parse(r['from_date'] as String),
+            toDate: DateTime.parse(r['to_date'] as String),
+            type: _typeOf[r['type']] ?? LeaveType.casual,
+            reason: r['reason'] as String,
+            status: _statusOf[r['status']]!,
+            approvalHistory: trails[id] ?? const [],
+            createdAt: DateTime.tryParse(r['applied_at'] as String? ?? ''),
+          );
+        })
         .toList();
   }
 
@@ -320,6 +404,8 @@ class ApiHrRepository implements HrRepository {
         .eq('id', row['employee_id'] as String)
         .maybeSingle();
 
+    final trails = await _approvalEventsFor('leave', [id]);
+
     return LeaveRequest(
       id: row['id'] as String,
       employeeId: row['employee_id'] as String,
@@ -329,6 +415,7 @@ class ApiHrRepository implements HrRepository {
       type: _typeOf[row['type']] ?? LeaveType.casual,
       reason: row['reason'] as String,
       status: _statusOf[row['status']] ?? ApprovalStatus.pending,
+      approvalHistory: trails[id] ?? const [],
       createdAt: DateTime.tryParse(row['applied_at'] as String? ?? ''),
     );
   }
@@ -365,12 +452,9 @@ class ApiHrRepository implements HrRepository {
       return AttendanceRecord(
         date: date,
         status: status,
-        checkIn: statusKey == 'present'
-            ? date.add(const Duration(hours: 9, minutes: 12))
-            : null,
-        checkOut: statusKey == 'present'
-            ? date.add(const Duration(hours: 18, minutes: 24))
-            : null,
+        // attendance_days has no clock columns yet — do not invent times.
+        checkIn: null,
+        checkOut: null,
         workType: workKey == null
             ? null
             : ApiDayPlanRepository._workTypeOf[workKey],
@@ -438,6 +522,19 @@ class ApiHrRepository implements HrRepository {
             ))
         .toList();
   }
+
+  @override
+  Future<String?> signedDocumentUrl(
+    String storagePath, {
+    String bucket = 'documents',
+  }) async {
+    if (storagePath.isEmpty) return null;
+    try {
+      return await db.storage.from(bucket).createSignedUrl(storagePath, 3600);
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 /* ═══════════════════════════════════════════════════════ approvals ══ */
@@ -497,6 +594,9 @@ class ApiApprovalRepository implements ApprovalRepository {
     }
 
     items.sort((a, b) => b.submittedAt.compareTo(a.submittedAt));
+    if (!decided) {
+      return _filterDecidablePending(items);
+    }
     return items;
   }
 
@@ -774,10 +874,11 @@ class ApiApprovalRepository implements ApprovalRepository {
       final status = _statusOf[statusKey];
       if (status == null) continue;
 
-      final cats = (r['categories'] as List<dynamic>? ?? const [])
-          .cast<String>()
-          .map((c) => _expenseCategoryOf[c] ?? ExpenseCategory.other)
-          .toList();
+      final cats = <ExpenseCategory>[];
+      for (final c in (r['categories'] as List<dynamic>? ?? const [])) {
+        if (c is! String) continue;
+        cats.add(_expenseCategoryOf[c] ?? ExpenseCategory.other);
+      }
       final category =
           cats.isEmpty ? ExpenseCategory.other : cats.first;
 
@@ -1032,6 +1133,38 @@ class ApiEmployeeRepository implements EmployeeRepository {
             ))
         .toList();
   }
+
+  @override
+  Future<void> updateMyProfile({
+    required String mobile,
+    required String email,
+    String? bloodGroup,
+  }) async {
+    await db.rpc('update_my_profile', params: {
+      'p_mobile': mobile,
+      'p_email': email,
+      'p_blood_group': bloodGroup,
+    });
+  }
+
+  @override
+  Future<void> saveTravelRates({
+    required String employeeId,
+    required List<({String mode, double localRate, double outstationRate})>
+        rates,
+  }) async {
+    await db.rpc('save_travel_rates', params: {
+      'p_employee_id': employeeId,
+      'p_rates': [
+        for (final r in rates)
+          {
+            'mode': r.mode,
+            'local_rate': r.localRate,
+            'outstation_rate': r.outstationRate,
+          },
+      ],
+    });
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════ clients ══ */
@@ -1283,9 +1416,7 @@ Client clientFromRow(Map<String, dynamic> r) {
 /// Day plans from the database. Writes go through `submit_day_plan` — there
 /// are no INSERT/UPDATE policies; SELECT is scoped by RLS.
 class ApiDayPlanRepository implements DayPlanRepository {
-  ApiDayPlanRepository() : _seed = MockDayPlanRepository();
-
-  final MockDayPlanRepository _seed;
+  ApiDayPlanRepository();
 
   static const _columns =
       'id, employee_id, work_date, work_type, area_id, cluster_id, '
@@ -1368,10 +1499,26 @@ class ApiDayPlanRepository implements DayPlanRepository {
     return rows.map(dayPlanFromRow).toList();
   }
 
-  /// No geocoder table yet — the seed still resolves addresses per area.
+  /// Resolve a label from `areas` (or `clusters` if the id is a cluster).
+  /// Areas have no street address column — name is the best live fallback.
   @override
-  Future<String> addressFor(GeoPoint point, {String? areaId}) =>
-      _seed.addressFor(point, areaId: areaId);
+  Future<String> addressFor(GeoPoint point, {String? areaId}) async {
+    if (areaId == null || areaId.isEmpty) return '';
+    final area = await db
+        .from('areas')
+        .select('name')
+        .eq('id', areaId)
+        .maybeSingle();
+    final areaName = area?['name'] as String?;
+    if (areaName != null && areaName.isNotEmpty) return areaName;
+
+    final cluster = await db
+        .from('clusters')
+        .select('name')
+        .eq('id', areaId)
+        .maybeSingle();
+    return (cluster?['name'] as String?) ?? '';
+  }
 
   static String _isoDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
@@ -1419,7 +1566,7 @@ class ApiActivityRepository implements ActivityRepository {
       'contact_person, contact_mobile, feedback, remarks, pop, inputs_given, '
       'pob_amount, rcpa_score, expected_next_visit, geo_verdict, geo_radius_m, '
       'geo_distance_m, geo_lat, geo_lng, geo_captured_at, out_of_range_reason, '
-      'location_name, area_name, created_at, updated_at, '
+      'location_name, area_name, photo_paths, created_at, updated_at, '
       'clients(name, specialty, type), employees(name), '
       'activity_rcpa_entries(product_id, product_name, own_quantity, '
       'competitor_name, competitor_quantity), '
@@ -1577,6 +1724,7 @@ class ApiActivityRepository implements ActivityRepository {
           },
       ],
       'p_product_ids': activity.productIds,
+      'p_photo_paths': activity.photoPaths,
     });
     return byId(session, activity.id);
   }
@@ -1628,6 +1776,7 @@ class ApiActivityRepository implements ActivityRepository {
           },
       ],
       'p_product_ids': activity.productIds,
+      'p_photo_paths': activity.photoPaths,
     });
 
     final row = await db
@@ -1640,6 +1789,19 @@ class ApiActivityRepository implements ActivityRepository {
     }
     return activityFromRow(row);
   }
+
+  @override
+  Future<String> uploadVisitPhoto({
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'photo.jpg',
+  }) =>
+      uploadOrgEmployeeFile(
+        bucket: 'visit-photos',
+        bytes: bytes,
+        mimeType: mimeType,
+        fileName: fileName,
+      );
 
   static String _isoDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
@@ -1736,6 +1898,10 @@ Activity activityFromRow(Map<String, dynamic> r) {
     outOfRangeReason: r['out_of_range_reason'] as String?,
     dayPlanId: r['day_plan_id'] as String?,
     isUnplanned: r['is_unplanned'] as bool? ?? false,
+    photoPaths: (r['photo_paths'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList() ??
+        const [],
     createdAt: DateTime.tryParse(r['created_at'] as String? ?? ''),
     updatedAt: DateTime.tryParse(r['updated_at'] as String? ?? ''),
     syncStatus: SyncStatus.synced,
@@ -1752,7 +1918,12 @@ class ApiExpenseRepository implements ExpenseRepository {
   static const _columns =
       'id, employee_id, work_date, amount, categories, description, remarks, '
       'travel_mode, destination, status, receipt_paths, created_at, '
-      'employees(name)';
+      // Named constraint, not just `employees(name)`. `expenses` reaches
+      // `employees` twice — `employee_id` and `decided_by` — and PostgREST
+      // refuses to guess: the whole select came back 400 PGRST201, so every
+      // expense read failed and the Expenses screen showed "Something went
+      // wrong". Whose expense it is, is the one we want.
+      'employees!expenses_employee_id_fkey(name)';
 
   static const _categoryOf = ApiApprovalRepository._expenseCategoryOf;
   static const _categoryTerm = {
@@ -1785,7 +1956,16 @@ class ApiExpenseRepository implements ExpenseRepository {
       if (key.isNotEmpty) q = q.eq('status', key);
     }
     final rows = await q.order('work_date', ascending: false);
-    return rows.map(expenseFromRow).toList();
+    final trails = await _approvalEventsFor(
+      'expense',
+      rows.map((r) => r['id'] as String).toList(),
+    );
+    return rows
+        .map((r) => expenseFromRow(
+              r,
+              approvalHistory: trails[r['id'] as String] ?? const [],
+            ))
+        .toList();
   }
 
   @override
@@ -1798,7 +1978,8 @@ class ApiExpenseRepository implements ExpenseRepository {
     if (row == null) {
       throw StateError('No expense you may see has that id.');
     }
-    return expenseFromRow(row);
+    final trails = await _approvalEventsFor('expense', [id]);
+    return expenseFromRow(row, approvalHistory: trails[id] ?? const []);
   }
 
   @override
@@ -1814,6 +1995,7 @@ class ApiExpenseRepository implements ExpenseRepository {
       'p_remarks': expense.remarks,
       'p_travel_mode': expense.travelMode?.label,
       'p_destination': expense.place ?? expense.toLocation,
+      'p_receipt_paths': expense.receiptPaths,
     }) as String;
     final row = await db
         .from('expenses')
@@ -1823,7 +2005,8 @@ class ApiExpenseRepository implements ExpenseRepository {
     if (row == null) {
       throw StateError('Expense was created but could not be read back.');
     }
-    return expenseFromRow(row);
+    final trails = await _approvalEventsFor('expense', [id]);
+    return expenseFromRow(row, approvalHistory: trails[id] ?? const []);
   }
 
   @override
@@ -1839,6 +2022,7 @@ class ApiExpenseRepository implements ExpenseRepository {
       'p_remarks': expense.remarks,
       'p_travel_mode': expense.travelMode?.label,
       'p_destination': expense.place ?? expense.toLocation,
+      'p_receipt_paths': expense.receiptPaths,
     });
     return byId(session, expense.id);
   }
@@ -1854,7 +2038,8 @@ class ApiExpenseRepository implements ExpenseRepository {
     if (row == null) {
       throw StateError('Expense was submitted but could not be read back.');
     }
-    return expenseFromRow(row);
+    final trails = await _approvalEventsFor('expense', [id]);
+    return expenseFromRow(row, approvalHistory: trails[id] ?? const []);
   }
 
   @override
@@ -2044,13 +2229,29 @@ class ApiExpenseRepository implements ExpenseRepository {
     }) as int;
   }
 
+  @override
+  Future<String> uploadReceipt({
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'receipt.jpg',
+  }) =>
+      uploadOrgEmployeeFile(
+        bucket: 'receipts',
+        bytes: bytes,
+        mimeType: mimeType,
+        fileName: fileName,
+      );
+
   static String _isoDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 }
 
-Expense expenseFromRow(Map<String, dynamic> r) {
+Expense expenseFromRow(
+  Map<String, dynamic> r, {
+  List<ApprovalEvent> approvalHistory = const [],
+}) {
   final employee = r['employees'] as Map<String, dynamic>?;
   final cats = (r['categories'] as List<dynamic>? ?? const ['dailyAllowance'])
       .cast<String>()
@@ -2082,6 +2283,7 @@ Expense expenseFromRow(Map<String, dynamic> r) {
     travelMode: travelMode,
     place: r['destination'] as String?,
     createdAt: DateTime.tryParse(r['created_at'] as String? ?? ''),
+    approvalHistory: approvalHistory,
     syncStatus: SyncStatus.synced,
   );
 }
@@ -2109,8 +2311,16 @@ class ApiTravelRepository implements TravelRepository {
     var q = db.from('tour_plan_days').select(_dayColumns);
     if (employeeId != null) q = q.eq('employee_id', employeeId);
     final rows = await q.order('work_date', ascending: false);
+    final trails = await _approvalEventsFor(
+      'tour',
+      rows.map((r) => r['month_id'] as String).toSet().toList(),
+    );
     return rows
-        .map(travelPlanFromRow)
+        .map((r) => travelPlanFromRow(
+              r,
+              approvalHistory:
+                  trails[r['month_id'] as String] ?? const [],
+            ))
         .where((p) => status == null || p.status == status)
         .toList();
   }
@@ -2125,7 +2335,14 @@ class ApiTravelRepository implements TravelRepository {
     if (row == null) {
       throw StateError('No tour plan you may see has that id.');
     }
-    return travelPlanFromRow(row);
+    final trails = await _approvalEventsFor(
+      'tour',
+      [row['month_id'] as String],
+    );
+    return travelPlanFromRow(
+      row,
+      approvalHistory: trails[row['month_id'] as String] ?? const [],
+    );
   }
 
   @override
@@ -2157,7 +2374,14 @@ class ApiTravelRepository implements TravelRepository {
     if (updated == null) {
       throw StateError('Tour plan was submitted but could not be read back.');
     }
-    return travelPlanFromRow(updated);
+    final trails = await _approvalEventsFor(
+      'tour',
+      [updated['month_id'] as String],
+    );
+    return travelPlanFromRow(
+      updated,
+      approvalHistory: trails[updated['month_id'] as String] ?? const [],
+    );
   }
 
   @override
@@ -2212,11 +2436,20 @@ class ApiTravelRepository implements TravelRepository {
       );
     }
 
+    final trails = await _approvalEventsFor(
+      'tour',
+      rows.map((r) => r['month_id'] as String).toSet().toList(),
+    );
+
     return TourMonth(
       month: month,
       plans: {
         for (final r in rows)
-          DateTime.parse(r['work_date'] as String).day: travelPlanFromRow(r),
+          DateTime.parse(r['work_date'] as String).day: travelPlanFromRow(
+            r,
+            approvalHistory:
+                trails[r['month_id'] as String] ?? const [],
+          ),
       },
       holidays: {
         for (final h in holidayRows)
@@ -2251,7 +2484,14 @@ class ApiTravelRepository implements TravelRepository {
     if (row == null) {
       throw StateError('Tour day was saved but could not be read back.');
     }
-    return travelPlanFromRow(row);
+    final trails = await _approvalEventsFor(
+      'tour',
+      [row['month_id'] as String],
+    );
+    return travelPlanFromRow(
+      row,
+      approvalHistory: trails[row['month_id'] as String] ?? const [],
+    );
   }
 
   @override
@@ -2263,7 +2503,10 @@ class ApiTravelRepository implements TravelRepository {
   }
 }
 
-TravelPlan travelPlanFromRow(Map<String, dynamic> r) {
+TravelPlan travelPlanFromRow(
+  Map<String, dynamic> r, {
+  List<ApprovalEvent> approvalHistory = const [],
+}) {
   final month = r['tour_plan_months'] as Map<String, dynamic>?;
   final area = r['areas'] as Map<String, dynamic>?;
   final employee = r['employees'] as Map<String, dynamic>?;
@@ -2298,6 +2541,7 @@ TravelPlan travelPlanFromRow(Map<String, dynamic> r) {
     clientNames:
         (r['client_names'] as List<dynamic>? ?? const []).cast<String>(),
     remarks: r['remarks'] as String?,
+    approvalHistory: approvalHistory,
     syncStatus: SyncStatus.synced,
   );
 }
@@ -2313,7 +2557,10 @@ class ApiBusinessRepository implements BusinessRepository {
   static const _orderColumns =
       'id, employee_id, client_id, status, discount_percent, subtotal, '
       'gst_amount, total, remarks, created_at, submitted_at, '
-      'employees(name), clients(name)';
+      // Named, for the same reason as `ApiExpenseRepository._columns`:
+      // `orders` reaches `employees` through `employee_id` and `decided_by`,
+      // and an unqualified embed is a 400 for the whole select.
+      'employees!orders_employee_id_fkey(name), clients(name)';
 
   @override
   Future<List<Product>> products() async {
@@ -2347,9 +2594,16 @@ class ApiBusinessRepository implements BusinessRepository {
       if (wire != null) q = q.eq('status', wire);
     }
     final rows = await q.order('created_at', ascending: false);
+    final trails = await _approvalEventsFor(
+      'order',
+      rows.map((r) => r['id'] as String).toList(),
+    );
     final orders = <Order>[];
     for (final r in rows) {
-      orders.add(await _orderFromRow(r));
+      orders.add(await _orderFromRow(
+        r,
+        approvalHistory: trails[r['id'] as String] ?? const [],
+      ));
     }
     return orders;
   }
@@ -2364,7 +2618,8 @@ class ApiBusinessRepository implements BusinessRepository {
     if (row == null) {
       throw StateError('No order you may see has that id.');
     }
-    return _orderFromRow(row);
+    final trails = await _approvalEventsFor('order', [id]);
+    return _orderFromRow(row, approvalHistory: trails[id] ?? const []);
   }
 
   @override
@@ -2570,7 +2825,10 @@ class ApiBusinessRepository implements BusinessRepository {
     return out;
   }
 
-  Future<Order> _orderFromRow(Map<String, dynamic> r) async {
+  Future<Order> _orderFromRow(
+    Map<String, dynamic> r, {
+    List<ApprovalEvent> approvalHistory = const [],
+  }) async {
     final items = await db
         .from('order_items')
         .select('product_id, quantity, unit_price, is_foc, line_total, products(name, gst_percent, pack_size)')
@@ -2605,6 +2863,7 @@ class ApiBusinessRepository implements BusinessRepository {
           })
           .toList(),
       remarks: r['remarks'] as String?,
+      approvalHistory: approvalHistory,
     );
   }
 
@@ -2741,7 +3000,8 @@ class ApiNotificationRepository implements NotificationRepository {
   @override
   Future<List<AppNotification>> list({bool unreadOnly = false}) async {
     var q = db.from('notifications').select(
-        'id, title, body, kind, is_read, created_at');
+        'id, title, body, kind, is_read, created_at, entity, entity_id, '
+        'deep_link, group_count');
     if (unreadOnly) q = q.eq('is_read', false);
     final rows = await q.order('created_at', ascending: false);
     return rows.map(_fromRow).toList();
@@ -2765,90 +3025,224 @@ class ApiNotificationRepository implements NotificationRepository {
 
   @override
   Future<int> unreadCount() async {
+    // Work only. Chat has its own unread badge reading `chat_participants`,
+    // and counting a message in both places made one message read as two —
+    // a bell showing four when three of them were the conversation the rep
+    // had already answered. The chat rows are still in the list; they are
+    // just not counted twice.
     final rows = await db
         .from('notifications')
         .select('id')
-        .eq('is_read', false);
+        .eq('is_read', false)
+        .neq('kind', 'message');
     return rows.length;
   }
 
   AppNotification _fromRow(Map<String, dynamic> r) => AppNotification(
         id: r['id'] as String,
-        kind: _kindOf[r['kind'] as String? ?? 'info'] ??
-            NotificationKind.approvalRequested,
+        kind: _kindOf[r['kind'] as String? ?? 'info'] ?? _kindOf['info']!,
         title: r['title'] as String,
         body: r['body'] as String? ?? '',
         createdAt: DateTime.parse(r['created_at'] as String),
         isRead: r['is_read'] as bool? ?? false,
+        deepLink: r['deep_link'] as String?,
+        relatedId: r['entity_id'] as String?,
+        groupCount: (r['group_count'] as num?)?.toInt() ?? 1,
       );
 }
 
 /* ════════════════════════════════════════════════════════════ chat ══ */
 
-/// Polling reads and `send_chat_message` — no realtime subscription yet.
+ChatThreadKind _threadKind(String? raw) => switch (raw) {
+      'group' => ChatThreadKind.group,
+      'community' => ChatThreadKind.community,
+      'announcement' => ChatThreadKind.announcement,
+      _ => ChatThreadKind.direct,
+    };
+
+ChatMessageKind _messageKind(String? raw) => switch (raw) {
+      'image' => ChatMessageKind.image,
+      'location' => ChatMessageKind.location,
+      'live_location' => ChatMessageKind.liveLocation,
+      'system' => ChatMessageKind.system,
+      _ => ChatMessageKind.text,
+    };
+
+ChatDeliveryStatus _deliveryStatus(String? raw) => switch (raw) {
+      'sending' => ChatDeliveryStatus.sending,
+      'delivered' => ChatDeliveryStatus.delivered,
+      'read' => ChatDeliveryStatus.read,
+      'failed' => ChatDeliveryStatus.failed,
+      _ => ChatDeliveryStatus.sent,
+    };
+
+/// Chat RPCs plus Realtime for new messages. Polling remains a fallback.
 class ApiChatRepository implements ChatRepository {
   ApiChatRepository();
 
+  static const _uuid = Uuid();
+  static const _maxImageBytes = 8 * 1024 * 1024;
+
+  List<ChatThread> _cachedThreads = const [];
+  final _cachedMessages = <String, List<ChatMessage>>{};
+
+  Future<ChatMessage> _messageById(String threadId, String id) async {
+    final rows = await messages(threadId);
+    return rows.firstWhere(
+      (m) => m.id == id,
+      orElse: () => ChatMessage(
+        id: id,
+        threadId: threadId,
+        senderId: '',
+        senderName: 'You',
+        text: '',
+        sentAt: DateTime.now(),
+        isMine: true,
+      ),
+    );
+  }
+
   @override
   Future<List<ChatThread>> threads({String? query}) async {
-    final rows = await db
-        .from('chat_threads')
-        .select('id, subject, created_at')
-        .order('created_at', ascending: false);
-
-    final threads = <ChatThread>[];
-    for (final r in rows) {
-      final tid = r['id'] as String;
-      final messages = await db
-          .from('chat_messages')
-          .select('body, sent_at')
-          .eq('thread_id', tid)
-          .order('sent_at', ascending: false)
-          .limit(1);
-      final last = messages.isNotEmpty ? messages.first : null;
-      final title = (r['subject'] as String?)?.trim().isNotEmpty == true
-          ? r['subject'] as String
-          : 'Conversation';
-      threads.add(ChatThread(
-        id: tid,
-        title: title,
-        lastMessage: last?['body'] as String? ?? '',
-        lastMessageAt: last == null
-            ? DateTime.parse(r['created_at'] as String)
-            : DateTime.parse(last['sent_at'] as String),
-      ));
+    try {
+      final raw = await db.rpc(
+        'chat_threads_for_me',
+        params: {'p_query': query?.trim().isEmpty == true ? null : query},
+      );
+      final rows = (raw as List?) ?? const [];
+      final parsed = rows.map((item) {
+        final r = Map<String, dynamic>.from(item as Map);
+        final participantIds = (r['participant_ids'] as List? ?? const [])
+            .map((id) => id.toString())
+            .toList();
+        final kind = _threadKind(r['thread_kind'] as String?);
+        final peerName = r['peer_name'] as String?;
+        return ChatThread(
+          id: r['id'].toString(),
+          title: kind == ChatThreadKind.direct
+              ? (peerName?.trim().isNotEmpty == true
+                  ? peerName!
+                  : r['title'] as String? ?? 'Conversation')
+              : r['title'] as String? ?? 'Group',
+          subtitle: r['subtitle'] as String?,
+          lastMessage: r['last_message'] as String? ?? '',
+          lastMessageAt: DateTime.parse(r['last_message_at'] as String),
+          isGroup: kind != ChatThreadKind.direct,
+          isPinned: r['is_pinned'] as bool? ?? false,
+          unreadCount: (r['unread_count'] as num?)?.toInt() ?? 0,
+          participantIds: participantIds,
+          kind: kind,
+          peerId: r['peer_id']?.toString(),
+          isMuted: r['is_muted'] as bool? ?? false,
+          lastMessageKind: _messageKind(r['last_message_kind'] as String?),
+        );
+      }).toList();
+      if (query == null || query.trim().isEmpty) {
+        _cachedThreads = parsed;
+      }
+      return parsed;
+    } catch (_) {
+      if (_cachedThreads.isNotEmpty &&
+          (query == null || query.trim().isEmpty)) {
+        return _cachedThreads;
+      }
+      rethrow;
     }
-
-    final q = query?.trim().toLowerCase() ?? '';
-    return threads
-        .where((t) => q.isEmpty || t.title.toLowerCase().contains(q))
-        .toList()
-      ..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
   }
 
   @override
   Future<List<ChatMessage>> messages(String threadId) async {
-    final me = await db.rpc('current_employee_id');
-    final rows = await db
-        .from('chat_messages')
-        .select('id, thread_id, sender_id, body, sent_at, employees(name)')
-        .eq('thread_id', threadId)
-        .order('sent_at', ascending: true);
+    try {
+      final rows = await db.rpc(
+        'chat_messages_for_thread',
+        params: {'p_thread_id': threadId},
+      );
+      final list = (rows as List?) ?? const [];
+      final parsed = await _withSignedUrls(list.map(_messageFromRow).toList());
+      _cachedMessages[threadId] = parsed;
+      return parsed;
+    } catch (_) {
+      final cached = _cachedMessages[threadId];
+      if (cached != null) return cached;
+      rethrow;
+    }
+  }
 
-    return rows
-        .map((r) {
-          final sender = r['employees'] as Map<String, dynamic>?;
-          return ChatMessage(
-            id: r['id'] as String,
-            threadId: r['thread_id'] as String,
-            senderId: r['sender_id'] as String,
-            senderName: sender?['name'] as String? ?? 'Somebody',
-            text: r['body'] as String,
-            sentAt: DateTime.parse(r['sent_at'] as String),
-            isMine: me != null && r['sender_id'] == me,
-          );
-        })
+  ChatMessage _messageFromRow(dynamic raw) {
+    final r = Map<String, dynamic>.from(raw as Map);
+    final attachmentsRaw = r['attachments'];
+    final attachments = <ChatAttachment>[];
+    if (attachmentsRaw is List) {
+      for (final item in attachmentsRaw) {
+        final a = Map<String, dynamic>.from(item as Map);
+        attachments.add(ChatAttachment(
+          id: a['id'].toString(),
+          storagePath: a['storage_path'] as String? ?? '',
+          mimeType: a['mime_type'] as String? ?? 'image/jpeg',
+          byteSize: (a['byte_size'] as num?)?.toInt(),
+          width: (a['width'] as num?)?.toInt(),
+          height: (a['height'] as num?)?.toInt(),
+        ));
+      }
+    }
+    return ChatMessage(
+      id: r['id'].toString(),
+      threadId: r['thread_id'].toString(),
+      senderId: r['sender_id'].toString(),
+      senderName: r['sender_name'] as String? ?? 'Somebody',
+      text: r['body'] as String? ?? '',
+      sentAt: DateTime.parse(r['sent_at'] as String),
+      isMine: r['is_mine'] as bool? ?? false,
+      kind: _messageKind(r['kind'] as String?),
+      status: _deliveryStatus(r['status'] as String?),
+      latitude: (r['lat'] as num?)?.toDouble(),
+      longitude: (r['lng'] as num?)?.toDouble(),
+      accuracyMeters: (r['accuracy_m'] as num?)?.toDouble(),
+      liveLocationId: r['live_location_id']?.toString(),
+      liveExpiresAt: r['live_expires_at'] == null
+          ? null
+          : DateTime.tryParse(r['live_expires_at'] as String),
+      liveIsActive: r['live_is_active'] as bool? ?? false,
+      attachments: attachments,
+    );
+  }
+
+  Future<List<ChatMessage>> _withSignedUrls(List<ChatMessage> messages) async {
+    final paths = messages
+        .expand((m) => m.attachments)
+        .map((a) => a.storagePath)
+        .where((p) => p.isNotEmpty)
         .toList();
+    if (paths.isEmpty) return messages;
+    try {
+      // `createSignedUrlsResult` rather than `createSignedUrls`: the latter is
+      // deprecated, and it omits paths it could not sign instead of saying so.
+      // Omission and success look identical in the map either way — an
+      // attachment simply has no URL and the bubble shows its placeholder —
+      // but a deleted file is worth a line in the log rather than a silence.
+      final signed =
+          await db.storage.from('chat-media').createSignedUrlsResult(paths, 3600);
+      final byPath = <String, String>{};
+      for (final r in signed) {
+        switch (r) {
+          case sb.SignedUrlSuccess(:final path, :final signedUrl):
+            if (signedUrl.isNotEmpty) byPath[path] = signedUrl;
+          case sb.SignedUrlFailure(:final path, :final error):
+            debugPrint('chat-media: no URL for $path — $error');
+        }
+      }
+      return [
+        for (final m in messages)
+          m.copyWith(
+            attachments: [
+              for (final a in m.attachments)
+                a.copyWith(signedUrl: byPath[a.storagePath]),
+            ],
+          ),
+      ];
+    } catch (_) {
+      return messages;
+    }
   }
 
   @override
@@ -2857,25 +3251,229 @@ class ApiChatRepository implements ChatRepository {
       'p_thread_id': threadId,
       'p_body': text,
     }) as String;
+    return _messageById(threadId, id);
+  }
 
-    final row = await db
-        .from('chat_messages')
-        .select('id, thread_id, sender_id, body, sent_at, employees(name)')
-        .eq('id', id)
-        .maybeSingle();
-    if (row == null) {
-      throw StateError('Message was sent but could not be read back.');
+  @override
+  Future<ChatMessage> sendImage(
+    String threadId, {
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'photo.jpg',
+  }) async {
+    if (bytes.length > _maxImageBytes) {
+      throw StateError('That photo is larger than 8 MB.');
     }
-    final sender = row['employees'] as Map<String, dynamic>?;
-    return ChatMessage(
-      id: row['id'] as String,
-      threadId: row['thread_id'] as String,
-      senderId: row['sender_id'] as String,
-      senderName: sender?['name'] as String? ?? 'Somebody',
-      text: row['body'] as String,
-      sentAt: DateTime.parse(row['sent_at'] as String),
-      isMine: true,
-    );
+    final orgId = await db.rpc('current_org_id');
+    final ext = switch (mimeType) {
+      'image/png' => 'png',
+      'image/webp' => 'webp',
+      'image/heic' => 'heic',
+      _ => 'jpg',
+    };
+    final path = '$orgId/$threadId/${_uuid.v4()}/original.$ext';
+    await db.storage.from('chat-media').uploadBinary(
+          path,
+          Uint8List.fromList(bytes),
+          fileOptions: sb.FileOptions(contentType: mimeType, upsert: true),
+        );
+    final id = await db.rpc('send_image_message', params: {
+      'p_thread_id': threadId,
+      'p_storage_path': path,
+      'p_mime': mimeType,
+      'p_bytes': bytes.length,
+    }) as String;
+    return _messageById(threadId, id);
+  }
+
+  @override
+  Future<ChatMessage> sendLocation(
+    String threadId, {
+    required double latitude,
+    required double longitude,
+    double? accuracy,
+    String? label,
+  }) async {
+    final id = await db.rpc('send_location_message', params: {
+      'p_thread_id': threadId,
+      'p_lat': latitude,
+      'p_lng': longitude,
+      'p_accuracy': accuracy,
+      'p_label': label,
+    }) as String;
+    return _messageById(threadId, id);
+  }
+
+  @override
+  Future<ChatMessage> startLiveLocation(
+    String threadId, {
+    required double latitude,
+    required double longitude,
+    double? accuracy,
+    int minutes = 15,
+  }) async {
+    final id = await db.rpc('start_live_location', params: {
+      'p_thread_id': threadId,
+      'p_lat': latitude,
+      'p_lng': longitude,
+      'p_accuracy': accuracy,
+      'p_minutes': minutes,
+    }) as String;
+    return _messageById(threadId, id);
+  }
+
+  @override
+  Future<void> updateLiveLocation(
+    String liveLocationId, {
+    required double latitude,
+    required double longitude,
+    double? accuracy,
+  }) async {
+    await db.rpc('update_live_location', params: {
+      'p_id': liveLocationId,
+      'p_lat': latitude,
+      'p_lng': longitude,
+      'p_accuracy': accuracy,
+    });
+  }
+
+  @override
+  Future<void> stopLiveLocation(String liveLocationId) async {
+    await db.rpc('stop_live_location', params: {'p_id': liveLocationId});
+  }
+
+  @override
+  Future<String> createGroup({
+    required String subject,
+    required List<String> participantIds,
+    ChatThreadKind kind = ChatThreadKind.group,
+  }) async {
+    final kindName = switch (kind) {
+      ChatThreadKind.community => 'community',
+      ChatThreadKind.announcement => 'announcement',
+      _ => 'group',
+    };
+    final id = await db.rpc('create_chat_thread', params: {
+      'p_subject': subject,
+      'p_participant_ids': participantIds,
+      'p_kind': kindName,
+    });
+    return id as String;
+  }
+
+  @override
+  Future<List<Employee>> members(String threadId) async {
+    final rows = await db.rpc(
+      'chat_thread_members',
+      params: {'p_thread_id': threadId},
+    ) as List;
+    return rows.map((raw) {
+      final r = Map<String, dynamic>.from(raw as Map);
+      return Employee(
+        id: r['id'] as String,
+        employeeCode: r['employee_code'] as String? ?? '',
+        name: r['name'] as String? ?? 'Teammate',
+        role: (r['role'] as String?) == 'ASM' ? UserRole.asm : UserRole.mr,
+        designation: r['designation'] as String? ?? '',
+        mobile: '',
+        email: '',
+        territoryId: '',
+        territoryName: '',
+        headquarters: '',
+      );
+    }).toList();
+  }
+
+  @override
+  Future<void> addParticipants(String threadId, List<String> employeeIds) async {
+    await db.rpc('add_chat_participants', params: {
+      'p_thread_id': threadId,
+      'p_participant_ids': employeeIds,
+    });
+  }
+
+  @override
+  Future<void> leave(String threadId) async {
+    await db.rpc('leave_chat_thread', params: {'p_thread_id': threadId});
+  }
+
+  @override
+  Stream<void> watchThread(String threadId) {
+    final controller = StreamController<void>.broadcast();
+    final channel = db
+        .channel('chat-$threadId')
+        .onPostgresChanges(
+          event: sb.PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'chat_messages',
+          filter: sb.PostgresChangeFilter(
+            type: sb.PostgresChangeFilterType.eq,
+            column: 'thread_id',
+            value: threadId,
+          ),
+          callback: (_) {
+            if (!controller.isClosed) controller.add(null);
+          },
+        )
+        .onPostgresChanges(
+          event: sb.PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'chat_live_locations',
+          callback: (_) {
+            if (!controller.isClosed) controller.add(null);
+          },
+        )
+        .subscribe();
+    controller.onCancel = () {
+      db.removeChannel(channel);
+    };
+    return controller.stream;
+  }
+
+  @override
+  Future<String> findOrCreateDirect(String employeeId) async {
+    final id = await db.rpc('find_or_create_direct_chat', params: {
+      'p_employee_id': employeeId,
+    });
+    return id as String;
+  }
+
+  @override
+  Future<void> markRead(String threadId) async {
+    await db.rpc('mark_chat_read', params: {'p_thread_id': threadId});
+  }
+
+  @override
+  Future<void> markDelivered(String threadId) async {
+    await db.rpc('mark_chat_delivered', params: {'p_thread_id': threadId});
+  }
+
+  @override
+  Future<int> unreadCount() async {
+    final threads = await this.threads();
+    return threads.fold<int>(0, (total, t) => total + t.unreadCount);
+  }
+
+  @override
+  Future<List<Employee>> directory({String? query}) async {
+    final rows = await db.rpc('chat_directory', params: {
+      'p_query': query,
+    }) as List;
+    return rows.map((raw) {
+      final r = Map<String, dynamic>.from(raw as Map);
+      return Employee(
+        id: r['id'] as String,
+        employeeCode: r['employee_code'] as String? ?? '',
+        name: r['name'] as String? ?? 'Teammate',
+        role: (r['role'] as String?) == 'ASM' ? UserRole.asm : UserRole.mr,
+        designation: r['designation'] as String? ?? '',
+        mobile: '',
+        email: '',
+        territoryId: '',
+        territoryName: '',
+        headquarters: r['headquarters'] as String? ?? '',
+      );
+    }).toList();
   }
 }
 
@@ -3053,9 +3651,23 @@ class ApiComplaintRepository implements ComplaintRepository {
       'p_client_id': complaint.clientId,
       'p_subject': complaint.subject,
       'p_body': complaint.description,
+      'p_attachment_paths': complaint.attachmentPaths,
     }) as String;
     return byId(id);
   }
+
+  @override
+  Future<String> uploadAttachment({
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'photo.jpg',
+  }) =>
+      uploadOrgEmployeeFile(
+        bucket: 'visit-photos',
+        bytes: bytes,
+        mimeType: mimeType,
+        fileName: fileName,
+      );
 
   Complaint _fromRow(Map<String, dynamic> r) {
     final client = r['clients'] as Map<String, dynamic>?;
@@ -3079,14 +3691,20 @@ class ApiComplaintRepository implements ComplaintRepository {
 
 /* ══════════════════════════════════════════════════════════ reports ══ */
 
-/// Derived from report views and transactional tables; expenses still seed.
+/// Live aggregations from report views and transactional tables.
 class ApiReportRepository implements ReportRepository {
   ApiReportRepository()
-      : _seed = MockReportRepository(),
-        _business = ApiBusinessRepository();
+      : _business = ApiBusinessRepository(),
+        _employees = ApiEmployeeRepository(),
+        _approvals = ApiApprovalRepository();
 
-  final MockReportRepository _seed;
   final ApiBusinessRepository _business;
+  final ApiEmployeeRepository _employees;
+  final ApiApprovalRepository _approvals;
+
+  static const _clientTypeOf = ApiClientRepository._typeOf;
+  static const _expenseCategoryOf = ApiApprovalRepository._expenseCategoryOf;
+  static const _expenseStatusOf = ApiExpenseRepository._statusOf;
 
   @override
   Future<DailyReport> daily(
@@ -3095,11 +3713,12 @@ class ApiReportRepository implements ReportRepository {
     required DateTime to,
     String? employeeId,
   }) async {
+    final fromIso = ApiDayPlanRepository._isoDate(from);
+    final toIso = ApiDayPlanRepository._isoDate(to);
+
     var q = db.from('report_daily_visits').select('*');
     if (employeeId != null) q = q.eq('employee_id', employeeId);
-    q = q
-        .gte('work_date', ApiDayPlanRepository._isoDate(from))
-        .lte('work_date', ApiDayPlanRepository._isoDate(to));
+    q = q.gte('work_date', fromIso).lte('work_date', toIso);
     final rows = await q;
 
     final completed = rows.fold<int>(
@@ -3108,35 +3727,39 @@ class ApiReportRepository implements ReportRepository {
         rows.fold<int>(0, (s, r) => s + ((r['missed'] as num?)?.toInt() ?? 0));
     final total =
         rows.fold<int>(0, (s, r) => s + ((r['total'] as num?)?.toInt() ?? 0));
+    final fieldDays = rows.map((r) => r['work_date']).toSet().length;
 
     final orders = await _business.orders(
       session,
       employeeId: employeeId,
     );
+    final dayFrom = DateTime(from.year, from.month, from.day);
+    final dayTo = DateTime(to.year, to.month, to.day);
     final inRange = orders.where((o) {
       final d = DateTime(o.date.year, o.date.month, o.date.day);
-      return !d.isBefore(from) && !d.isAfter(to);
+      return !d.isBefore(dayFrom) && !d.isAfter(dayTo);
     });
 
-    final seeded = await _seed.daily(
-      session,
-      from: from,
-      to: to,
-      employeeId: employeeId,
-    );
+    var eq = db.from('expenses').select('amount');
+    if (employeeId != null) eq = eq.eq('employee_id', employeeId);
+    eq = eq.gte('work_date', fromIso).lte('work_date', toIso);
+    final expenseRows = await eq;
+    final expenseTotal = expenseRows.fold<double>(
+        0, (s, r) => s + ((r['amount'] as num?)?.toDouble() ?? 0));
 
     return DailyReport(
-      workingDays: rows.map((r) => r['work_date']).toSet().length,
-      fieldDays: rows.length,
+      workingDays: await _workingDaysBetween(dayFrom, dayTo),
+      fieldDays: fieldDays,
       totalVisits: total,
       completed: completed,
       missed: missed,
       clientsCovered: completed,
       orders: inRange.length,
       orderValue: inRange.fold<double>(0, (s, o) => s + o.grandTotal),
-      expenseTotal: seeded.expenseTotal,
-      distanceKm: completed * 4.6,
-      trend: seeded.trend,
+      expenseTotal: expenseTotal,
+      // No distance column on activities yet — prefer 0 over a fabricated km.
+      distanceKm: 0,
+      trend: _trendFromDailyVisitRows(rows),
     );
   }
 
@@ -3148,15 +3771,76 @@ class ApiReportRepository implements ReportRepository {
     String? employeeId,
     String? areaId,
     ClientType? clientType,
-  }) =>
-      _seed.visits(
-        session,
-        from: from,
-        to: to,
-        employeeId: employeeId,
-        areaId: areaId,
-        clientType: clientType,
-      );
+  }) async {
+    var q = db.from('activities').select(
+          'id, employee_id, client_id, status, scheduled_start, actual_start, '
+          'actual_end, geo_verdict, area_name, clients(type, area_id)',
+        );
+    if (employeeId != null) q = q.eq('employee_id', employeeId);
+    q = q
+        .gte('scheduled_start', ApiActivityRepository._dayStartIso(from))
+        .lt('scheduled_start', ApiActivityRepository._dayEndIso(to));
+    final rows = await q;
+
+    final typeTerm = clientType == null
+        ? null
+        : ApiClientRepository._typeTerm[clientType];
+
+    final list = <_VisitAgg>[];
+    for (final r in rows) {
+      final client = r['clients'] as Map<String, dynamic>?;
+      final cType = client?['type'] as String?;
+      final cArea = client?['area_id'] as String?;
+      if (typeTerm != null && cType != typeTerm) continue;
+      if (areaId != null && cArea != areaId) continue;
+      list.add(_VisitAgg(
+        clientId: r['client_id'] as String,
+        status: ApiActivityRepository._statusOf[r['status'] as String] ??
+            ActivityStatus.planned,
+        clientType: _clientTypeOf[cType ?? ''] ?? ClientType.other,
+        scheduledStart:
+            DateTime.parse(r['scheduled_start'] as String).toLocal(),
+        actualStart:
+            DateTime.tryParse(r['actual_start'] as String? ?? '')?.toLocal(),
+        actualEnd:
+            DateTime.tryParse(r['actual_end'] as String? ?? '')?.toLocal(),
+        geoVerified: r['geo_verdict'] == 'verified',
+      ));
+    }
+
+    final completed =
+        list.where((a) => a.status == ActivityStatus.completed).toList();
+    final durations = completed
+        .where((a) => a.actualStart != null && a.actualEnd != null)
+        .map((a) => a.actualEnd!.difference(a.actualStart!))
+        .toList();
+    final avgMinutes = durations.isEmpty
+        ? 0
+        : durations.fold<int>(0, (s, d) => s + d.inMinutes) ~/ durations.length;
+
+    final byType = <ClientType, int>{};
+    for (final a in list) {
+      byType[a.clientType] = (byType[a.clientType] ?? 0) + 1;
+    }
+
+    return VisitReport(
+      total: list.length,
+      completed: completed.length,
+      missed: list.where((a) => a.status == ActivityStatus.missed).length,
+      rescheduled:
+          list.where((a) => a.status == ActivityStatus.rescheduled).length,
+      averageDuration: Duration(minutes: avgMinutes),
+      uniqueClients: list.map((a) => a.clientId).toSet().length,
+      byClientType: byType,
+      verifiedCount: completed.where((a) => a.geoVerified).length,
+      trend: _dailyCompletedTrend(
+        list
+            .where((a) => a.status == ActivityStatus.completed)
+            .map((a) => a.scheduledStart)
+            .toList(),
+      ),
+    );
+  }
 
   @override
   Future<SalesReport> salesReport(
@@ -3253,8 +3937,67 @@ class ApiReportRepository implements ReportRepository {
     Session session, {
     required DateTime month,
     String? employeeId,
-  }) =>
-      _seed.expenseReport(session, month: month, employeeId: employeeId);
+  }) async {
+    final trendStart = DateTime(month.year, month.month - 5, 1);
+    final monthEnd = DateTime(month.year, month.month + 1, 0);
+
+    var q = db.from('expenses').select('work_date, amount, categories, status');
+    if (employeeId != null) q = q.eq('employee_id', employeeId);
+    q = q
+        .gte('work_date', ApiDayPlanRepository._isoDate(trendStart))
+        .lte('work_date', ApiDayPlanRepository._isoDate(monthEnd));
+    final rows = await q;
+
+    final byCategory = <ExpenseCategory, double>{};
+    double total = 0;
+    double approved = 0;
+    double pending = 0;
+    double rejected = 0;
+
+    for (final r in rows) {
+      final date = DateTime.parse(r['work_date'] as String);
+      final amount = (r['amount'] as num?)?.toDouble() ?? 0;
+      final status = _expenseStatusOf[r['status'] as String] ??
+          ApprovalStatus.draft;
+
+      if (date.year != month.year || date.month != month.month) continue;
+
+      total += amount;
+      if (status == ApprovalStatus.approved) approved += amount;
+      if (status.awaitsDecision) pending += amount;
+      if (status == ApprovalStatus.rejected) rejected += amount;
+
+      final cats =
+          (r['categories'] as List<dynamic>? ?? const ['dailyAllowance'])
+              .cast<String>();
+      final cat = cats.isEmpty
+          ? ExpenseCategory.other
+          : (_expenseCategoryOf[cats.first] ?? ExpenseCategory.other);
+      byCategory[cat] = (byCategory[cat] ?? 0) + amount;
+    }
+
+    final trend = <ChartPoint>[];
+    for (var i = 5; i >= 0; i--) {
+      final m = DateTime(month.year, month.month - i, 1);
+      final sliceTotal = rows
+          .where((r) {
+            final d = DateTime.parse(r['work_date'] as String);
+            return d.year == m.year && d.month == m.month;
+          })
+          .fold<double>(
+              0, (s, r) => s + ((r['amount'] as num?)?.toDouble() ?? 0));
+      trend.add(ChartPoint(label: Fmt.monthShort(m), value: sliceTotal));
+    }
+
+    return ExpenseReport(
+      byCategory: byCategory,
+      total: total,
+      approved: approved,
+      pending: pending,
+      rejected: rejected,
+      trend: trend,
+    );
+  }
 
   @override
   Future<OverviewReport> overview(
@@ -3264,6 +4007,9 @@ class ApiReportRepository implements ReportRepository {
   }) async {
     final from = DateTime(month.year, month.month, 1);
     final to = DateTime(month.year, month.month + 1, 0);
+    final fromIso = ApiDayPlanRepository._isoDate(from);
+    final toIso = ApiDayPlanRepository._isoDate(to);
+
     final daily = await this.daily(
       session,
       from: from,
@@ -3275,15 +4021,68 @@ class ApiReportRepository implements ReportRepository {
       employeeId: employeeId,
       month: month,
     );
+
+    var leaveQ = db
+        .from('leave_requests')
+        .select('days, from_date, to_date')
+        .eq('status', 'approved')
+        .lte('from_date', toIso)
+        .gte('to_date', fromIso);
+    if (employeeId != null) leaveQ = leaveQ.eq('employee_id', employeeId);
+    final leaveRows = await leaveQ;
+    var leaveDays = 0;
+    for (final r in leaveRows) {
+      final lf = DateTime.parse(r['from_date'] as String);
+      final lt = DateTime.parse(r['to_date'] as String);
+      final start = lf.isBefore(from) ? from : lf;
+      final end = lt.isAfter(to) ? to : lt;
+      if (!end.isBefore(start)) {
+        leaveDays += end.difference(start).inDays + 1;
+      }
+    }
+
+    var clientQ = db
+        .from('clients')
+        .select('id')
+        .gte('created_at', '${fromIso}T00:00:00')
+        .lt(
+          'created_at',
+          ApiDayPlanRepository._isoDate(DateTime(month.year, month.month + 1, 1)),
+        );
+    if (employeeId != null) {
+      clientQ = clientQ.eq('owner_employee_id', employeeId);
+    }
+    final newClientRows = await clientQ;
+
+    var visitQ = db.from('activities').select(
+          'client_id, status, clients(type)',
+        );
+    if (employeeId != null) visitQ = visitQ.eq('employee_id', employeeId);
+    visitQ = visitQ
+        .eq('status', 'completed')
+        .gte('scheduled_start', ApiActivityRepository._dayStartIso(from))
+        .lt('scheduled_start', ApiActivityRepository._dayEndIso(to));
+    final visitRows = await visitQ;
+    final hospitalsVisited = visitRows
+        .where((r) {
+          final c = r['clients'] as Map<String, dynamic>?;
+          return c?['type'] == 'hospital';
+        })
+        .map((r) => r['client_id'] as String)
+        .toSet()
+        .length;
+
     return OverviewReport(
       workingDays: daily.workingDays,
       fieldDays: daily.fieldDays,
-      leaveDays: 0,
-      nonFieldDays: (daily.workingDays - daily.fieldDays).clamp(0, daily.workingDays),
+      leaveDays: leaveDays,
+      nonFieldDays:
+          (daily.workingDays - daily.fieldDays - leaveDays)
+              .clamp(0, daily.workingDays),
       visits: daily.totalVisits,
       completedVisits: daily.completed,
-      newClients: 0,
-      hospitalCoverage: 0,
+      newClients: newClientRows.length,
+      hospitalCoverage: hospitalsVisited,
       sales: targets.fold<double>(0, (s, t) => s + t.achievedAmount),
       target: targets.fold<double>(0, (s, t) => s + t.targetAmount),
       expenses: daily.expenseTotal,
@@ -3292,27 +4091,209 @@ class ApiReportRepository implements ReportRepository {
 
   @override
   Future<ManagerDashboard> managerDashboard(Session session) async {
-    final seeded = await _seed.managerDashboard(session);
-    final month = DateTime.now();
-    final orders = await _business.orders(session);
-    final monthOrders = orders.where((o) =>
-        o.date.year == month.year && o.date.month == month.month);
-    final targets = await _business.targets(session, month: month);
+    final today = DateTime.now();
+    final day = DateTime(today.year, today.month, today.day);
+    List<Employee> team = const [];
+    try {
+      team = await _employees.teamOf(session);
+    } catch (_) {}
+    final teamIds = team.map((e) => e.id).toList();
+    final teamIdSet = teamIds.toSet();
+
+    // Light activity read — full `list()` embeds RCPA/products and one bad
+    // nested row used to wipe the whole Manage half of home.
+    final todayRows =
+        <({String employeeId, ActivityStatus status, bool verified})>[];
+    if (teamIds.isNotEmpty) {
+      try {
+        final rows = await db
+            .from('activities')
+            .select('employee_id, status, geo_verdict')
+            .inFilter('employee_id', teamIds)
+            .gte(
+              'scheduled_start',
+              ApiActivityRepository._dayStartIso(day),
+            )
+            .lt(
+              'scheduled_start',
+              ApiActivityRepository._dayEndIso(day),
+            );
+        for (final r in rows) {
+          final emp = r['employee_id'] as String?;
+          if (emp == null || !teamIdSet.contains(emp)) continue;
+          final status =
+              ApiActivityRepository._statusOf[r['status'] as String?] ??
+                  ActivityStatus.planned;
+          todayRows.add((
+            employeeId: emp,
+            status: status,
+            verified: r['geo_verdict'] == 'verified',
+          ));
+        }
+      } catch (_) {}
+    }
+
+    final completed =
+        todayRows.where((a) => a.status == ActivityStatus.completed).toList();
+
+    var behind = 0;
+    final hour = today.hour + today.minute / 60;
+    final elapsed = ((hour - 9) / 9).clamp(0.0, 1.0);
+    for (final member in team) {
+      final theirs =
+          todayRows.where((a) => a.employeeId == member.id).toList();
+      if (theirs.isEmpty) continue;
+      final done =
+          theirs.where((a) => a.status == ActivityStatus.completed).length;
+      if (done < (theirs.length * elapsed) - 1) behind++;
+    }
+
+    var pending = const <ApprovalItem>[];
+    try {
+      pending = await _approvals.pending(session);
+    } catch (_) {}
+    final pendingByKind = <ApprovalKind, int>{};
+    for (final item in pending) {
+      pendingByKind[item.kind] = (pendingByKind[item.kind] ?? 0) + 1;
+    }
+
+    final monthStart = ApiDayPlanRepository._isoDate(
+      DateTime(today.year, today.month, 1),
+    );
+    final monthEnd = ApiDayPlanRepository._isoDate(
+      DateTime(today.year, today.month + 1, 0),
+    );
+    double expenseTotal = 0;
+    if (teamIds.isNotEmpty) {
+      try {
+        final expenseRows = await db
+            .from('expenses')
+            .select('amount, employee_id')
+            .inFilter('employee_id', teamIds)
+            .gte('work_date', monthStart)
+            .lte('work_date', monthEnd);
+        expenseTotal = expenseRows.fold<double>(
+            0, (s, r) => s + ((r['amount'] as num?)?.toDouble() ?? 0));
+      } catch (_) {}
+    }
+
+    var orderCount = 0;
+    if (teamIds.isNotEmpty) {
+      try {
+        final orderRows = await db
+            .from('orders')
+            .select('id, employee_id, created_at')
+            .inFilter('employee_id', teamIds)
+            .gte('created_at', '${monthStart}T00:00:00')
+            .lt(
+              'created_at',
+              ApiDayPlanRepository._isoDate(
+                DateTime(today.year, today.month + 1, 1),
+              ),
+            );
+        orderCount = orderRows.length;
+      } catch (_) {}
+    }
+
+    double sales = 0;
+    double target = 0;
+    try {
+      final targets = await _business.targets(session, month: today);
+      for (final t in targets.where((t) => teamIdSet.contains(t.employeeId))) {
+        sales += t.achievedAmount;
+        target += t.targetAmount;
+      }
+    } catch (_) {}
+
     return ManagerDashboard(
-      teamSize: seeded.teamSize,
-      presentToday: seeded.presentToday,
-      visitsPlanned: seeded.visitsPlanned,
-      visitsCompleted: seeded.visitsCompleted,
-      pendingApprovals: seeded.pendingApprovals,
-      pendingByKind: seeded.pendingByKind,
-      sales: targets.fold<double>(0, (s, t) => s + t.achievedAmount),
-      target: targets.fold<double>(0, (s, t) => s + t.targetAmount),
-      orderCount: monthOrders.length,
-      expenseTotal: seeded.expenseTotal,
-      behindPlanCount: seeded.behindPlanCount,
-      unverifiedVisits: seeded.unverifiedVisits,
+      teamSize: team.length,
+      presentToday: completed.map((a) => a.employeeId).toSet().length,
+      visitsPlanned: todayRows.length,
+      visitsCompleted: completed.length,
+      pendingApprovals: pending.length,
+      pendingByKind: pendingByKind,
+      sales: sales,
+      target: target,
+      orderCount: orderCount,
+      expenseTotal: expenseTotal,
+      behindPlanCount: behind,
+      unverifiedVisits: completed.where((a) => !a.verified).length,
     );
   }
+
+  Future<int> _workingDaysBetween(DateTime from, DateTime to) async {
+    final holidayRows = await db
+        .from('holidays')
+        .select('holiday_date')
+        .gte('holiday_date', ApiDayPlanRepository._isoDate(from))
+        .lte('holiday_date', ApiDayPlanRepository._isoDate(to));
+    final holidays =
+        holidayRows.map((r) => r['holiday_date'] as String).toSet();
+
+    var count = 0;
+    var cursor = DateTime(from.year, from.month, from.day);
+    final end = DateTime(to.year, to.month, to.day);
+    while (!cursor.isAfter(end)) {
+      final key = ApiDayPlanRepository._isoDate(cursor);
+      if (cursor.weekday != DateTime.sunday && !holidays.contains(key)) {
+        count++;
+      }
+      cursor = cursor.add(const Duration(days: 1));
+    }
+    return count;
+  }
+
+  List<ChartPoint> _trendFromDailyVisitRows(List<dynamic> rows) {
+    final byDay = <String, int>{};
+    for (final r in rows) {
+      final d = r['work_date'] as String? ?? '';
+      if (d.isEmpty) continue;
+      byDay[d] = (byDay[d] ?? 0) + ((r['completed'] as num?)?.toInt() ?? 0);
+    }
+    final days = byDay.keys.toList()..sort();
+    final tail = days.length > 14 ? days.sublist(days.length - 14) : days;
+    return [
+      for (final d in tail)
+        ChartPoint(
+          label: Fmt.dateShort(DateTime.parse(d)),
+          value: (byDay[d] ?? 0).toDouble(),
+        ),
+    ];
+  }
+
+  List<ChartPoint> _dailyCompletedTrend(List<DateTime> completedStarts) {
+    final byDay = <DateTime, int>{};
+    for (final s in completedStarts) {
+      final d = DateTime(s.year, s.month, s.day);
+      byDay[d] = (byDay[d] ?? 0) + 1;
+    }
+    final days = byDay.keys.toList()..sort();
+    final tail = days.length > 14 ? days.sublist(days.length - 14) : days;
+    return [
+      for (final d in tail)
+        ChartPoint(label: Fmt.dateShort(d), value: (byDay[d] ?? 0).toDouble()),
+    ];
+  }
+}
+
+class _VisitAgg {
+  const _VisitAgg({
+    required this.clientId,
+    required this.status,
+    required this.clientType,
+    required this.scheduledStart,
+    required this.actualStart,
+    required this.actualEnd,
+    required this.geoVerified,
+  });
+
+  final String clientId;
+  final ActivityStatus status;
+  final ClientType clientType;
+  final DateTime scheduledStart;
+  final DateTime? actualStart;
+  final DateTime? actualEnd;
+  final bool geoVerified;
 }
 
 /* ═══════════════════════════════════════════════════════════ exports ══ */

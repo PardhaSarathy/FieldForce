@@ -1252,7 +1252,8 @@ class MockDataset {
       body: 'Please submit today’s report before 7 PM.',
       createdAt: today.subtract(const Duration(days: 1, hours: 4)),
       isRead: true,
-      deepLink: '/chat',
+      deepLink: '/chat/ch-1',
+      relatedId: 'ch-1',
     ),
     AppNotification(
       id: 'n-7',
@@ -1286,7 +1287,8 @@ class MockDataset {
       body: 'Tour plan updated for next week.',
       createdAt: today.subtract(const Duration(days: 1, hours: 3)),
       isRead: true,
-      deepLink: '/chat',
+      deepLink: '/chat/ch-2',
+      relatedId: 'ch-2',
     ),
     AppNotification(
       id: 'n-11',
@@ -1327,6 +1329,7 @@ class MockDataset {
       lastMessageAt: today.subtract(const Duration(days: 1, hours: 3)),
       isGroup: true,
       isPinned: true,
+      kind: ChatThreadKind.group,
       participantIds: const ['emp-1', 'emp-2', 'emp-3', 'emp-10'],
     ),
     ChatThread(
@@ -1336,6 +1339,7 @@ class MockDataset {
       lastMessage: 'New brochure shared for Cardiovex.',
       lastMessageAt: today.subtract(const Duration(days: 2)),
       isGroup: true,
+      kind: ChatThreadKind.community,
       participantIds: const ['emp-10', 'emp-20'],
     ),
     ChatThread(
@@ -1382,6 +1386,20 @@ class MockDataset {
         senderName: 'Ramesh Iyer',
         text: 'Please submit today’s report before 7 PM.',
         sentAt: today.add(const Duration(hours: 10, minutes: 30)),
+      ),
+      ChatMessage(
+        id: 'm-5',
+        threadId: 'ch-1',
+        senderId: 'emp-1',
+        senderName: 'Rahul Kumar',
+        text: 'Location',
+        sentAt: today.add(const Duration(hours: 10, minutes: 32)),
+        isMine: true,
+        kind: ChatMessageKind.location,
+        status: ChatDeliveryStatus.delivered,
+        latitude: 19.1197,
+        longitude: 72.8468,
+        accuracyMeters: 12,
       ),
     ],
     // Every thread carries history. A conversation that opens empty reads as a

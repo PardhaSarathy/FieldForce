@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/mock_report_repository.dart';
@@ -5,6 +6,8 @@ import '../../data/repositories/mock_repositories.dart';
 import '../../data/repositories/api_repositories.dart';
 import '../../data/remote/backend.dart';
 import '../../data/repositories/repositories.dart';
+import '../../data/sync/outbox.dart';
+import '../../data/sync/outbox_repositories.dart';
 import '../../shared/enums/app_enums.dart';
 import '../../shared/models/activity.dart';
 import '../../shared/models/business.dart';
@@ -28,14 +31,54 @@ final employeeRepositoryProvider = Provider<EmployeeRepository>(
     (ref) => isLive ? ApiEmployeeRepository() : MockEmployeeRepository());
 final clientRepositoryProvider = Provider<ClientRepository>(
     (ref) => isLive ? ApiClientRepository() : MockClientRepository());
-final activityRepositoryProvider = Provider<ActivityRepository>(
-    (ref) => isLive ? ApiActivityRepository() : MockActivityRepository());
-final dayPlanRepositoryProvider = Provider<DayPlanRepository>(
-    (ref) => isLive ? ApiDayPlanRepository() : MockDayPlanRepository());
+
+final outboxStoreProvider = Provider<OutboxStore>((ref) => OutboxStore());
+
+final outboxFlusherProvider = Provider<OutboxFlusher>(
+  (ref) => OutboxFlusher(ref.watch(outboxStoreProvider)),
+);
+
+final outboxRevisionProvider = StateProvider<int>((ref) => 0);
+
+void _bumpOutbox(Ref ref) {
+  ref.read(outboxRevisionProvider.notifier).state++;
+}
+
+final outboxItemsProvider =
+    FutureProvider.autoDispose<List<OutboxItem>>((ref) async {
+  ref.watch(outboxRevisionProvider);
+  return ref.read(outboxStoreProvider).list();
+});
+
+final activityRepositoryProvider = Provider<ActivityRepository>((ref) {
+  if (!isLive) return MockActivityRepository();
+  return OutboxActivityRepository(
+    inner: ApiActivityRepository(),
+    store: ref.watch(outboxStoreProvider),
+    isOnline: () => ref.read(isOnlineProvider),
+    onEnqueued: () => _bumpOutbox(ref),
+  );
+});
+final dayPlanRepositoryProvider = Provider<DayPlanRepository>((ref) {
+  if (!isLive) return MockDayPlanRepository();
+  return OutboxDayPlanRepository(
+    inner: ApiDayPlanRepository(),
+    store: ref.watch(outboxStoreProvider),
+    isOnline: () => ref.read(isOnlineProvider),
+    onEnqueued: () => _bumpOutbox(ref),
+  );
+});
 final travelRepositoryProvider = Provider<TravelRepository>(
     (ref) => isLive ? ApiTravelRepository() : MockTravelRepository());
-final expenseRepositoryProvider = Provider<ExpenseRepository>(
-    (ref) => isLive ? ApiExpenseRepository() : MockExpenseRepository());
+final expenseRepositoryProvider = Provider<ExpenseRepository>((ref) {
+  if (!isLive) return MockExpenseRepository();
+  return OutboxExpenseRepository(
+    inner: ApiExpenseRepository(),
+    store: ref.watch(outboxStoreProvider),
+    isOnline: () => ref.read(isOnlineProvider),
+    onEnqueued: () => _bumpOutbox(ref),
+  );
+});
 final hrRepositoryProvider = Provider<HrRepository>(
     (ref) => isLive ? ApiHrRepository() : MockHrRepository());
 final exportRepositoryProvider =
@@ -195,14 +238,78 @@ final currentEmployeeProvider =
 
 // ============================================================== app state ==
 
-/// Simulated connectivity, so offline treatments can be exercised in the demo
-/// build. The real implementation listens to platform connectivity.
+/// Real connectivity via [connectivity_plus], with an optional manual override
+/// so Settings → Simulate offline still works for demos and tests.
 class ConnectivityController extends Notifier<bool> {
-  @override
-  bool build() => true;
+  bool? _manualOverride;
+  var _started = false;
 
-  void toggle() => state = !state;
-  void setOnline(bool value) => state = value;
+  @override
+  bool build() {
+    if (!_started) {
+      _started = true;
+      _listen();
+    }
+    return _manualOverride ?? true;
+  }
+
+  Future<void> _listen() async {
+    final connectivity = Connectivity();
+    try {
+      final initial = await connectivity.checkConnectivity();
+      _applyPlatform(initial);
+    } catch (_) {
+      // Platform plugins can fail in tests; keep last known / default.
+    }
+    final sub = connectivity.onConnectivityChanged.listen(_applyPlatform);
+    ref.onDispose(sub.cancel);
+  }
+
+  void _applyPlatform(List<ConnectivityResult> results) {
+    if (_manualOverride != null) return;
+    final online = results.any((r) =>
+        r == ConnectivityResult.mobile ||
+        r == ConnectivityResult.wifi ||
+        r == ConnectivityResult.ethernet ||
+        r == ConnectivityResult.vpn);
+    state = online;
+    if (online) {
+      // Fire-and-forget flush when the radio comes back.
+      Future.microtask(() async {
+        final r = await ref.read(outboxFlusherProvider).flush();
+        // A refusal changes the queue as much as a success does — it moves an
+        // item out of "waiting" and into "needs you" — so both redraw.
+        if (r.handled > 0) _bumpOutbox(ref);
+      });
+    }
+  }
+
+  void toggle() => setOnline(!state);
+
+  /// Manual override used by "Simulate offline". Pass the desired online flag.
+  void setOnline(bool value) {
+    _manualOverride = value;
+    state = value;
+    if (value) {
+      Future.microtask(() async {
+        final r = await ref.read(outboxFlusherProvider).flush();
+        // A refusal changes the queue as much as a success does — it moves an
+        // item out of "waiting" and into "needs you" — so both redraw.
+        if (r.handled > 0) _bumpOutbox(ref);
+      });
+    }
+  }
+
+  /// Drop the override and re-read the platform (used when leaving demo mode).
+  Future<void> clearOverride() async {
+    _manualOverride = null;
+    try {
+      final results = await Connectivity().checkConnectivity();
+      _applyPlatform(results);
+    } catch (_) {
+      state = true;
+    }
+  }
 }
 
 final isOnlineProvider =
@@ -210,8 +317,8 @@ final isOnlineProvider =
 
 /// Count of records saved locally and awaiting sync (§61).
 final pendingSyncCountProvider = Provider<int>((ref) {
-  // Wired to the outbox once the sync layer lands; zero while online-only.
-  return ref.watch(isOnlineProvider) ? 0 : 2;
+  final async = ref.watch(outboxItemsProvider);
+  return async.maybeWhen(data: (items) => items.length, orElse: () => 0);
 });
 
 /// Geo-fence policy. Admin-configurable (§130); defaults to `warn` so a rep is
@@ -238,6 +345,10 @@ final todaySummaryProvider = FutureProvider.autoDispose<DaySummary>((ref) async 
 final unreadNotificationsProvider =
     FutureProvider.autoDispose<int>((ref) async {
   return ref.watch(notificationRepositoryProvider).unreadCount();
+});
+
+final unreadChatsProvider = FutureProvider.autoDispose<int>((ref) async {
+  return ref.watch(chatRepositoryProvider).unreadCount();
 });
 
 final notificationsProvider =

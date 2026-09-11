@@ -11,6 +11,7 @@ import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/errors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/enums/app_enums.dart';
 import '../../../shared/models/activity.dart';
@@ -174,6 +175,26 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
     _reason.dispose();
     _pageController.dispose();
     super.dispose();
+  }
+
+  /// Just the client list — the geo capture and the form state stay put.
+  ///
+  /// Deliberately not `_load()`: that one re-captures position and would reset
+  /// the anchor client, so using it here would throw away what the rep has
+  /// already filled in.
+  Future<void> _reloadClients() async {
+    final session = ref.read(sessionProvider);
+    final clients = await ref.read(clientRepositoryProvider).list(session);
+    if (!mounted) return;
+    setState(() {
+      _clients = clients;
+      // Keep the chosen client selected, but take the fresh copy of it — an
+      // edit to the client should show here too.
+      final chosen = _client;
+      if (chosen != null) {
+        _client = clients.where((c) => c.id == chosen.id).firstOrNull ?? chosen;
+      }
+    });
   }
 
   Future<void> _load() async {
@@ -365,31 +386,60 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
       createdAt: existing?.createdAt ?? now,
     );
 
-    if (widget.isEditing) {
-      await repository.update(session, record);
-    } else {
-      await repository.create(record);
-    }
+    try {
+      if (widget.isEditing) {
+        await repository.update(session, record);
+      } else {
+        await repository.create(record);
+      }
 
-    if (!mounted) return;
-    AppHaptics.success();
-    ref.bumpRevision();
-    setState(() => _submitting = false);
-    context.pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          widget.isEditing
-              ? 'Activity updated.'
-              : 'Activity recorded for ${client.name}.',
+      if (!mounted) return;
+      AppHaptics.success();
+      ref.bumpRevision();
+      setState(() => _submitting = false);
+      context.pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.isEditing
+                ? 'Activity updated.'
+                : 'Activity recorded for ${client.name}.',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      AppHaptics.failure();
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: widget.isEditing
+                  ? 'Could not update the activity. Try again.'
+                  : 'Could not record the activity. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final client = _client;
+
+    // Re-read the clients when one is added anywhere else in the app.
+    //
+    // `_load()` runs in `initState` only, so a rep who added a doctor and came
+    // back to this screen was offered the list as it stood before they added
+    // them — the client existed, the server had it, the Clients screen showed
+    // it, and this picker did not. The Clients screens already watch this
+    // provider; this one was the odd one out.
+    ref.listen(dataRevisionProvider, (_, _) {
+      if (mounted) _reloadClients();
+    });
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -456,6 +506,10 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
             items: _clients,
             value: _client,
             itemLabel: (c) => c.name,
+            // Always searchable. A rep starts with a handful of doctors and
+            // ends with a few hundred, and the default only grows the search
+            // box at eight — so the picker worked until the day it mattered.
+            searchable: true,
             onChanged: (v) => setState(() => _client = v),
             validator: (_) => _client == null ? 'Select a client' : null,
           ),
@@ -534,13 +588,29 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
       createdAt: now,
     );
 
-    await ref.read(activityRepositoryProvider).create(activity);
+    try {
+      await ref.read(activityRepositoryProvider).create(activity);
 
-    if (!mounted) return;
-    AppHaptics.success();
-    ref.bumpRevision();
-    setState(() => _submitting = false);
-    context.pushReplacement(Routes.activityDetail(activity.id));
+      if (!mounted) return;
+      AppHaptics.success();
+      ref.bumpRevision();
+      setState(() => _submitting = false);
+      context.pushReplacement(Routes.activityDetail(activity.id));
+    } catch (e) {
+      if (!mounted) return;
+      AppHaptics.failure();
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readablePostgrestError(
+              e,
+              fallback: 'Could not create the activity. Try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   // ------------------------------------------------------------ the client
@@ -566,6 +636,7 @@ class _AddActivityScreenState extends ConsumerState<AddActivityScreen> {
           items: _clients,
           value: _client,
           itemLabel: (c) => c.name,
+          searchable: true,
           onChanged: (v) {
             setState(() => _client = v);
             // The fix is anchored to the client, so it is read once there is

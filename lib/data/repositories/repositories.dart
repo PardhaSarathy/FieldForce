@@ -53,6 +53,19 @@ abstract interface class EmployeeRepository {
   Future<List<Territory>> territories();
   Future<List<Area>> areas({String? territoryId});
   Future<List<Cluster>> clusters({String? areaId});
+
+  /// Self-service contact details (mobile, email, blood group).
+  Future<void> updateMyProfile({
+    required String mobile,
+    required String email,
+    String? bloodGroup,
+  });
+
+  /// Persist per-employee local/outstation rates by travel mode.
+  Future<void> saveTravelRates({
+    required String employeeId,
+    required List<({String mode, double localRate, double outstationRate})> rates,
+  });
 }
 
 abstract interface class ClientRepository {
@@ -109,6 +122,13 @@ abstract interface class ActivityRepository {
 
   /// Completes a visit with its feedback and geo evidence.
   Future<Activity> completeVisit(Activity activity);
+
+  /// Upload a visit photo to the `visit-photos` bucket; returns the storage path.
+  Future<String> uploadVisitPhoto({
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'photo.jpg',
+  });
 }
 
 /// The day's intimation (§16). Separate from activities: a plan says where a
@@ -195,6 +215,13 @@ abstract interface class ExpenseRepository {
   /// Submitting still does **not** close the month: a day remembered later can
   /// be claimed and sent against the same month.
   Future<int> submitMonth(Session session, DateTime month);
+
+  /// Upload a receipt image/PDF to the `receipts` bucket; returns the storage path.
+  Future<String> uploadReceipt({
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'receipt.jpg',
+  });
 }
 
 abstract interface class HrRepository {
@@ -212,6 +239,9 @@ abstract interface class HrRepository {
   /// it, so any id returned the same list.
   Future<List<Payslip>> payslips(Session session, String employeeId);
   Future<List<AppDocument>> documents(String employeeId);
+
+  /// Signed URL for a private `documents` (or payslip) storage path, or null.
+  Future<String?> signedDocumentUrl(String storagePath, {String bucket = 'documents'});
 }
 
 abstract interface class BusinessRepository {
@@ -283,6 +313,50 @@ abstract interface class ChatRepository {
   Future<List<ChatThread>> threads({String? query});
   Future<List<ChatMessage>> messages(String threadId);
   Future<ChatMessage> send(String threadId, String text);
+  Future<String> findOrCreateDirect(String employeeId);
+  Future<void> markRead(String threadId);
+  Future<void> markDelivered(String threadId);
+  Future<int> unreadCount();
+
+  /// Teammates / manager the caller may start a direct chat with.
+  Future<List<Employee>> directory({String? query});
+
+  Future<ChatMessage> sendImage(
+    String threadId, {
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'photo.jpg',
+  });
+  Future<ChatMessage> sendLocation(
+    String threadId, {
+    required double latitude,
+    required double longitude,
+    double? accuracy,
+    String? label,
+  });
+  Future<ChatMessage> startLiveLocation(
+    String threadId, {
+    required double latitude,
+    required double longitude,
+    double? accuracy,
+    int minutes = 15,
+  });
+  Future<void> updateLiveLocation(
+    String liveLocationId, {
+    required double latitude,
+    required double longitude,
+    double? accuracy,
+  });
+  Future<void> stopLiveLocation(String liveLocationId);
+  Future<String> createGroup({
+    required String subject,
+    required List<String> participantIds,
+    ChatThreadKind kind = ChatThreadKind.group,
+  });
+  Future<List<Employee>> members(String threadId);
+  Future<void> addParticipants(String threadId, List<String> employeeIds);
+  Future<void> leave(String threadId);
+  Stream<void> watchThread(String threadId);
 }
 
 abstract interface class ResourceRepository {
@@ -299,6 +373,13 @@ abstract interface class ComplaintRepository {
   Future<List<Complaint>> list(Session session, {ComplaintStatus? status});
   Future<Complaint> byId(String id);
   Future<Complaint> create(Complaint complaint);
+
+  /// Upload a complaint photo to `visit-photos` (same mime rules); returns path.
+  Future<String> uploadAttachment({
+    required List<int> bytes,
+    required String mimeType,
+    String fileName = 'photo.jpg',
+  });
 }
 
 /// Aggregated reporting (§33–§39).
