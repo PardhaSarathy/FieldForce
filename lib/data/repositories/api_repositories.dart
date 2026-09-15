@@ -12,7 +12,7 @@ library;
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import 'package:uuid/uuid.dart';
 
@@ -3518,27 +3518,27 @@ class ApiChatRepository implements ChatRepository {
 /* ═══════════════════════════════════════════════════════ resources ══ */
 
 class ApiResourceRepository implements ResourceRepository {
+  static const _columns = 'id, title, category, description, storage_path, '
+      'file_name, mime_type, size_bytes, version, published_at';
+
   @override
   Future<List<Resource>> list({String? query, String? category}) async {
-    var q = db.from('resources').select(
-        'id, title, category, storage_path, published_at');
+    // `status = active` is also what the policy gives a rep. Asked for here
+    // too, so an office account signed in on a phone sees what a rep sees
+    // rather than every superseded price list.
+    var q = db.from('resources').select(_columns).eq('status', 'active');
     if (category != null && category != 'All') {
       q = q.eq('category', category);
     }
     final rows = await q.order('published_at', ascending: false);
     final needle = query?.trim().toLowerCase() ?? '';
     return rows
+        .map(_fromRow)
         .where((r) {
           if (needle.isEmpty) return true;
-          return (r['title'] as String).toLowerCase().contains(needle);
+          return r.title.toLowerCase().contains(needle) ||
+              (r.description?.toLowerCase().contains(needle) ?? false);
         })
-        .map((r) => Resource(
-              id: r['id'] as String,
-              title: r['title'] as String,
-              category: r['category'] as String? ?? 'General',
-              updatedAt: DateTime.parse(r['published_at'] as String),
-              fileType: _fileType(r['storage_path'] as String?),
-            ))
         .toList();
   }
 
@@ -3546,25 +3546,62 @@ class ApiResourceRepository implements ResourceRepository {
   Future<Resource> byId(String id) async {
     final row = await db
         .from('resources')
-        .select('id, title, category, storage_path, published_at')
+        .select(_columns)
         .eq('id', id)
         .maybeSingle();
     if (row == null) {
       throw StateError('No resource you may see has that id.');
     }
-    return Resource(
-      id: row['id'] as String,
-      title: row['title'] as String,
-      category: row['category'] as String? ?? 'General',
-      updatedAt: DateTime.parse(row['published_at'] as String),
-      fileType: _fileType(row['storage_path'] as String?),
-    );
+    return _fromRow(row);
   }
 
-  static String _fileType(String? path) {
-    if (path == null) return 'PDF';
-    final ext = path.split('.').last.toLowerCase();
-    return ext.isEmpty ? 'PDF' : ext.toUpperCase();
+  @override
+  Future<String?> fileUrl(
+    Resource resource, {
+    Duration validFor = const Duration(hours: 1),
+  }) async {
+    if (!resource.hasFile) return null;
+    return db.storage
+        .from('resources')
+        .createSignedUrl(resource.storagePath!, validFor.inSeconds);
+  }
+
+  static Resource _fromRow(Map<String, dynamic> r) => Resource(
+        id: r['id'] as String,
+        title: r['title'] as String,
+        category: r['category'] as String? ?? 'Document',
+        description: r['description'] as String?,
+        updatedAt: DateTime.parse(r['published_at'] as String),
+        fileType: fileTypeFor(
+          r['mime_type'] as String?,
+          r['storage_path'] as String?,
+        ),
+        sizeLabel: sizeLabelFor((r['size_bytes'] as num?)?.toInt()),
+        storagePath: r['storage_path'] as String?,
+        version: (r['version'] as num?)?.toInt() ?? 1,
+      );
+
+  /// PDF or IMAGE — the two kinds head office can publish.
+  @visibleForTesting
+  static String fileTypeFor(String? mime, String? path) {
+    if (mime == 'application/pdf') return 'PDF';
+    if (mime != null && mime.startsWith('image/')) return 'IMAGE';
+    final ext = (path ?? '').split('.').last.toLowerCase();
+    return switch (ext) {
+      'jpg' || 'jpeg' || 'png' || 'webp' => 'IMAGE',
+      _ => 'PDF',
+    };
+  }
+
+  /// "840 KB", "2.4 MB". Null when the size was never recorded, so the card
+  /// says nothing rather than "0 B".
+  @visibleForTesting
+  static String? sizeLabelFor(int? bytes) {
+    if (bytes == null || bytes <= 0) return null;
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} KB';
+    final mb = bytes / (1024 * 1024);
+    return '${mb >= 10 ? mb.round() : mb.toStringAsFixed(1)} MB';
   }
 }
 

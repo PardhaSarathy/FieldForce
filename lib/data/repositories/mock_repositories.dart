@@ -1968,6 +1968,11 @@ class MockResourceRepository implements ResourceRepository {
   @override
   Future<Resource> byId(String id) async =>
       _store.seed.resources.firstWhere((r) => r.id == id);
+
+  /// Fixture resources have no file behind them.
+  @override
+  Future<String?> fileUrl(Resource resource, {Duration validFor = const Duration(hours: 1)}) async =>
+      null;
 }
 
 // =============================================== surveys and complaints ==

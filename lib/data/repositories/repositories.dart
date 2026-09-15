@@ -362,6 +362,10 @@ abstract interface class ChatRepository {
 abstract interface class ResourceRepository {
   Future<List<Resource>> list({String? query, String? category});
   Future<Resource> byId(String id);
+
+  /// A short-lived link to the file itself, or null when there is no file to
+  /// open (a fixture resource, or no backend).
+  Future<String?> fileUrl(Resource resource, {Duration validFor});
 }
 
 abstract interface class SurveyRepository {

@@ -690,6 +690,8 @@ class Resource {
     this.sizeLabel,
     this.productId,
     this.thumbnailUrl,
+    this.storagePath,
+    this.version = 1,
   });
 
   final String id;
@@ -701,4 +703,14 @@ class Resource {
   final String? sizeLabel;
   final String? productId;
   final String? thumbnailUrl;
+
+  /// Where the file lives in the private `resources` bucket. Null for fixture
+  /// resources, which have no file behind them.
+  final String? storagePath;
+
+  /// Which version of this resource the rep is looking at. Head office can
+  /// replace a price list; the phone only ever sees the current one.
+  final int version;
+
+  bool get hasFile => storagePath != null && storagePath!.isNotEmpty;
 }

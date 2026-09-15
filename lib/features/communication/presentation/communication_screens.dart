@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/providers/app_providers.dart';
@@ -79,32 +81,49 @@ class ResourceListScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           Expanded(
-            child: async.when(
-              loading: () => const SkeletonList(),
-              error: (_, _) => const ErrorState(),
-              data: (resources) => resources.isEmpty
-                  ? const EmptyState(
-                      icon: Icons.library_books_outlined,
-                      title: 'No resources',
-                      message:
-                          'Marketing material shared with the field will '
-                          'appear here.',
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.screenH,
-                        0,
-                        AppSpacing.screenH,
-                        AppSpacing.xxxl,
+            child: RefreshIndicator(
+              // Head office uploads, replaces and deletes from the website.
+              // A rep already on this screen pulls to see it, rather than
+              // having to leave and come back — which nothing told them to do.
+              onRefresh: () async {
+                ref.invalidate(_resourcesProvider);
+                try {
+                  await ref.read(_resourcesProvider.future);
+                } catch (_) {
+                  // The error state is on screen; the spinner just needs to stop.
+                }
+              },
+              child: async.when(
+                loading: () => const SkeletonList(),
+                error: (_, _) => _pullable(const ErrorState()),
+                data: (resources) => resources.isEmpty
+                    ? _pullable(
+                        const EmptyState(
+                          icon: Icons.library_books_outlined,
+                          title: 'No resources',
+                          message:
+                              'Visual aids, price lists and training that head '
+                              'office publishes appear here. Pull down to check '
+                              'for new ones.',
+                        ),
+                      )
+                    : ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.screenH,
+                          0,
+                          AppSpacing.screenH,
+                          AppSpacing.xxxl,
+                        ),
+                        itemCount: resources.length,
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(height: AppSpacing.cardGap),
+                        itemBuilder: (context, i) => Arrive.staggered(
+                          index: i,
+                          child: _ResourceCard(resource: resources[i]),
+                        ),
                       ),
-                      itemCount: resources.length,
-                      separatorBuilder: (_, _) =>
-                          const SizedBox(height: AppSpacing.cardGap),
-                      itemBuilder: (context, i) => Arrive.staggered(
-                        index: i,
-                        child: _ResourceCard(resource: resources[i]),
-                      ),
-                    ),
+              ),
             ),
           ),
         ],
@@ -125,14 +144,7 @@ class _ResourceCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconTile(
-            icon: switch (resource.fileType) {
-              'VIDEO' => Icons.play_circle_outline,
-              'PDF' => Icons.picture_as_pdf_outlined,
-              _ => Icons.description_outlined,
-            },
-            size: 44,
-          ),
+          IconTile(icon: _resourceIcon(resource.fileType), size: 44),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
@@ -162,8 +174,11 @@ class _ResourceCard extends StatelessWidget {
                       dense: true,
                     ),
                     Text(
-                      '${resource.sizeLabel ?? ''} · '
-                      'Updated ${Fmt.dateShort(resource.updatedAt)}',
+                      [
+                        resource.fileType,
+                        ?resource.sizeLabel,
+                        'Updated ${Fmt.dateShort(resource.updatedAt)}',
+                      ].join(' · '),
                       style: AppTypography.caption,
                     ),
                   ],
@@ -194,16 +209,16 @@ class ResourceDetailScreen extends ConsumerWidget {
           SecondaryButton(
             label: 'Share',
             icon: Icons.ios_share_outlined,
-            onPressed: () => showComingWithBackend(context, 'Sharing'),
+            onPressed: async.valueOrNull == null
+                ? null
+                : () => _shareResource(context, ref, async.value!),
           ),
           PrimaryButton(
-            label: 'Download',
-            icon: Icons.download_outlined,
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Downloads arrive with the backend.'),
-              ),
-            ),
+            label: 'Open',
+            icon: Icons.open_in_new_rounded,
+            onPressed: async.valueOrNull == null
+                ? null
+                : () => _openResource(context, ref, async.value!),
           ),
         ],
       ),
@@ -224,11 +239,7 @@ class ResourceDetailScreen extends ConsumerWidget {
                 boxShadow: AppGlow.halo(AppColors.brand, 120, strength: 0.5),
               ),
               child: Icon(
-                switch (resource.fileType) {
-                  'VIDEO' => Icons.play_circle_outline,
-                  'PDF' => Icons.picture_as_pdf_outlined,
-                  _ => Icons.description_outlined,
-                },
+                _resourceIcon(resource.fileType),
                 size: 56,
                 color: AppColors.wellGlyph,
                 shadows: AppGlow.bloom(AppColors.brand, 56),
@@ -244,6 +255,11 @@ class ResourceDetailScreen extends ConsumerWidget {
               child: Column(
                 children: [
                   KeyValueRow(label: 'Category', value: resource.category),
+                  if (resource.version > 1)
+                    KeyValueRow(
+                      label: 'Version',
+                      value: 'v${resource.version} — replaces an earlier file',
+                    ),
                   KeyValueRow(label: 'File type', value: resource.fileType),
                   KeyValueRow(label: 'Size', value: resource.sizeLabel),
                   KeyValueRow(
@@ -259,6 +275,112 @@ class ResourceDetailScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Makes a non-list state pullable. `RefreshIndicator` only answers a
+/// scrollable, and "nothing here yet" is exactly the screen a rep pulls on.
+Widget _pullable(Widget child) => LayoutBuilder(
+  builder: (context, constraints) => ListView(
+    physics: const AlwaysScrollableScrollPhysics(),
+    children: [
+      ConstrainedBox(
+        constraints: BoxConstraints(minHeight: constraints.maxHeight),
+        child: Center(child: child),
+      ),
+    ],
+  ),
+);
+
+IconData _resourceIcon(String fileType) => switch (fileType) {
+  'IMAGE' => Icons.image_outlined,
+  'VIDEO' => Icons.play_circle_outline,
+  'PDF' => Icons.picture_as_pdf_outlined,
+  _ => Icons.description_outlined,
+};
+
+/// The file behind a resource, or a sentence saying why there is none.
+///
+/// Download used to answer "Downloads arrive with the backend" whatever was
+/// behind it. Now it asks the backend for a short-lived link to the private
+/// file and hands it to the phone, which opens PDFs and images in whatever the
+/// rep already uses for them.
+Future<String?> _resourceLink(
+  BuildContext context,
+  WidgetRef ref,
+  Resource resource, {
+  Duration validFor = const Duration(hours: 1),
+}) async {
+  void say(String message) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  if (!isLive) {
+    showComingWithBackend(context, 'Opening files');
+    return null;
+  }
+  if (!resource.hasFile) {
+    say('This resource has no file attached. Ask head office to re-upload it.');
+    return null;
+  }
+  try {
+    final url = await ref
+        .read(resourceRepositoryProvider)
+        .fileUrl(resource, validFor: validFor);
+    if (url == null || url.isEmpty) {
+      say('Could not get that file. Try again in a moment.');
+      return null;
+    }
+    return url;
+  } catch (e) {
+    say(readablePostgrestError(e, fallback: 'Could not get that file.'));
+    return null;
+  }
+}
+
+Future<void> _openResource(
+  BuildContext context,
+  WidgetRef ref,
+  Resource resource,
+) async {
+  final url = await _resourceLink(context, ref, resource);
+  if (url == null) return;
+  final ok = await launchUrl(
+    Uri.parse(url),
+    mode: LaunchMode.externalApplication,
+  );
+  if (!ok && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No app on this phone could open that file.'),
+      ),
+    );
+  }
+}
+
+/// Shares a link rather than the file: a rep forwarding a visual aid to a
+/// doctor on WhatsApp should not have to download fifty megabytes first. The
+/// link is private and expires, so it says so.
+Future<void> _shareResource(
+  BuildContext context,
+  WidgetRef ref,
+  Resource resource,
+) async {
+  final url = await _resourceLink(
+    context,
+    ref,
+    resource,
+    validFor: const Duration(hours: 24),
+  );
+  if (url == null) return;
+  await SharePlus.instance.share(
+    ShareParams(
+      subject: resource.title,
+      text: '${resource.title}\n$url\n\nThis link works for 24 hours.',
+    ),
+  );
 }
 
 final _resourceProvider = FutureProvider.autoDispose.family<Resource, String>(
@@ -403,8 +525,9 @@ class _NewSurveyScreenState extends ConsumerState<NewSurveyScreen> {
               clientType: _client!.type,
               submittedAt: DateTime.now(),
               feedback: _feedback.text.trim(),
-              remarks:
-                  _remarks.text.trim().isEmpty ? null : _remarks.text.trim(),
+              remarks: _remarks.text.trim().isEmpty
+                  ? null
+                  : _remarks.text.trim(),
               locationName: _client!.areaName,
               rating: _rating > 0 ? _rating : null,
             ),
@@ -527,11 +650,12 @@ final _complaintsProvider = FutureProvider.autoDispose<List<Complaint>>((ref) {
 /// This screen used to read the whole list and filter it in the widget, which
 /// fetched every complaint to show one and, worse, made a complaint outside the
 /// caller's list scope render as "not found" even though the record exists.
-final _complaintProvider =
-    FutureProvider.autoDispose.family<Complaint, String>((ref, id) {
-  ref.watch(dataRevisionProvider);
-  return ref.watch(complaintRepositoryProvider).byId(id);
-});
+final _complaintProvider = FutureProvider.autoDispose.family<Complaint, String>(
+  (ref, id) {
+    ref.watch(dataRevisionProvider);
+    return ref.watch(complaintRepositoryProvider).byId(id);
+  },
+);
 
 class ComplaintListScreen extends ConsumerWidget {
   const ComplaintListScreen({super.key});
@@ -748,7 +872,9 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
         );
         return;
       }
-      final path = await ref.read(complaintRepositoryProvider).uploadAttachment(
+      final path = await ref
+          .read(complaintRepositoryProvider)
+          .uploadAttachment(
             bytes: bytes,
             mimeType: file.mimeType ?? 'image/jpeg',
             fileName: file.name,
@@ -760,10 +886,7 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            readablePostgrestError(
-              e,
-              fallback: 'Could not attach that photo.',
-            ),
+            readablePostgrestError(e, fallback: 'Could not attach that photo.'),
           ),
         ),
       );
@@ -782,8 +905,7 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
           .create(
             Complaint(
               id: const Uuid().v4(),
-              reference:
-                  'CMP-${DateTime.now().millisecondsSinceEpoch % 10000}',
+              reference: 'CMP-${DateTime.now().millisecondsSinceEpoch % 10000}',
               clientId: _client!.id,
               clientName: _client!.name,
               subject: _subject.text.trim(),
@@ -792,8 +914,7 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
               createdAt: DateTime.now(),
               productId: _product?.id,
               productName: _product?.name,
-              mobile:
-                  _mobile.text.trim().isEmpty ? null : _mobile.text.trim(),
+              mobile: _mobile.text.trim().isEmpty ? null : _mobile.text.trim(),
               email: _email.text.trim().isEmpty ? null : _email.text.trim(),
               attachmentPaths: List.of(_attachments),
             ),
@@ -922,8 +1043,8 @@ class _NewComplaintScreenState extends ConsumerState<NewComplaintScreen> {
               label: _attaching
                   ? 'Uploading…'
                   : _attachments.isEmpty
-                      ? 'Attach photo'
-                      : 'Attach another',
+                  ? 'Attach photo'
+                  : 'Attach another',
               icon: Icons.photo_camera_outlined,
               small: true,
               onPressed: _attaching || _submitting ? null : _attachPhoto,
