@@ -20,6 +20,7 @@ import 'package:pharmaconnect/features/activity/presentation/add_activity_screen
 import 'package:pharmaconnect/features/activity/presentation/visit_flow_screen.dart';
 import 'package:pharmaconnect/features/activity/presentation/widgets/call_report_form.dart';
 import 'package:pharmaconnect/features/approvals/presentation/approval_screens.dart';
+import 'package:pharmaconnect/features/authentication/presentation/auth_flow_screens.dart';
 import 'package:pharmaconnect/features/business/presentation/business_screens.dart';
 import 'package:pharmaconnect/features/business/presentation/order_screens.dart';
 import 'package:pharmaconnect/features/clients/presentation/client_screens.dart';
@@ -118,6 +119,16 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
     }
   }
+
+  group('first sign-in', () {
+    // Reached with a manager-set password; the router holds the rep here.
+    testWidgets('Choose your own password', (tester) async {
+      await pumpScreen(tester, const ChoosePasswordScreen());
+      expect(find.text('Choose your own password'), findsOneWidget);
+      expect(find.text('Save password'), findsOneWidget);
+      expect(find.text('Sign out'), findsOneWidget);
+    });
+  });
 
   group('field user screens render', () {
     testWidgets('Home', (tester) async {

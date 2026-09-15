@@ -75,12 +75,18 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       if (!isAuthed) return onAuthRoute ? null : Routes.login;
 
-      if (onAuthRoute) return Routes.home;
+      // A manager set this password, so the rep chooses their own before
+      // anything else opens — including the screen they were headed for.
+      final session = auth.session;
+      if (session.mustChangePassword) {
+        return path == Routes.choosePassword ? null : Routes.choosePassword;
+      }
+
+      if (onAuthRoute || path == Routes.choosePassword) return Routes.home;
 
       // A rep has no business on a manager's routes. The admin guard that sat
       // beside this went with the role: the office has a console of its own,
       // and there is nothing left in the app for an administrator to open.
-      final session = auth.session;
       final isManagerRoute = path.startsWith('/team') ||
           path.startsWith('/approvals') ||
           path.startsWith('/manage');
@@ -106,6 +112,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: Routes.resetPassword,
         builder: (_, state) =>
             ResetPasswordScreen(employeeCode: state.extra as String? ?? ''),
+      ),
+      GoRoute(
+        path: Routes.choosePassword,
+        builder: (_, _) => const ChoosePasswordScreen(),
       ),
 
       // -------------------------------------------------- tabbed shell

@@ -39,6 +39,9 @@ abstract interface class AuthRepository {
   Future<void> requestPasswordReset(String employeeCode);
   Future<bool> verifyOtp({required String employeeCode, required String otp});
   Future<void> resetPassword({required String employeeCode, required String password});
+
+  /// The signed-in rep replaces the password their manager set.
+  Future<void> chooseOwnPassword(String password);
 }
 
 abstract interface class EmployeeRepository {

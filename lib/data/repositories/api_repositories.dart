@@ -167,7 +167,7 @@ class ApiAuthRepository implements AuthRepository {
 
     final account = await db
         .from('app_users')
-        .select('employee_id, role, scope')
+        .select('employee_id, role, scope, must_change_password')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -215,7 +215,29 @@ class ApiAuthRepository implements AuthRepository {
         for (final m in access?['disabled_modules'] as List<dynamic>? ?? const [])
           m as String,
       },
+      mustChangePassword: account['must_change_password'] == true,
     );
+  }
+
+  /// Replace a manager-set password with one only the rep knows.
+  ///
+  /// The password change is Supabase Auth's; `password_changed()` (0050) only
+  /// clears the prompt. A project without 0050 has no prompt to clear.
+  @override
+  Future<void> chooseOwnPassword(String password) async {
+    if (password.length < 8) {
+      throw const AuthException('Use at least 8 characters.');
+    }
+    try {
+      await db.auth.updateUser(sb.UserAttributes(password: password));
+    } catch (e) {
+      throw AuthException(_readable(e));
+    }
+    try {
+      await db.rpc('password_changed');
+    } on sb.PostgrestException catch (e) {
+      if (e.code != 'PGRST202') rethrow;
+    }
   }
 
   /// The organisation's status and plan, from `my_org_access()` (0049).

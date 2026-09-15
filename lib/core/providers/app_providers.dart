@@ -205,6 +205,16 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  /// The rep has replaced the password their manager set. Errors are the
+  /// screen's to show, beside the field they were typed into.
+  Future<void> chooseOwnPassword(String password) async {
+    await _repo.chooseOwnPassword(password);
+    final current = state;
+    if (current is AuthAuthenticated) {
+      state = AuthAuthenticated(current.session.withOwnPassword());
+    }
+  }
+
   Future<void> logout() async {
     await _repo.logout();
     state = const AuthUnauthenticated();

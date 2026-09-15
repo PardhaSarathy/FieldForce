@@ -11,6 +11,10 @@ abstract final class Routes {
   static const otp = '/otp';
   static const resetPassword = '/reset-password';
 
+  /// Signed in with a manager-set password; nothing else opens until the rep
+  /// chooses their own.
+  static const choosePassword = '/choose-password';
+
   // shell tabs
   static const home = '/home';
   static const activity = '/activity';

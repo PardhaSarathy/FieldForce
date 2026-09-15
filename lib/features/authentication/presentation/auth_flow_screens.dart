@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/app_providers.dart';
 import '../../../core/utils/errors.dart';
+import '../../../data/repositories/mock_repositories.dart' show AuthException;
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -380,6 +381,150 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           onPressed: _submit,
         ),
       ],
+    );
+  }
+}
+
+/// First sign-in with a password a manager set.
+///
+/// Not [ResetPasswordScreen]: that one is reached while signed out and ends at
+/// the login form. This one is reached signed in, has nowhere to go back to —
+/// the router holds the rep here — and ends on Home. Signing out is the only
+/// other way off it.
+class ChoosePasswordScreen extends ConsumerStatefulWidget {
+  const ChoosePasswordScreen({super.key});
+
+  @override
+  ConsumerState<ChoosePasswordScreen> createState() =>
+      _ChoosePasswordScreenState();
+}
+
+class _ChoosePasswordScreenState extends ConsumerState<ChoosePasswordScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _password = TextEditingController();
+  final _confirm = TextEditingController();
+  bool _busy = false;
+  String? _problem;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _busy = true;
+      _problem = null;
+    });
+    try {
+      // On success the router sees the prompt cleared and moves on to Home.
+      await ref
+          .read(authControllerProvider.notifier)
+          .chooseOwnPassword(_password.text);
+    } on AuthException catch (e) {
+      if (mounted) setState(() => _problem = e.message);
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _problem = readablePostgrestError(
+            e,
+            fallback: 'Could not save that password. Try again.',
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xxl,
+            vertical: AppSpacing.xxl,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Choose your own password', style: AppTypography.h1),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Your manager set the password you just used. Pick one only '
+                  'you know — you will sign in with it from now on.',
+                  style: AppTypography.bodySm,
+                ),
+                const SizedBox(height: AppSpacing.xxl),
+                Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      AppTextField(
+                        textInputAction: TextInputAction.next,
+                        label: 'New password',
+                        controller: _password,
+                        obscureText: true,
+                        required: true,
+                        prefixIcon: Icons.lock_outline,
+                        validator: (v) {
+                          if (v == null || v.isEmpty) {
+                            return 'Password is required';
+                          }
+                          if (v.length < 8) return 'Use at least 8 characters';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      AppTextField(
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _submit(),
+                        label: 'Confirm password',
+                        controller: _confirm,
+                        obscureText: true,
+                        required: true,
+                        prefixIcon: Icons.lock_outline,
+                        validator: (v) => v == _password.text
+                            ? null
+                            : 'Passwords do not match',
+                      ),
+                    ],
+                  ),
+                ),
+                if (_problem != null) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  Text(
+                    _problem!,
+                    style: AppTypography.bodySm.copyWith(
+                      color: AppColors.error,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.xl),
+                PrimaryButton(
+                  label: 'Save password',
+                  isLoading: _busy,
+                  onPressed: _submit,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextButton(
+                  onPressed: _busy
+                      ? null
+                      : () => ref.read(authControllerProvider.notifier).logout(),
+                  child: const Text('Sign out'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -275,6 +275,10 @@ class MockAuthRepository implements AuthRepository {
   @override
   Future<void> resetPassword({required String employeeCode, required String password}) =>
       _latency(600);
+
+  /// The demo has no manager-set passwords, so there is nothing to replace.
+  @override
+  Future<void> chooseOwnPassword(String password) => _latency(600);
 }
 
 class AuthException implements Exception {

@@ -110,6 +110,7 @@ class Session {
     required this.loginAt,
     this.token = 'mock-session-token',
     this.disabledModules = const {},
+    this.mustChangePassword = false,
   });
 
   final Employee employee;
@@ -121,6 +122,19 @@ class Session {
   /// has limited. The database refuses writes to these whatever the app does;
   /// this only stops the app offering a screen that cannot work.
   final Set<String> disabledModules;
+
+  /// A manager set this password (`set_field_login`), so the rep is asked to
+  /// choose their own before anything else. The router holds them on that
+  /// screen; it is a prompt, not a security boundary.
+  final bool mustChangePassword;
+
+  /// The same session after the rep has chosen their own password.
+  Session withOwnPassword() => Session(
+    employee: employee,
+    loginAt: loginAt,
+    token: token,
+    disabledModules: disabledModules,
+  );
 
   UserRole get role => employee.role;
   DataScope get scope => employee.scope;
