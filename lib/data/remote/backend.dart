@@ -19,34 +19,62 @@
 /// their token. The service-role key must never appear in a build.
 library;
 
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const String supabaseKey = String.fromEnvironment('SUPABASE_KEY');
 
-/// The organisation this build belongs to.
+/// Compile-time default organisation for single-tenant / demo APKs.
 ///
-/// It is here because the sign-in address is *derived* from the employee code
-/// and the organisation rather than looked up:
-///
-///     MR1001  +  'mrsales-demo'  ->  mr1001@mrsales-demo.mrsales.local
-///
-/// A lookup would need a public endpoint answering "does MR1001 exist here",
-/// which is an enumeration oracle on the staff list. Deriving asks the server
-/// nothing, so a wrong code fails authentication exactly like a wrong
-/// password. The cost is that the app is built per company — the same shape
-/// the Supabase URL already has. One build serving several organisations
-/// would put the choice on the login screen, and this function is where that
-/// would go.
-const String orgSlug = String.fromEnvironment('ORG_SLUG', defaultValue: 'mrsales-demo');
+/// Multi-customer production builds still ship one APK; the login screen sets
+/// [activeOrgSlug] at runtime (company code). This define remains the fallback
+/// when nothing has been chosen yet (and for fixture demos).
+const String defaultOrgSlug =
+    String.fromEnvironment('ORG_SLUG', defaultValue: 'mrsales-demo');
+
+const _prefsOrgKey = 'mrsales.active_org_slug';
+
+String _activeOrgSlug = defaultOrgSlug;
+
+/// Organisation currently selected for deriving login emails.
+String get activeOrgSlug => _activeOrgSlug;
+
+/// Normalise a company code / org slug typed on the login screen.
+String normalizeOrgSlug(String raw) =>
+    raw.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]+'), '-');
+
+/// Persist and activate the company code used to derive field login emails.
+Future<void> setActiveOrgSlug(String raw) async {
+  final slug = normalizeOrgSlug(raw);
+  if (slug.isEmpty) {
+    throw ArgumentError('Company code is required.');
+  }
+  _activeOrgSlug = slug;
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString(_prefsOrgKey, slug);
+}
+
+/// Restore the last company code after process death. Call from [initBackend].
+Future<void> restoreActiveOrgSlug() async {
+  final prefs = await SharedPreferences.getInstance();
+  final saved = prefs.getString(_prefsOrgKey);
+  if (saved != null && saved.trim().isNotEmpty) {
+    _activeOrgSlug = normalizeOrgSlug(saved);
+  }
+}
+
+/// Kept for older call sites / docs that still say [orgSlug].
+@Deprecated('Use activeOrgSlug')
+String get orgSlug => activeOrgSlug;
 
 /// The address behind an employee code. Never shown to anybody: the person
 /// types `MR1001`, and this is what Supabase Auth is asked about.
 ///
 /// Must produce byte-for-byte what `public.login_email()` produces in the
 /// database, because the account was created there.
-String loginEmailFor(String employeeCode) =>
-    '${employeeCode.trim().toLowerCase()}@${orgSlug.trim().toLowerCase()}.mrsales.local';
+String loginEmailFor(String employeeCode, {String? org}) =>
+    '${employeeCode.trim().toLowerCase()}@${(org ?? activeOrgSlug).trim().toLowerCase()}.mrsales.local';
 
 /// Whether a backend is *configured*. Not whether it is reachable, and not
 /// whether anybody is signed in — a wrong URL is still "live", and it fails
@@ -57,6 +85,7 @@ bool get isLive => supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty;
 /// Call once, before [runApp]. Does nothing in fixture mode, which is what
 /// keeps a demo build free of any network setup at all.
 Future<void> initBackend() async {
+  await restoreActiveOrgSlug();
   if (!isLive) return;
   await Supabase.initialize(url: supabaseUrl, publishableKey: supabaseKey);
 }

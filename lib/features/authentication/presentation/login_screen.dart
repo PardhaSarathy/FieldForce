@@ -24,12 +24,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   // Pre-filled only in the demo. A real sign-in screen that arrives holding
   // somebody's employee ID is telling the next person who picks up the phone
   // who was using it.
+  final _orgController = TextEditingController(
+    text: isLive ? activeOrgSlug : 'mrsales-demo',
+  );
   final _codeController = TextEditingController(text: isLive ? '' : 'MR1001');
   final _passwordController = TextEditingController(text: isLive ? '' : 'demo1234');
   bool _obscure = true;
 
   @override
   void dispose() {
+    _orgController.dispose();
     _codeController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -60,6 +64,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
+    try {
+      await setActiveOrgSlug(_orgController.text);
+    } catch (_) {
+      return;
+    }
     await ref
         .read(authControllerProvider.notifier)
         .login(_codeController.text, _passwordController.text);
@@ -101,7 +110,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: AppSpacing.xs),
                     Text(
                       isLive
-                          ? 'Sign in with your employee ID.'
+                          ? 'Enter your company code, then employee ID.'
                           : 'Demo build — sign in with any account below.',
                       style: AppTypography.bodySm,
                       textAlign: TextAlign.center,
@@ -112,6 +121,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       _Notice(message: notice, tone: AppColors.info),
                       const SizedBox(height: AppSpacing.lg),
                     ],
+
+                    AppTextField(
+                      label: 'Company code',
+                      hint: 'e.g. acme',
+                      controller: _orgController,
+                      required: true,
+                      enabled: !isBusy,
+                      prefixIcon: Icons.apartment_outlined,
+                      textCapitalization: TextCapitalization.none,
+                      textInputAction: TextInputAction.next,
+                      validator: (v) => Validate.required(v, 'Company code'),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
 
                     AppTextField(
                       label: 'Employee ID',
