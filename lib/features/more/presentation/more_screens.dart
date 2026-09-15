@@ -47,7 +47,8 @@ class MoreScreen extends ConsumerWidget {
         'Workplace',
         [
           (Icons.badge_outlined, 'HR', Routes.hr),
-          (Icons.chat_bubble_outline, 'Chat', Routes.chat),
+          if (session.hasModule('chat'))
+            (Icons.chat_bubble_outline, 'Chat', Routes.chat),
           (Icons.library_books_outlined, 'Resources', Routes.resources),
         ],
       ),

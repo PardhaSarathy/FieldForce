@@ -151,6 +151,20 @@ class ApiAuthRepository implements AuthRepository {
     final user = db.auth.currentUser;
     if (user == null) throw const AuthException('You are not signed in.');
 
+    // Asked first. Once an organisation is suspended every read below comes
+    // back empty, and "not linked to anybody on the roster" would send the rep
+    // to their administrator about the wrong problem.
+    final access = await _orgAccess();
+    final status = access?['status'] as String?;
+    if (status == 'suspended' || status == 'closed') {
+      await db.auth.signOut();
+      final name = access?['org_name'] as String? ?? 'Your organisation';
+      throw AuthException(
+        '$name is $status on Mr Sales, so nobody there can sign in right now. '
+        'Nothing has been deleted — ask your administrator to contact Mr Sales.',
+      );
+    }
+
     final account = await db
         .from('app_users')
         .select('employee_id, role, scope')
@@ -194,7 +208,31 @@ class ApiAuthRepository implements AuthRepository {
       })
       ..remember(me.employeeCode, me.id);
 
-    return Session(employee: me, loginAt: DateTime.now());
+    return Session(
+      employee: me,
+      loginAt: DateTime.now(),
+      disabledModules: {
+        for (final m in access?['disabled_modules'] as List<dynamic>? ?? const [])
+          m as String,
+      },
+    );
+  }
+
+  /// The organisation's status and plan, from `my_org_access()` (0049).
+  ///
+  /// A project without that migration answers PGRST202, which is treated as
+  /// open — so this build can ship before the migration without locking
+  /// anybody out.
+  Future<Map<String, dynamic>?> _orgAccess() async {
+    try {
+      final rows = await db.rpc('my_org_access') as List<dynamic>;
+      return rows.isEmpty
+          ? null
+          : Map<String, dynamic>.from(rows.first as Map<dynamic, dynamic>);
+    } on sb.PostgrestException catch (e) {
+      if (e.code == 'PGRST202') return null;
+      rethrow;
+    }
   }
 
   @override

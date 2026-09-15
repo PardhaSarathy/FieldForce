@@ -193,16 +193,17 @@ class _ManagerHeader extends ConsumerWidget {
                 ],
               ),
             ),
-            IconButton(
-              tooltip: 'Chat',
-              onPressed: () => navigateTo(context, Routes.chat),
-              icon: Badge(
-                isLabelVisible: unreadChats > 0,
-                label: Text('$unreadChats'),
-                backgroundColor: AppColors.error,
-                child: const Icon(Icons.textsms_outlined),
+            if (ref.watch(sessionProvider).hasModule('chat'))
+              IconButton(
+                tooltip: 'Chat',
+                onPressed: () => navigateTo(context, Routes.chat),
+                icon: Badge(
+                  isLabelVisible: unreadChats > 0,
+                  label: Text('$unreadChats'),
+                  backgroundColor: AppColors.error,
+                  child: const Icon(Icons.textsms_outlined),
+                ),
               ),
-            ),
             IconButton(
               onPressed: () => context.push(Routes.notifications),
               icon: Badge(
@@ -465,13 +466,14 @@ class _TeamTodayCard extends StatelessWidget {
   }
 }
 
-class _MonthPerformance extends StatelessWidget {
+class _MonthPerformance extends ConsumerWidget {
   const _MonthPerformance({required this.data});
 
   final ManagerDashboard data;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hasOrders = ref.watch(sessionProvider).hasModule('orders');
     return Column(
       children: [
         Row(
@@ -488,15 +490,17 @@ class _MonthPerformance extends StatelessWidget {
                 onTap: () => context.push(Routes.salesReport),
               ),
             ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: _MetricCard(
-                label: 'Orders',
-                value: '${data.orderCount}',
-                footnote: 'placed this month',
-                onTap: () => context.push(Routes.orders),
+            if (hasOrders) ...[
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: _MetricCard(
+                  label: 'Orders',
+                  value: '${data.orderCount}',
+                  footnote: 'placed this month',
+                  onTap: () => context.push(Routes.orders),
+                ),
               ),
-            ),
+            ],
           ],
         ),
         const SizedBox(height: AppSpacing.md),

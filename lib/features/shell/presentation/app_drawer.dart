@@ -87,22 +87,26 @@ class AppDrawer extends ConsumerWidget {
                 label: 'Targets',
                 route: Routes.targets,
               ),
-              (
-                icon: Icons.shopping_bag_outlined,
-                label: 'Orders',
-                route: Routes.orders,
-              ),
+              // A module outside the organisation's plan is left out, not
+              // greyed: the database refuses it, so the screen could not work.
+              if (session.hasModule('orders'))
+                (
+                  icon: Icons.shopping_bag_outlined,
+                  label: 'Orders',
+                  route: Routes.orders,
+                ),
             ],
           ),
           (
             'Workplace',
             [
               (icon: Icons.badge_outlined, label: 'HR', route: Routes.hr),
-              (
-                icon: Icons.chat_bubble_outline,
-                label: 'Chat',
-                route: Routes.chat,
-              ),
+              if (session.hasModule('chat'))
+                (
+                  icon: Icons.chat_bubble_outline,
+                  label: 'Chat',
+                  route: Routes.chat,
+                ),
               (
                 icon: Icons.library_books_outlined,
                 label: 'Resources',

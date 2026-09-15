@@ -71,6 +71,7 @@ class BusinessDashboardScreen extends ConsumerWidget {
     final month = ref.watch(_monthProvider);
     final targetAsync = ref.watch(_targetReportProvider);
     final ordersAsync = ref.watch(_ordersProvider);
+    final hasOrders = ref.watch(sessionProvider).hasModule('orders');
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -164,21 +165,27 @@ class BusinessDashboardScreen extends ConsumerWidget {
                     subtitle: 'Target versus actual by month',
                     route: Routes.targets,
                   ),
-                  const Divider(height: 1, indent: AppSpacing.cardPadding),
-                  _NavRow(
-                    icon: Icons.shopping_bag_outlined,
-                    title: 'Orders',
-                    subtitle: ordersAsync.valueOrNull == null
-                        ? 'Capture and track client orders'
-                        : '${ordersAsync.value!.length} orders · '
-                              '${ordersAsync.value!.where((o) => o.status.awaitsDecision).length} pending',
-                    route: Routes.orders,
-                  ),
+                  // Orders outside the organisation's plan are left out whole
+                  // — the row, and the recent list below — rather than showing
+                  // an empty list the database would never fill.
+                  if (hasOrders) ...[
+                    const Divider(height: 1, indent: AppSpacing.cardPadding),
+                    _NavRow(
+                      icon: Icons.shopping_bag_outlined,
+                      title: 'Orders',
+                      subtitle: ordersAsync.valueOrNull == null
+                          ? 'Capture and track client orders'
+                          : '${ordersAsync.value!.length} orders · '
+                                '${ordersAsync.value!.where((o) => o.status.awaitsDecision).length} pending',
+                      route: Routes.orders,
+                    ),
+                  ],
                 ],
               ),
             ),
             const SizedBox(height: AppSpacing.section),
 
+            if (hasOrders) ...[
             SectionHeader(
               title: 'Recent orders',
               actionLabel: 'See all',
@@ -208,6 +215,7 @@ class BusinessDashboardScreen extends ConsumerWidget {
                       ],
                     ),
             ),
+            ],
           ],
         ),
       ),

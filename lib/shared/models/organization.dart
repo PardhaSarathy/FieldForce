@@ -109,14 +109,23 @@ class Session {
     required this.employee,
     required this.loginAt,
     this.token = 'mock-session-token',
+    this.disabledModules = const {},
   });
 
   final Employee employee;
   final DateTime loginAt;
   final String token;
 
+  /// Modules the organisation's Mr Sales plan leaves out — `chat`, `orders`,
+  /// `stock`, `products`. Empty in fixture mode and for an organisation nobody
+  /// has limited. The database refuses writes to these whatever the app does;
+  /// this only stops the app offering a screen that cannot work.
+  final Set<String> disabledModules;
+
   UserRole get role => employee.role;
   DataScope get scope => employee.scope;
+
+  bool hasModule(String key) => !disabledModules.contains(key);
 
   bool get isManager => role.isManager;
   bool get isFieldUser => role.isFieldUser;

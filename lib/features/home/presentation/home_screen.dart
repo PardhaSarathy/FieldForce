@@ -294,16 +294,18 @@ class _HomeTopBar extends ConsumerWidget {
           // Two things a rep checks rather than navigates to. Profile moved to
           // the side menu, where tapping your own photo opens it — the place
           // people look for it.
-          _HeaderIconButton(
-            // The glyph with the dots in it. A plain empty bubble is the
-            // "comment" mark; the one people read as *chat* is the one that
-            // has a conversation inside it.
-            icon: Icons.textsms_outlined,
-            badgeCount: unreadChats,
-            onTap: () => navigateTo(context, Routes.chat),
-            tooltip: 'Chat',
-          ),
-          const SizedBox(width: AppSpacing.sm),
+          if (ref.watch(sessionProvider).hasModule('chat')) ...[
+            _HeaderIconButton(
+              // The glyph with the dots in it. A plain empty bubble is the
+              // "comment" mark; the one people read as *chat* is the one that
+              // has a conversation inside it.
+              icon: Icons.textsms_outlined,
+              badgeCount: unreadChats,
+              onTap: () => navigateTo(context, Routes.chat),
+              tooltip: 'Chat',
+            ),
+            const SizedBox(width: AppSpacing.sm),
+          ],
           _HeaderIconButton(
             icon: Icons.notifications_none,
             badgeCount: unreadCount,
