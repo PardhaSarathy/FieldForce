@@ -62,3 +62,8 @@ android/build/
 # Local live-build defines (never commit)
 dart_defines.json
 
+
+# The upload key and its passwords: never in the repository.
+android/key.properties
+*.jks
+*.keystore

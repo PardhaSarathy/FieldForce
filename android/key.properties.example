@@ -1,0 +1,13 @@
+# Copy to android/key.properties and fill in. Gitignored; the real file and the
+# keystore it names never go in the repository.
+#
+# Make the keystore once, and keep it somewhere it cannot be lost — Play will
+# not accept an update signed with a different one:
+#
+#   keytool -genkey -v -keystore ~/mrsales-upload.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+#
+storeFile=/absolute/path/to/mrsales-upload.jks
+storePassword=
+keyAlias=upload
+keyPassword=
