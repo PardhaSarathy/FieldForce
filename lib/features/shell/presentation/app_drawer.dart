@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers/app_providers.dart';
 import '../../../core/routing/navigate.dart';
+import '../../../core/routing/module_gates.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -257,7 +258,8 @@ class AppDrawer extends ConsumerWidget {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: AppSpacing.md),
                 children: [
-                  for (final (title, items) in groups) ...[
+                  for (final (title, items) in groups)
+                    if (items.any((i) => routeInPlan(session, i.route))) ...[
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         AppSpacing.xl,
@@ -270,7 +272,7 @@ class AppDrawer extends ConsumerWidget {
                         style: AppTypography.overline,
                       ),
                     ),
-                    for (final item in items)
+                    for (final item in items.where((i) => routeInPlan(session, i.route)))
                       ListTile(
                         dense: true,
                         leading: Icon(

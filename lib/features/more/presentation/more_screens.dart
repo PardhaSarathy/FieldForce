@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/providers/app_providers.dart';
 import '../../../core/routing/navigate.dart';
+import '../../../core/routing/module_gates.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -114,7 +115,9 @@ class MoreScreen extends ConsumerWidget {
               ],
             ),
           ),
-          for (final (title, items) in groups) ...[
+          for (final (title, all) in groups)
+            if (all.any((i) => routeInPlan(session, i.$3)))
+              for (final items in [all.where((i) => routeInPlan(session, i.$3)).toList()]) ...[
             const SizedBox(height: AppSpacing.section),
             SectionHeader(title: title),
             AppCard(

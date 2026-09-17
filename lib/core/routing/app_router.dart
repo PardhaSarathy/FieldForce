@@ -27,6 +27,7 @@ import '../../features/shell/presentation/app_shell.dart';
 import '../../features/travel/presentation/travel_screens.dart';
 import '../providers/app_providers.dart';
 import 'routes.dart';
+import 'module_gates.dart';
 
 final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
@@ -92,6 +93,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           path.startsWith('/manage');
 
       if (isManagerRoute && !session.isManager) return Routes.home;
+
+      // A module the organisation's plan leaves out, reached by a deep link.
+      if (!routeInPlan(session, path)) return Routes.home;
 
       return null;
     },

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/app_providers.dart';
 import '../../../core/routing/navigate.dart';
+import '../../../core/routing/module_gates.dart';
 import '../../../core/routing/routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_glow.dart';
@@ -140,6 +141,7 @@ class HomeScreen extends ConsumerWidget {
                           delay: AppMotion.staggerFor(1),
                           child: _QuickActionsGrid(
                             expandedByDefault: isManager,
+                            inPlan: (route) => routeInPlan(session, route),
                           ),
                         ),
                       ),
@@ -843,7 +845,10 @@ int _quickActionColumns(double width) =>
     width >= AppBreakpoints.expanded ? 6 : 3;
 
 class _QuickActionsGrid extends StatefulWidget {
-  const _QuickActionsGrid({this.expandedByDefault = false});
+  const _QuickActionsGrid({this.expandedByDefault = false, this.inPlan});
+
+  /// Leaves out tiles for modules the organisation's plan does not include.
+  final bool Function(String route)? inPlan;
 
   /// Managers need Tour Plan / HR / Expenses without an extra tap — their
   /// Home already carries more below the fold than a rep's.
@@ -912,7 +917,10 @@ class _QuickActionsGridState extends State<_QuickActionsGrid> {
 
   @override
   Widget build(BuildContext context) {
-    const actions = _QuickActionsGrid.actions;
+    final actions = [
+      for (final a in _QuickActionsGrid.actions)
+        if (widget.inPlan?.call(a.route) ?? true) a,
+    ];
 
     // Heading and "See all", built exactly like "Today's planned visits" a few
     // rows below: same `SectionHeader`, same action label, same place.
