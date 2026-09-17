@@ -79,7 +79,7 @@ abstract final class AppColors {
 
   // ---------------------------------------------------------------- surfaces
   /// Page ground. Neutral, and barely off white — see the class doc.
-  static const background = Color(0xFFF6F8FB); // --color-soft
+  static const background = Color(0xFFF4F6FA); // --color-soft
 
   /// Cards, sheets, elevated content.
   static const surface = Color(0xFFFFFFFF);
@@ -94,8 +94,8 @@ abstract final class AppColors {
   /// bar and gives way to pure white at the thumb, so the screen has somewhere
   /// to recede to. Body text holds at 16.1:1 against the darkest stop and
   /// 17.9:1 against the lightest, so nothing changes as the eye travels down.
-  static const backgroundTop = Color(0xFFEEF2F9);
-  static const backgroundMid = Color(0xFFF6F8FB);
+  static const backgroundTop = Color(0xFFECF0F7);
+  static const backgroundMid = Color(0xFFF4F6FA);
   static const backgroundBottom = Color(0xFFFFFFFF);
 
   /// A soft highlight over the wash, as if light fell from the top right.
@@ -126,18 +126,18 @@ abstract final class AppColors {
   ///
   /// Dr.Swift's primary, unchanged. White sits on it at 5.9:1, so it carries
   /// a filled button without help.
-  static const brand = Color(0xFF1E5BD7); // --color-blue
+  static const brand = Color(0xFF1E3FA8); // --color-blue
 
   /// The light end of the brand gradient. Not the site's own lighter blue,
   /// which measures 4.47:1 — a hair under the floor, and a button's label sits
   /// on the lightest point of its gradient.
-  static const brandLight = Color(0xFF2C68DD);
+  static const brandLight = Color(0xFF2B52C7);
 
   /// The dark end.
-  static const brandDark = Color(0xFF123F9B); // --color-blue-dark
+  static const brandDark = Color(0xFF152E7D); // --color-blue-dark
 
   /// Tinted brand background for selected chips, verified badges, soft fills.
-  static const brandSoft = Color(0xFFEDF4FF); // --color-blue-soft
+  static const brandSoft = Color(0xFFEBF0FB); // --color-blue-soft
 
   /// The coloured shadow under a lit brand element.
   static const brandGlow = Color(0x8C1E5BD7);
@@ -185,10 +185,10 @@ abstract final class AppColors {
   // These four are the brand's own values; [AppGlow] derives the same set for
   // any other ink, so a module well and a warning well are built identically.
   /// The lit edge of the brand well, top-left. Glyph measures 5.4:1 here.
-  static const wellTop = Color(0xFF1E5BD7);
+  static const wellTop = Color(0xFF1E3FA8);
 
   /// The deep corner, bottom-right.
-  static const wellBottom = Color(0xFF123F9B);
+  static const wellBottom = Color(0xFF152E7D);
 
   /// The glyph drawn on the well. Pure white — see [AppGlow.glyphOn] for why
   /// the tinted near-white it used to be was making the mark look grey.
@@ -208,20 +208,20 @@ abstract final class AppColors {
 
   /// Readable ink for the amber family. 4.65:1 on [sandSoft] — the wash was
   /// lightened to get there, because amber is the hue with the least room.
-  static const sandDeep = Color(0xFFB45309);
+  static const sandDeep = Color(0xFF925C0B);
 
   // -------------------------------------------------------------- semantic
   /// Real states only, and all four are Dr.Swift's own.
-  static const success = Color(0xFF267C42); // --color-green-bright-text
-  static const warning = Color(0xFFB45309);
-  static const error = Color(0xFFB42318); // --color-error
+  static const success = Color(0xFF1F7A55); // --color-green-bright-text
+  static const warning = Color(0xFF925C0B);
+  static const error = Color(0xFFA63446); // --color-error
   static const info = Color(0xFF147885); // --color-teal-text
 
   /// Semantic colours as badge and banner backgrounds. Pre-computed rather
   /// than using `withValues` so they composite correctly over any surface.
-  static const successSoft = Color(0xFFE7F5EB);
-  static const warningSoft = Color(0xFFFEF5E9);
-  static const errorSoft = Color(0xFFFFF4F2); // --color-error-soft
+  static const successSoft = Color(0xFFE4F3EB);
+  static const warningSoft = Color(0xFFFBF1DF);
+  static const errorSoft = Color(0xFFF9E8EB); // --color-error-soft
   static const infoSoft = Color(0xFFE3F5F7);
 
   // ------------------------------------------------------------- calendars
@@ -299,7 +299,7 @@ enum ModulePalette {
   /// what they use where `--color-green-bright` (3.7:1) would be unreadable.
   /// 5.2:1 / 4.6:1. Shares its value with [AppColors.success]; see the note on
   /// [AppColors].
-  travel(Color(0xFF267C42), Color(0xFFE7F5EB)),
+  travel(Color(0xFF1F7A55), Color(0xFFE4F3EB)),
 
   /// Indigo. 7.9:1 / 6.8:1.
   ///
