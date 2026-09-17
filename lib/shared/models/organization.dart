@@ -111,6 +111,9 @@ class Session {
     this.token = 'mock-session-token',
     this.disabledModules = const {},
     this.mustChangePassword = false,
+    this.geoFencePolicy = GeoFencePolicy.warn,
+    this.geoFenceRadiusMeters = 50,
+    this.billRequiredAbove,
   });
 
   final Employee employee;
@@ -123,6 +126,20 @@ class Session {
   /// this only stops the app offering a screen that cannot work.
   final Set<String> disabledModules;
 
+  /// The company's rules, read from `org_settings` at sign-in (0049).
+  ///
+  /// These were constants in the app while the console offered them as
+  /// settings, so an owner who widened the fence to 200 m changed nothing on
+  /// any phone. Fixture mode keeps the old defaults, which is what the demo
+  /// was built against.
+  final GeoFencePolicy geoFencePolicy;
+  final double geoFenceRadiusMeters;
+
+  /// Above this, a claim line needs a bill and a written reason. Null means
+  /// the company has not said, and the rule is what is left of the day's
+  /// allowance — which is what the app did before the setting was read.
+  final double? billRequiredAbove;
+
   /// A manager set this password (`set_field_login`), so the rep is asked to
   /// choose their own before anything else. The router holds them on that
   /// screen; it is a prompt, not a security boundary.
@@ -134,6 +151,9 @@ class Session {
     loginAt: loginAt,
     token: token,
     disabledModules: disabledModules,
+    geoFencePolicy: geoFencePolicy,
+    geoFenceRadiusMeters: geoFenceRadiusMeters,
+    billRequiredAbove: billRequiredAbove,
   );
 
   UserRole get role => employee.role;

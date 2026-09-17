@@ -986,12 +986,15 @@ class _ClaimDayScreenState extends ConsumerState<ClaimDayScreen> {
   Future<void> _save(ClaimDay day) async {
     if (!_formKey.currentState!.validate()) return;
 
-    final excess = _entered - day.remainingAllowance;
+    // The company's own figure when it has set one (`org_settings`), and what
+    // is left of the day's allowance when it has not.
+    final billAbove =
+        ref.read(sessionProvider).billRequiredAbove ?? day.remainingAllowance;
 
     // The bill is the rule the whole excess path exists for, so it is enforced
     // rather than hinted. A hint is what the old form had, and a hint is not a
     // rule.
-    if (excess > 0 && _receipts.isEmpty) {
+    if (_entered > billAbove && _receipts.isEmpty) {
       AppHaptics.failure();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1016,7 +1019,7 @@ class _ClaimDayScreenState extends ConsumerState<ClaimDayScreen> {
               categories: _categories.toList(),
               amount: _entered,
               status: ApprovalStatus.draft,
-              description: excess > 0
+              description: _entered > day.remainingAllowance
                   ? _remarks.text.trim()
                   : 'Daily allowance',
               receiptPaths: List.of(_receipts),

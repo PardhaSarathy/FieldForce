@@ -331,13 +331,25 @@ final pendingSyncCountProvider = Provider<int>((ref) {
   return async.maybeWhen(data: (items) => items.length, orElse: () => 0);
 });
 
-/// Geo-fence policy. Admin-configurable (§130); defaults to `warn` so a rep is
-/// never blocked from recording work they genuinely did.
-final geoFencePolicyProvider = StateProvider<GeoFencePolicy>(
-  (ref) => GeoFencePolicy.warn,
-);
+/// Geo-fence policy and radius — the company's, from `org_settings`.
+///
+/// These were literals here, so the console could save a policy and a radius
+/// that no phone ever read. They come off the session now, and fall back to
+/// the old defaults before anybody has signed in: `warn`, because a rep must
+/// never be blocked from recording work they genuinely did.
+GeoFencePolicy _policyOf(Ref ref) {
+  final state = ref.watch(authControllerProvider);
+  return state is AuthAuthenticated
+      ? state.session.geoFencePolicy
+      : GeoFencePolicy.warn;
+}
 
-final geoFenceRadiusProvider = StateProvider<double>((ref) => 50);
+final geoFencePolicyProvider = Provider<GeoFencePolicy>(_policyOf);
+
+final geoFenceRadiusProvider = Provider<double>((ref) {
+  final state = ref.watch(authControllerProvider);
+  return state is AuthAuthenticated ? state.session.geoFenceRadiusMeters : 50;
+});
 
 // ============================================================== data reads ==
 

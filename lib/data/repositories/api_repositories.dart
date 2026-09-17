@@ -208,6 +208,13 @@ class ApiAuthRepository implements AuthRepository {
       })
       ..remember(me.employeeCode, me.id);
 
+    // The company's own rules (0049). A project without the row keeps the
+    // app's defaults rather than refusing to sign anybody in.
+    final settings = await db
+        .from('org_settings')
+        .select('geo_fence_policy, geo_fence_radius_m, receipt_threshold')
+        .maybeSingle();
+
     return Session(
       employee: me,
       loginAt: DateTime.now(),
@@ -216,8 +223,19 @@ class ApiAuthRepository implements AuthRepository {
           m as String,
       },
       mustChangePassword: account['must_change_password'] == true,
+      geoFencePolicy: _policyFrom(settings?['geo_fence_policy'] as String?),
+      geoFenceRadiusMeters:
+          (settings?['geo_fence_radius_m'] as num?)?.toDouble() ?? 50,
+      billRequiredAbove: (settings?['receipt_threshold'] as num?)?.toDouble(),
     );
   }
+
+  /// `block` is the console's word for it; the app has always called it strict.
+  static GeoFencePolicy _policyFrom(String? value) => switch (value) {
+        'block' => GeoFencePolicy.strict,
+        'off' => GeoFencePolicy.off,
+        _ => GeoFencePolicy.warn,
+      };
 
   /// Replace a manager-set password with one only the rep knows.
   ///
