@@ -1,0 +1,37 @@
+# What has to be true before this merges.
+#
+# The analyzer and the test suite, which between them hold the things this app
+# has learned the hard way: layout traps that render nothing in release, a
+# palette that has to clear 4.5:1, a router where a dead tab throws nothing,
+# and the scope rules that keep one rep out of another's records.
+#
+# No keys here. The tests run on the fixture, which is what they are for.
+name: CI
+
+on:
+  push:
+    branches: [main, field-rep-overhaul]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Analyzer and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      # No `dart format` gate: this codebase has its own house style (see
+      # CLAUDE.md) and 80 of its 111 files differ from the formatter's. A
+      # check that would be red on every commit is not a check.
+      - run: flutter analyze
+      - run: flutter test
