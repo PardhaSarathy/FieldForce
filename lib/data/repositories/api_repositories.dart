@@ -133,7 +133,11 @@ class ApiAuthRepository implements AuthRepository {
       if (res.session == null) {
         throw const AuthException('That did not sign you in.');
       }
-      return _sessionForCurrentUser();
+      // Awaited inside the try on purpose: returning the future unawaited puts
+      // everything this does — the suspension check, the roster read — outside
+      // the catch below, so a rep saw a raw PostgrestException instead of a
+      // sentence. The analyzer calls this unawaited_return_in_try_block.
+      return await _sessionForCurrentUser();
     } on AuthException {
       rethrow;
     } catch (e) {
